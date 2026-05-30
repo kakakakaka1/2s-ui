@@ -21,12 +21,12 @@ Please be respectful and constructive. This project is for personal learning and
 1. **Fork** the repository on GitHub.
 2. **Clone** your fork locally:
    ```bash
-   git clone https://github.com/shen-sky6/s2-ui-frontend.git
+   git clone https://github.com/shenjar/s2-ui-frontend.git
    cd s2-ui-frontend
    ```
 3. Add the upstream remote (optional, for syncing):
    ```bash
-   git remote add origin https://github.com/shen-sky6/s2-ui-frontend.git
+   git remote add origin https://github.com/shenjar/s2-ui-frontend.git
    ```
 
 ## Development Setup
