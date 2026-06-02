@@ -219,6 +219,20 @@ const setData = (data: any) => {
 
 const save = async () => {
   loading.value = true
+  // 开了「自动申请证书 (ACME)」时,保存前先真去申请一次校验;失败就拦下不保存,
+  // 并弹出真实原因(如 80 端口连不上)。成功的话证书也顺便申请好了。
+  const acmeChecks = [
+    { on: settings.value.webCertMode === 'acme', domain: settings.value.webDomain, email: settings.value.webAcmeEmail },
+    { on: settings.value.subCertMode === 'acme', domain: settings.value.subDomain, email: settings.value.subAcmeEmail },
+  ]
+  for (const chk of acmeChecks) {
+    if (!chk.on) continue
+    const r = await HttpUtils.post('api/testAcme', { domain: chk.domain, email: chk.email })
+    if (!r.success) {
+      loading.value = false
+      return
+    }
+  }
   const msg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(settings.value) })
   if (msg.success) {
     push.success({
