@@ -142,24 +142,20 @@ export default {
           return
         }
         const l = String(i18n.global.locale) == 'fa' ? "fa-IR" : "en-US"
-        // The backend already aggregates stats into time-sorted points and pairs
-        // every timestamp with both an up and a down record (up may be 0), so we
-        // plot those points directly. Previously the data was re-binned into 360
-        // fixed slots, which — combined with the backend downsampling to ~30
-        // buckets — left most slots empty, breaking the line into scattered dots
-        // and making tooltips read "0 B".
+        // The backend returns exactly one up row and one down row per time
+        // bucket (empty buckets included with traffic=0), already sorted by
+        // time. We split them into two series keyed by timestamp.
         const upByTime: Record<number, number> = {}
         const downByTime: Record<number, number> = {}
         const timeSet = new Set<number>()
         for (const o of obj) {
           const t = Number(o.dateTime)
           if (!t) continue
-          const traffic = Number(o.traffic) || 0
           timeSet.add(t)
           if (o.direction) {
-            upByTime[t] = (upByTime[t] || 0) + traffic
+            upByTime[t] = Number(o.traffic) || 0
           } else {
-            downByTime[t] = (downByTime[t] || 0) + traffic
+            downByTime[t] = Number(o.traffic) || 0
           }
         }
         const times = Array.from(timeSet).sort((a, b) => a - b)
