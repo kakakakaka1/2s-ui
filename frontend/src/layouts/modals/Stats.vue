@@ -74,18 +74,11 @@ export default {
       loaded: false,
       alert: false,
       intervalId: <any>0,
-      limit: 1,
+      limit: 'hour',
       periods: [
-        { value: 1, title: i18n.global.n(1) + i18n.global.t('date.h')},
-        { value: 6, title: i18n.global.n(6) + i18n.global.t('date.h')},
-        { value: 12, title: i18n.global.n(12) + i18n.global.t('date.h')},
-        { value: 24, title: i18n.global.n(1) + i18n.global.t('date.d')},
-        { value: 48, title: i18n.global.n(2) + i18n.global.t('date.d')},
-        { value: 240, title: i18n.global.n(10) + i18n.global.t('date.d')},
-        { value: 480, title: i18n.global.n(20) + i18n.global.t('date.d')},
-        { value: 720, title: i18n.global.n(30) + i18n.global.t('date.d')},
-        { value: 1440, title: i18n.global.n(60) + i18n.global.t('date.d')},
-        { value: 2160, title: i18n.global.n(90) + i18n.global.t('date.d')},
+        { value: 'hour',  title: i18n.global.n(1) + i18n.global.t('date.h') },
+        { value: 'day',   title: i18n.global.n(1) + i18n.global.t('date.d') },
+        { value: 'month', title: i18n.global.n(30) + i18n.global.t('date.d') },
       ],
       options: {
         responsive: true,
@@ -110,6 +103,9 @@ export default {
           }
         },
         scales: {
+          x: {
+            ticks: { maxTicksLimit: 10, maxRotation: 0, autoSkip: true }
+          },
           y: {
             grid: {
               color: '#777777',
@@ -128,14 +124,14 @@ export default {
     }
   },
   methods: {
-    onLimitChange(value: number | null) {
+    onLimitChange(value: string | null) {
       if (value == null) return
-      this.limit = Number(value)
+      this.limit = value
       this.loadData()
     },
     async loadData() {
       this.loading = true
-      const data = await HttpUtils.get('api/stats', { resource: this.resource, tag: this.tag, limit: this.limit })
+      const data = await HttpUtils.get('api/stats', { resource: this.resource, tag: this.tag, period: this.limit })
       if (data.success && data.obj) {
         const obj = <any[]>data.obj
         if (obj.length == 0) {
@@ -174,7 +170,7 @@ export default {
           this.loading = false
           return
         }
-        const labels = times.map(t => this.genLable(t * 1000, l))
+        const labels = times.map(t => this.genLabel(t * 1000, l))
         const uplinkData = times.map(t => upByTime[t] ?? 0)
         const downlinkData = times.map(t => downByTime[t] ?? 0)
         this.usage = {
@@ -204,20 +200,18 @@ export default {
       }
       this.loading = false
     },
-    genLable(step:number, locale: string) {
-      return new Date(step).toLocaleString(locale,{
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      })
+    genLabel(step: number, locale: string) {
+      const d = new Date(step)
+      if (this.limit === 'month') {
+        return d.toLocaleDateString(locale, { month: '2-digit', day: '2-digit' })
+      }
+      return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false })
     },
   },
   watch: {
     visible(v) {
       if (v) {
-        this.limit = 1
+        this.limit = 'hour'
         this.loadData()
         this.intervalId = setInterval(() => {
           this.loadData()
