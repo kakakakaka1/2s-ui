@@ -40,11 +40,19 @@
             <v-text-field v-model="settings.webDomain" :label="$t('setting.domain')" hide-details></v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.webKeyFile" :label="$t('setting.sslKey')" hide-details></v-text-field>
+            <v-switch color="primary" v-model="webAcme" :label="$t('setting.autoCert')" hide-details />
           </v-col>
-          <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.webCertFile" :label="$t('setting.sslCert')" hide-details></v-text-field>
+          <v-col v-if="webAcme" cols="12" sm="6" md="4">
+            <v-text-field v-model="settings.webAcmeEmail" :label="$t('setting.acmeEmail')" :hint="$t('setting.acmeHint')" persistent-hint></v-text-field>
           </v-col>
+          <template v-else>
+            <v-col cols="12" sm="6" md="4">
+              <v-text-field v-model="settings.webKeyFile" :label="$t('setting.sslKey')" hide-details></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6" md="4">
+              <v-text-field v-model="settings.webCertFile" :label="$t('setting.sslCert')" hide-details></v-text-field>
+            </v-col>
+          </template>
           <v-col cols="12" sm="6" md="4">
             <v-text-field v-model="settings.webURI" :label="$t('setting.webUri')" hide-details></v-text-field>
           </v-col>
@@ -98,11 +106,19 @@
         </v-row>
         <v-row>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.subKeyFile" :label="$t('setting.sslKey')" hide-details></v-text-field>
+            <v-switch color="primary" v-model="subAcme" :label="$t('setting.autoCert')" hide-details />
           </v-col>
-          <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.subCertFile" :label="$t('setting.sslCert')" hide-details></v-text-field>
+          <v-col v-if="subAcme" cols="12" sm="6" md="4">
+            <v-text-field v-model="settings.subAcmeEmail" :label="$t('setting.acmeEmail')" :hint="$t('setting.acmeHint')" persistent-hint></v-text-field>
           </v-col>
+          <template v-else>
+            <v-col cols="12" sm="6" md="4">
+              <v-text-field v-model="settings.subKeyFile" :label="$t('setting.sslKey')" hide-details></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6" md="4">
+              <v-text-field v-model="settings.subCertFile" :label="$t('setting.sslCert')" hide-details></v-text-field>
+            </v-col>
+          </template>
         </v-row>
         <v-row>
           <v-col cols="12" sm="6" md="4">
@@ -158,6 +174,8 @@ const settings = ref({
 	webPort: "2095",
 	webCertFile: "",
 	webKeyFile: "",
+	webCertMode: "",
+	webAcmeEmail: "",
   webPath: "/app/",
   webURI: "",
 	sessionMaxAge: "0",
@@ -169,6 +187,8 @@ const settings = ref({
 	subDomain: "",
 	subCertFile: "",
 	subKeyFile: "",
+	subCertMode: "",
+	subAcmeEmail: "",
 	subUpdates: "12",
 	subEncode: "true",
 	subShowInfo: "false",
@@ -219,7 +239,7 @@ const restartApp = async () => {
   if (msg.success) {
     let url = settings.value.webURI
     if (url !== "") {
-      const isTLS = settings.value.webCertFile !== "" || settings.value.webKeyFile !== ""
+      const isTLS = settings.value.webCertMode === "acme" || settings.value.webCertFile !== "" || settings.value.webKeyFile !== ""
       url = buildURL(settings.value.webDomain,settings.value.webPort.toString(),isTLS, settings.value.webPath)
     }
     await sleep(3000)
@@ -242,6 +262,16 @@ const buildURL = (host: string, port: string, isTLS: boolean, path: string) => {
 
   return `${protocol}//${host}${port}${path}settings`
 }
+
+const webAcme = computed({
+  get: () => { return settings.value.webCertMode == "acme" },
+  set: (v:boolean) => { settings.value.webCertMode = v ? "acme" : "" }
+})
+
+const subAcme = computed({
+  get: () => { return settings.value.subCertMode == "acme" },
+  set: (v:boolean) => { settings.value.subCertMode = v ? "acme" : "" }
+})
 
 const subEncode = computed({
   get: () => { return settings.value.subEncode == "true" },

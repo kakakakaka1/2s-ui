@@ -100,12 +100,11 @@ export default {
         plugins: {
           tooltip: {
             callbacks: {
-              text: (ctx:any) => {
-                const {axis = 'xy', intersect, mode} = ctx.chart.options.interaction
-                return 'Mode: ' + mode + ', axis: ' + axis + ', intersect: ' + intersect
+              label: (ctx:any) => {
+                return ctx.dataset.label + ': ' + HumanReadable.sizeFormat(Number(ctx.raw) || 0)
               },
               footer: (items:any[]) => {
-                return HumanReadable.sizeFormat(items.reduce((acc, c) => acc + c.raw, 0))
+                return HumanReadable.sizeFormat(items.reduce((acc, c) => acc + (Number(c.raw) || 0), 0))
               }
             }
           }
@@ -147,32 +146,37 @@ export default {
           return
         }
         const l = String(i18n.global.locale) == 'fa' ? "fa-IR" : "en-US"
-        const oneStep = this.limit * 3600 * 1000 / 360 // Each 10 sec
-        const now = new Date().getTime()
-        const steps = <number[]>[]
-        for (let i = 360; i >= 0; i--) {
-          steps.push(now - (oneStep * i))
+        // The backend already aggregates stats into time-sorted points and pairs
+        // every timestamp with both an up and a down record (up may be 0), so we
+        // plot those points directly. Previously the data was re-binned into 360
+        // fixed slots, which — combined with the backend downsampling to ~30
+        // buckets — left most slots empty, breaking the line into scattered dots
+        // and making tooltips read "0 B".
+        const upByTime: Record<number, number> = {}
+        const downByTime: Record<number, number> = {}
+        const timeSet = new Set<number>()
+        for (const o of obj) {
+          const t = Number(o.dateTime)
+          if (!t) continue
+          const traffic = Number(o.traffic) || 0
+          timeSet.add(t)
+          if (o.direction) {
+            upByTime[t] = (upByTime[t] || 0) + traffic
+          } else {
+            downByTime[t] = (downByTime[t] || 0) + traffic
+          }
         }
-        const labels = <string[]>[]
-        const uplinkData = <(number | null)[]>[]
-        const downlinkData = <(number | null)[]>[]
-        for (let i = 1; i <= 360; i++) {
-          labels.push(this.genLable(steps[i],l))
-          const upTraffics = obj.filter(o => o.direction && o.dateTime * 1000 < steps[i] && o.dateTime * 1000 >= steps[i - 1]).map((o:any) => Number(o.traffic) || 0)
-          const upSum = upTraffics.length > 0 ? upTraffics.reduce((sum, traffic) => sum + traffic, 0) : null
-          const downTraffics = obj.filter(o => !o.direction && o.dateTime * 1000 < steps[i] && o.dateTime * 1000 >= steps[i - 1]).map((o:any) => Number(o.traffic) || 0)
-          const downSum = downTraffics.length > 0 ? downTraffics.reduce((sum, traffic) => sum + traffic, 0) : null
-          uplinkData.push(upSum)
-          downlinkData.push(downSum)
-        }
-        const hasData = uplinkData.some(v => v !== null) || downlinkData.some(v => v !== null)
-        if (!hasData) {
+        const times = Array.from(timeSet).sort((a, b) => a - b)
+        if (times.length == 0) {
           this.usage = { labels: [], datasets: [] }
           this.loaded = false
           this.alert = true
           this.loading = false
           return
         }
+        const labels = times.map(t => this.genLable(t * 1000, l))
+        const uplinkData = times.map(t => upByTime[t] ?? 0)
+        const downlinkData = times.map(t => downByTime[t] ?? 0)
         this.usage = {
           labels: labels,
           datasets: [
