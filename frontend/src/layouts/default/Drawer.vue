@@ -10,7 +10,7 @@
     <v-list-item
       height="63"
       prepend-avatar="@/assets/logo.svg"
-      title="S2-UI"
+      title="2S-UI"
     >
       <template v-slot:append v-if="isMobile">
         <v-icon icon="mdi-close" />

@@ -83,7 +83,7 @@ const router = createRouter({
   routes,
 })
 
-const DEFAULT_TITLE = 'S2-UI'
+const DEFAULT_TITLE = '2S-UI'
 let intervalId:any
 
 // Navigation guard to check authentication state

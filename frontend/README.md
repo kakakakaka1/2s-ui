@@ -1,5 +1,5 @@
-# S2-UI Frontend
-**A frontend for S2-UI**
+# 2S-UI Frontend
+**A frontend for 2S-UI**
 
 [![License](https://img.shields.io/badge/license-GPL%20V3-blue.svg?longCache=true)](https://www.gnu.org/licenses/gpl-3.0.en.html)
 
