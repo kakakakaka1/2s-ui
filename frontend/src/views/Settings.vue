@@ -40,18 +40,35 @@
             <v-text-field v-model="settings.webDomain" :label="$t('setting.domain')" hide-details></v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-switch color="primary" v-model="webAcme" :label="$t('setting.autoCert')" hide-details />
+            <v-select
+              v-model="settings.webNginx"
+              :items="nginxItems"
+              :label="$t('setting.deployNginx')"
+              :hint="webNginxHint"
+              persistent-hint
+            ></v-select>
           </v-col>
-          <v-col v-if="webAcme" cols="12" sm="6" md="4">
+          <v-col cols="12" sm="6" md="4">
             <v-text-field v-model="settings.webAcmeEmail" :label="$t('setting.acmeEmail')" :hint="$t('setting.acmeHint')" persistent-hint></v-text-field>
           </v-col>
-          <template v-else>
+          <v-col cols="12" sm="6" md="4" class="d-flex align-center">
+            <v-btn color="success" variant="flat" @click="issueCert" :loading="loading" :disabled="!settings.webDomain">
+              {{ $t('setting.issueCert') }}
+            </v-btn>
+          </v-col>
+          <!-- 非 nginx 模式:面板自身加载证书,可开内置 ACME 或填证书路径(acme.sh 申请后自动回填) -->
+          <template v-if="settings.webNginx !== 'true'">
             <v-col cols="12" sm="6" md="4">
-              <v-text-field v-model="settings.webKeyFile" :label="$t('setting.sslKey')" hide-details></v-text-field>
+              <v-switch color="primary" v-model="webAcme" :label="$t('setting.autoCert')" hide-details />
             </v-col>
-            <v-col cols="12" sm="6" md="4">
-              <v-text-field v-model="settings.webCertFile" :label="$t('setting.sslCert')" hide-details></v-text-field>
-            </v-col>
+            <template v-if="!webAcme">
+              <v-col cols="12" sm="6" md="4">
+                <v-text-field v-model="settings.webKeyFile" :label="$t('setting.sslKey')" hide-details></v-text-field>
+              </v-col>
+              <v-col cols="12" sm="6" md="4">
+                <v-text-field v-model="settings.webCertFile" :label="$t('setting.sslCert')" hide-details></v-text-field>
+              </v-col>
+            </template>
           </template>
           <v-col cols="12" sm="6" md="4">
             <v-text-field v-model="settings.webURI" :label="$t('setting.webUri')" hide-details></v-text-field>
@@ -175,6 +192,7 @@ const settings = ref({
 	webCertFile: "",
 	webKeyFile: "",
 	webCertMode: "",
+	webNginx: "",
 	webAcmeEmail: "",
   webPath: "/app/",
   webURI: "",
@@ -200,6 +218,7 @@ const settings = ref({
 onMounted(async () => {
   loading.value = true
   await loadData()
+  await detectNginx()
   loading.value = false
 })
 
@@ -275,6 +294,55 @@ const buildURL = (host: string, port: string, isTLS: boolean, path: string) => {
   }
 
   return `${protocol}//${host}${port}${path}settings`
+}
+
+const detectedNginx = ref({ installed: false, active: false })
+
+const nginxItems = computed(() => [
+  { title: i18n.global.t('no'), value: 'false' },
+  { title: i18n.global.t('yes'), value: 'true' },
+])
+
+const webNginxHint = computed(() => {
+  return detectedNginx.value.installed
+    ? i18n.global.t('setting.nginxDetected')
+    : i18n.global.t('setting.deployNginxHint')
+})
+
+// 页面加载时检测 nginx;仅当 webNginx 尚未设置过(空)时用检测结果作默认值
+const detectNginx = async () => {
+  const r = await HttpUtils.get('api/detectNginx')
+  if (r.success && r.obj) {
+    detectedNginx.value = r.obj
+    if (!settings.value.webNginx) {
+      settings.value.webNginx = r.obj.installed ? 'true' : 'false'
+      oldSettings.value = { ...settings.value }
+    }
+  }
+}
+
+// 用 acme.sh 申请证书:无 nginx 走 standalone、面板自身加载证书;有 nginx 走 nginx 模式、证书给 nginx
+const issueCert = async () => {
+  if (!settings.value.webDomain) return
+  loading.value = true
+  const r = await HttpUtils.post('api/issueCert', {
+    domain: settings.value.webDomain,
+    email: settings.value.webAcmeEmail,
+    nginx: settings.value.webNginx === 'true' ? 'true' : 'false',
+  })
+  if (r.success && r.obj) {
+    if (settings.value.webNginx !== 'true') {
+      settings.value.webCertFile = r.obj.certFile
+      settings.value.webKeyFile = r.obj.keyFile
+      settings.value.webCertMode = ''
+    }
+    push.success({
+      title: i18n.global.t('success'),
+      duration: 5000,
+      message: i18n.global.t('setting.issueCertOk'),
+    })
+  }
+  loading.value = false
 }
 
 const webAcme = computed({
