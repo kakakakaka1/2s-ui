@@ -25,7 +25,7 @@
           <span class="user-avatar">{{ initials }}</span>
           <span class="user-meta">
             <span class="user-name">{{ username }}</span>
-            <span class="user-role">{{ $t('ui.administrator') }}</span>
+            <span class="user-role">{{ $t('ui.superAdmin') }}</span>
           </span>
           <Ico class="user-caret" name="chevronDown" :size="14" />
         </button>
