@@ -1,4 +1,7 @@
+import ui from './ui/ru'
+
 export default {
+  ui,
   success: "успех",
   failed: "ошибка",
   enable: "Включить",

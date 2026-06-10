@@ -1,4 +1,7 @@
+import ui from './ui/en'
+
 export default {
+  ui,
   success: "success",
   failed: "failed",
   enable: "Enable",

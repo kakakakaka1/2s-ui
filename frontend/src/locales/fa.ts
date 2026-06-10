@@ -1,4 +1,7 @@
+import ui from './ui/fa'
+
 export default {
+  ui,
   success: "موفق",
   failed: "خطا",
   enable: "فعال",

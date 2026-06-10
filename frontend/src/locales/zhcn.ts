@@ -1,4 +1,7 @@
+import ui from './ui/zhcn'
+
 export default {
+  ui,
   success: "成功",
   failed: "失败",
   enable: "启用",

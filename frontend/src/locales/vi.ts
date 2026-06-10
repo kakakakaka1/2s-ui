@@ -1,4 +1,7 @@
+import ui from './ui/vi'
+
 export default {
+  ui,
   success: "Thành công",
   failed: "Thất bại",
   enable: "Kích hoạt",

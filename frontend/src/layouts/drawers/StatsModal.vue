@@ -1,0 +1,126 @@
+<template>
+  <Modal :open="visible" :title="$t('stats.graphTitle')" :width="800" @close="$emit('close')">
+    <div style="padding: 18px 20px;">
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
+        <Chip :color="'brand'"><span class="mono">{{ $t('objects.' + resource) }} · {{ tag }}</span></Chip>
+        <div style="flex: 1;" />
+        <Segmented v-model="period" :options="periods" @update:model-value="loadData" />
+      </div>
+
+      <div v-if="noData" style="padding: 24px 0;">
+        <EmptyState icon="chart" :title="$t('noData')" />
+      </div>
+      <template v-else>
+        <div style="display: flex; gap: 22px; margin-bottom: 12px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="width: 16px; height: 3px; border-radius: 2px; background: var(--brand);" />
+            <div>
+              <div style="font-size: 11.5px; color: var(--text-3);">{{ $t('stats.download') }}</div>
+              <div class="mono" style="font-size: 14px; font-weight: 700;">{{ HumanReadable.sizeFormat(totalDown) }}</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="width: 16px; height: 3px; border-radius: 2px; border-top: 2px dashed var(--cyan);" />
+            <div>
+              <div style="font-size: 11.5px; color: var(--text-3);">{{ $t('stats.upload') }}</div>
+              <div class="mono" style="font-size: 14px; font-weight: 700;">{{ HumanReadable.sizeFormat(totalUp) }}</div>
+            </div>
+          </div>
+        </div>
+        <AreaChart :data="down" :data2="up" :height="220" />
+        <div class="mono" style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 10.5px; color: var(--text-3);">
+          <span v-for="l in axisLabels" :key="l">{{ l }}</span>
+        </div>
+      </template>
+    </div>
+  </Modal>
+</template>
+
+<script lang="ts" setup>
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import HttpUtils from '@/plugins/httputil'
+import { HumanReadable } from '@/plugins/utils'
+import Modal from '@/components/ui/Modal.vue'
+import Chip from '@/components/ui/Chip.vue'
+import Segmented from '@/components/ui/Segmented.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import AreaChart from '@/components/charts/AreaChart.vue'
+
+const props = defineProps<{
+  visible: boolean
+  resource: string
+  tag: string
+}>()
+defineEmits<{ close: [] }>()
+
+const { t, locale } = useI18n({ useScope: 'global' })
+
+const period = ref<string | number>('hour')
+const periods = computed<[string, string][]>(() => [
+  ['hour', '1' + t('date.h')],
+  ['day', '1' + t('date.d')],
+  ['month', '30' + t('date.d')],
+])
+
+const up = ref<number[]>([])
+const down = ref<number[]>([])
+const times = ref<number[]>([])
+const noData = ref(false)
+
+const totalUp = computed(() => up.value.reduce((a, b) => a + b, 0))
+const totalDown = computed(() => down.value.reduce((a, b) => a + b, 0))
+
+const genLabel = (ms: number) => {
+  const l = String(locale.value) == 'fa' ? 'fa-IR' : 'en-US'
+  const d = new Date(ms)
+  if (period.value === 'month') return d.toLocaleDateString(l, { month: '2-digit', day: '2-digit' })
+  return d.toLocaleTimeString(l, { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+const axisLabels = computed(() => {
+  if (times.value.length < 2) return []
+  const pick = [0, .25, .5, .75, 1].map((f) => times.value[Math.round(f * (times.value.length - 1))])
+  return [...new Set(pick)].map((tms) => genLabel(tms * 1000))
+})
+
+const loadData = async () => {
+  const data = await HttpUtils.get('api/stats', { resource: props.resource, tag: props.tag, period: period.value })
+  if (data.success && Array.isArray(data.obj) && data.obj.length > 0) {
+    // one up row + one down row per time bucket, sorted by time
+    const upBy: Record<number, number> = {}
+    const downBy: Record<number, number> = {}
+    const set = new Set<number>()
+    for (const o of data.obj) {
+      const tms = Number(o.dateTime)
+      if (!tms) continue
+      set.add(tms)
+      if (o.direction) upBy[tms] = Number(o.traffic) || 0
+      else downBy[tms] = Number(o.traffic) || 0
+    }
+    const sorted = Array.from(set).sort((a, b) => a - b)
+    if (sorted.length === 0) { noData.value = true; return }
+    times.value = sorted
+    up.value = sorted.map((tms) => upBy[tms] ?? 0)
+    down.value = sorted.map((tms) => downBy[tms] ?? 0)
+    noData.value = false
+  } else {
+    noData.value = true
+  }
+}
+
+let intervalId: ReturnType<typeof setInterval> | null = null
+watch(() => props.visible, (v) => {
+  if (v) {
+    period.value = 'hour'
+    noData.value = false
+    up.value = []
+    down.value = []
+    loadData()
+    intervalId = setInterval(loadData, 10000)
+  } else if (intervalId) {
+    clearInterval(intervalId)
+    intervalId = null
+  }
+})
+onBeforeUnmount(() => { if (intervalId) clearInterval(intervalId) })
+</script>

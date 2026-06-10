@@ -1,4 +1,7 @@
+import ui from './ui/zhtw'
+
 export default {
+  ui,
   success: "成功",
   failed: "失敗",
   enable: "啟用",
