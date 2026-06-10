@@ -16,10 +16,10 @@
 <script lang="ts" setup>
 import { Notivue, Notification, NotivueSwipe, outlinedIcons, pastelTheme, darkTheme } from 'notivue'
 import { computed } from 'vue'
-import { useTheme } from 'vuetify'
-import vuetify from '@/plugins/vuetify'
+import { useLocale, useTheme } from 'vuetify'
 
 const Theme = useTheme()
+const { isRtl } = useLocale()
 
 const theme = computed(() =>{
   let currenTheme = Theme.global.name.value == "light" ? pastelTheme : darkTheme
@@ -31,7 +31,7 @@ const theme = computed(() =>{
 })
 
 const direction = computed(() => {
-  return vuetify.locale.isRtl ? 'rtl' : 'ltr'
+  return isRtl.value ? 'rtl' : 'ltr'
 })
 </script>
 
