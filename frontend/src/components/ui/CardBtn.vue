@@ -1,5 +1,5 @@
 <template>
-  <button type="button" class="card-btn" :class="{ border, danger, 'icon-only': !label }" :title="title">
+  <button type="button" class="card-btn" :class="{ border, danger, 'icon-only': !label }" :title="title" :disabled="disabled">
     <Ico :name="icon" :size="16" />{{ label }}
   </button>
 </template>
@@ -13,6 +13,7 @@ defineProps<{
   border?: boolean
   danger?: boolean
   title?: string
+  disabled?: boolean
 }>()
 </script>
 
@@ -33,4 +34,5 @@ defineProps<{
   background: color-mix(in srgb, var(--rose) 12%, transparent);
   color: var(--rose);
 }
+.card-btn:disabled { opacity: .5; cursor: wait; }
 </style>

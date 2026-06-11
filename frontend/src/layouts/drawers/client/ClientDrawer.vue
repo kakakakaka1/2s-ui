@@ -157,6 +157,51 @@
           </div>
         </template>
       </div>
+
+      <!-- ===================== Links ===================== -->
+      <div v-else-if="tab === 'links'">
+        <template v-if="localLinks.length > 0">
+          <div style="display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px;">
+            <div
+              v-for="(lnk, i) in localLinks"
+              :key="'local' + i"
+              class="link-row"
+              :title="$t('copyToClipboard')"
+              @click="copyToClipboard(lnk.uri)"
+            >
+              <span class="mono" style="color: var(--text-3); flex: none;">{{ i + 1 }}</span>
+              <span class="mono link-uri" dir="ltr">{{ lnk.uri }}</span>
+              <Ico name="copy" :size="13" style="color: var(--text-3); flex: none;" />
+            </div>
+          </div>
+          <hr class="form-divider" />
+        </template>
+
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+          <SectionLabel>{{ $t('client.external') }}</SectionLabel>
+          <div style="flex: 1;" />
+          <Btn variant="subtle" sm @click="extLinks.push({ type: 'external', uri: '' })">
+            <Ico name="plus" :size="14" /> {{ $t('actions.add') }}
+          </Btn>
+        </div>
+        <div v-for="(lnk, i) in extLinks" :key="'ext' + i" style="display: flex; gap: 8px; margin-bottom: 10px;">
+          <input class="input mono" dir="ltr" style="font-size: 12.5px;" placeholder="<protocol>://<data>" v-model="lnk.uri" />
+          <IconBtn name="trash" danger :title="$t('actions.del')" @click="extLinks.splice(i, 1)" />
+        </div>
+
+        <hr class="form-divider" />
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+          <SectionLabel>{{ $t('client.sub') }}</SectionLabel>
+          <div style="flex: 1;" />
+          <Btn variant="subtle" sm @click="subLinks.push({ type: 'sub', uri: '' })">
+            <Ico name="plus" :size="14" /> {{ $t('actions.add') }}
+          </Btn>
+        </div>
+        <div v-for="(lnk, i) in subLinks" :key="'sub' + i" style="display: flex; gap: 8px; margin-bottom: 10px;">
+          <input class="input mono" dir="ltr" style="font-size: 12.5px;" placeholder="http[s]://<domain>[:]<port>/<path>" v-model="lnk.uri" />
+          <IconBtn name="trash" danger :title="$t('actions.del')" @click="subLinks.splice(i, 1)" />
+        </div>
+      </div>
     </template>
 
     <template #footer>
@@ -188,6 +233,8 @@ import SectionLabel from '@/components/ui/SectionLabel.vue'
 import KeyInput from '@/components/ui/KeyInput.vue'
 import DateTimeInput from '@/components/ui/DateTimeInput.vue'
 import BarMini from '@/components/charts/BarMini.vue'
+import IconBtn from '@/components/ui/IconBtn.vue'
+import { copyToClipboard } from '@/plugins/clipboard'
 
 const props = defineProps<{
   visible: boolean
@@ -206,11 +253,13 @@ const client = ref<Client>(createClient())
 const clientConfig = ref<any>({})
 const extLinks = ref<Link[]>([])
 const subLinks = ref<Link[]>([])
+const localLinks = computed(() => client.value.links?.filter((l) => l.type == 'local') ?? [])
 
 const tabs = computed((): [string, string][] => [
   ['general', t('ui.general')],
   ['inbounds', t('ui.nav.inbounds')],
   ['limits', t('ui.limits')],
+  ['links', t('client.links')],
 ])
 
 // ---------- group chips (same palette logic as Clients.vue) ----------

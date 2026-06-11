@@ -64,6 +64,13 @@
         </template>
         <template #actions>
           <CardBtn icon="edit" :title="$t('actions.edit')" @click="openDrawer(item.id)" />
+          <CardBtn
+            icon="bolt"
+            border
+            :title="$t('ui.delay')"
+            :disabled="checkResults[item.tag]?.loading"
+            @click="checkOutbound(item.tag)"
+          />
           <CardBtn icon="trash" border danger :title="$t('actions.del')" @click="askDelete(item.tag)" />
           <CardBtn
             v-if="dataStore.enableTraffic"
