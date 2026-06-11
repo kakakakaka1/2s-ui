@@ -31,9 +31,9 @@
     <template v-if="data.masquerade != undefined">
       <SectionLabel style="margin-bottom: 12px;">Hysteria2 Masquerade</SectionLabel>
       <Field :label="$t('type')">
-        <select class="input" v-model="masqueradeType">
+        <Select v-model="masqueradeType">
           <option v-for="m in masqTypes" :key="m.value" :value="m.value">{{ m.title }}</option>
-        </select>
+        </Select>
       </Field>
       <Field v-if="masqueradeType == ''" label="HTTP3 server on auth fails">
         <input class="input mono" placeholder="file:///var/www | http://127.0.0.1:8080" v-model="data.masquerade" />
@@ -63,6 +63,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Field from '@/components/ui/Field.vue'

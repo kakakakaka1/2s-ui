@@ -13,9 +13,9 @@
   >
     <div class="grid2">
       <Field :label="$t('type')">
-        <select class="input" v-model="srvType">
+        <Select v-model="srvType">
           <option v-for="(value, key) in srvTypes" :key="value" :value="value">{{ key }}</option>
-        </select>
+        </Select>
       </Field>
       <Field :label="$t('objects.tag')">
         <input class="input mono" v-model="srv.tag" />
@@ -33,6 +33,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref, watch } from 'vue'
 import Data from '@/store/modules/data'
 import RandomUtil from '@/plugins/randomUtil'

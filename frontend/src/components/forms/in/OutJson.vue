@@ -3,9 +3,9 @@
     <SectionLabel style="margin-bottom: 12px;">{{ $t('pages.basics') }}</SectionLabel>
     <div class="grid2">
       <Field v-if="type == inTypes.SOCKS" :label="$t('version')">
-        <select class="input" v-model="inData.out_json.version">
+        <Select v-model="inData.out_json.version">
           <option v-for="v in ['4', '4a', '5']" :key="v" :value="v">{{ v }}</option>
-        </select>
+        </Select>
       </Field>
       <Network v-if="needNetwork" :data="inData.out_json" />
       <UoT v-if="needUot" :data="inData.out_json" />
@@ -13,23 +13,23 @@
         <input class="input mono" v-model="inData.out_json.path" />
       </Field>
       <Field v-if="type == inTypes.VMess || type == inTypes.VLESS" :label="$t('types.vless.udpEnc')">
-        <select class="input" v-model="packet_encoding">
+        <Select v-model="packet_encoding">
           <option v-for="e in ['none', 'packetaddr', 'xudp']" :key="e" :value="e">{{ e }}</option>
-        </select>
+        </Select>
       </Field>
       <Field v-if="type == inTypes.VMess" :label="$t('types.vmess.security')">
-        <select class="input" v-model="inData.out_json.security">
+        <Select v-model="inData.out_json.security">
           <option v-for="s in vmessSecurities" :key="s" :value="s">{{ s }}</option>
-        </select>
+        </Select>
       </Field>
       <Field v-if="type == inTypes.Hysteria" label="Recv window">
         <input class="input mono" type="number" min="0" v-model.number="inData.out_json.recv_window" />
       </Field>
       <Field v-if="type == inTypes.TUIC" label="UDP Relay Mode">
-        <select class="input" v-model="udpRelayMode">
+        <Select v-model="udpRelayMode">
           <option value="">{{ $t('none') }}</option>
           <option v-for="m in ['native', 'quic']" :key="m" :value="m">{{ m }}</option>
-        </select>
+        </Select>
       </Field>
     </div>
     <div v-if="type == inTypes.VMess" style="display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 15px;">
@@ -54,6 +54,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import { InTypes } from '@/types/inbounds'
 import Field from '@/components/ui/Field.vue'

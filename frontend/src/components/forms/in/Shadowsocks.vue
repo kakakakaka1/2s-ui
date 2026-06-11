@@ -3,9 +3,9 @@
     <SectionLabel style="margin-bottom: 12px;">Shadowsocks</SectionLabel>
     <div class="grid2">
       <Field :label="$t('in.ssMethod')">
-        <select class="input" v-model="data.method" @change="onMethodChange">
+        <Select v-model="data.method" @change="onMethodChange">
           <option v-for="m in ssMethods" :key="m" :value="m">{{ m }}</option>
-        </select>
+        </Select>
       </Field>
       <Network :data="data" />
     </div>
@@ -19,6 +19,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import RandomUtil from '@/plugins/randomUtil'
 import Field from '@/components/ui/Field.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'

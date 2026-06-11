@@ -5,10 +5,10 @@
       <Field :label="$t('transport.path')"><input class="input mono" v-model="transport.path" /></Field>
     </div>
     <Field :label="$t('transport.httpMethod')">
-      <select class="input" v-model="method">
+      <Select v-model="method">
         <option value="">{{ $t('none') }}</option>
         <option v-for="m in methodList" :key="m" :value="m">{{ m }}</option>
-      </select>
+      </Select>
     </Field>
     <div class="grid2">
       <Field :label="$t('transport.idleTimeout') + ' (' + $t('date.s') + ')'">
@@ -23,6 +23,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import Headers from './Headers.vue'

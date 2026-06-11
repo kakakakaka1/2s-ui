@@ -14,36 +14,36 @@
     <Segmented v-model="modeSeg" block :options="[['simple', $t('rule.simple')], ['logical', $t('rule.logical')]]" />
 
     <Field v-if="logical" :label="$t('rule.mode')">
-      <select class="input" v-model="form.mode">
+      <Select v-model="form.mode">
         <option value="and">and</option>
         <option value="or">or</option>
-      </select>
+      </Select>
     </Field>
 
     <!-- action / target -->
     <div class="grid2">
       <Field :label="$t('dns.rule.action.title')">
-        <select class="input" v-model="form.action">
+        <Select v-model="form.action">
           <option v-for="a in actions" :key="a.value" :value="a.value">{{ a.title }}</option>
-        </select>
+        </Select>
       </Field>
       <Field v-if="form.action === 'route'" :label="$t('dns.server')">
-        <select class="input" v-model="form.server">
+        <Select v-model="form.server">
           <option v-for="s in serverTags" :key="s" :value="s">{{ s }}</option>
-        </select>
+        </Select>
       </Field>
       <Field v-if="form.action === 'reject'" :label="$t('rule.method')">
-        <select class="input" v-model="rejectMethod">
+        <Select v-model="rejectMethod">
           <option value="">{{ $t('ui.none') }}</option>
           <option value="default">Default</option>
           <option value="drop">Drop</option>
-        </select>
+        </Select>
       </Field>
       <Field v-if="form.action === 'predefined'" :label="$t('dns.rule.action.rcode')">
-        <select class="input" v-model="predefRcode">
+        <Select v-model="predefRcode">
           <option value="">{{ $t('ui.none') }}</option>
           <option v-for="rc in predefinedRcode" :key="rc.value" :value="rc.value">{{ rc.title }}</option>
-        </select>
+        </Select>
       </Field>
     </div>
 
@@ -51,10 +51,10 @@
     <template v-if="['route', 'route-options'].includes(form.action)">
       <div class="grid2">
         <Field v-if="form.action === 'route'" :label="$t('rule.strategy')">
-          <select class="input" v-model="routeStrategy">
+          <Select v-model="routeStrategy">
             <option value="">{{ $t('ui.none') }}</option>
             <option v-for="s in strategies" :key="s.value" :value="s.value">{{ s.title }}</option>
-          </select>
+          </Select>
         </Field>
         <Field :label="$t('dns.rule.action.rewriteTtl')">
           <input class="input mono" type="number" min="0" v-model.number="form.rewrite_ttl" />
@@ -106,9 +106,9 @@
           :key="k"
           style="display: grid; grid-template-columns: 150px 1fr 34px; gap: 8px; align-items: start;"
         >
-          <select class="input" style="height: 38px; font-size: 12.5px;" :value="k" @change="changeKey(r, k, ($event.target as HTMLSelectElement).value)">
+          <Select style="height: 38px; font-size: 12.5px;" :value="k" @change="changeKey(r, k, ($event.target as HTMLSelectElement).value)">
             <option v-for="mk in MATCH_KEYS" :key="mk" :value="mk" :disabled="mk !== k && r[mk] !== undefined">{{ mk }}</option>
-          </select>
+          </Select>
 
           <!-- value control by kind -->
           <ChipSelect
@@ -117,10 +117,10 @@
             :options="optionsFor(k)"
             @update:model-value="r[k] = $event"
           />
-          <select v-else-if="kindOf(k) === 'ipver'" class="input" style="height: 38px; font-size: 12.5px;" :value="String(r[k])" @change="r[k] = Number(($event.target as HTMLSelectElement).value)">
+          <Select v-else-if="kindOf(k) === 'ipver'" style="height: 38px; font-size: 12.5px;" :value="String(r[k])" @change="r[k] = Number(($event.target as HTMLSelectElement).value)">
             <option value="4">4</option>
             <option value="6">6</option>
-          </select>
+          </Select>
           <div v-else-if="kindOf(k) === 'bool'" style="display: flex; align-items: center; height: 38px;">
             <Toggle :model-value="!!r[k]" @update:model-value="r[k] = $event" />
           </div>
@@ -153,6 +153,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MDrawer from '@/components/ui/MDrawer.vue'

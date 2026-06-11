@@ -10,10 +10,10 @@
       <input class="input mono" type="number" min="0" v-model.number="insecureConcurrency" />
     </Field>
     <Field v-if="data.quic" :label="$t('types.naive.quicCongestion')" :mb="0">
-      <select class="input" v-model="quicCongestion">
+      <Select v-model="quicCongestion">
         <option value="">{{ $t('none') }}</option>
         <option v-for="c in outCngs" :key="c.value" :value="c.value">{{ c.title }}</option>
-      </select>
+      </Select>
     </Field>
   </div>
   <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px;">
@@ -24,6 +24,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'

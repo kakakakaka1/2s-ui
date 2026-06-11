@@ -1,14 +1,15 @@
 <template>
   <Field :label="$t('network')" :mb="0">
-    <select class="input" v-model="network">
+    <Select v-model="network">
       <option value="">TCP/UDP</option>
       <option value="tcp">TCP</option>
       <option value="udp">UDP</option>
-    </select>
+    </Select>
   </Field>
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 

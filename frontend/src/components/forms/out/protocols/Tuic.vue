@@ -8,16 +8,16 @@
     </Field>
     <Network :data="data" />
     <Field label="UDP Relay Mode" :mb="0">
-      <select class="input" v-model="udpRelayMode">
+      <Select v-model="udpRelayMode">
         <option value="">{{ $t('none') }}</option>
         <option value="native">native</option>
         <option value="quic">quic</option>
-      </select>
+      </Select>
     </Field>
     <Field :label="$t('types.tuic.congControl')" :mb="0">
-      <select class="input" v-model="data.congestion_control">
+      <Select v-model="data.congestion_control">
         <option v-for="c in congestionControls" :key="c" :value="c">{{ c }}</option>
-      </select>
+      </Select>
     </Field>
     <Field :label="$t('types.tuic.hb') + ' (' + $t('date.s') + ')'" :mb="0">
       <input class="input mono" type="number" min="1" v-model.number="heartbeat" />
@@ -30,6 +30,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import RandomUtil from '@/plugins/randomUtil'
 import Field from '@/components/ui/Field.vue'

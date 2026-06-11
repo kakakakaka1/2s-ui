@@ -4,22 +4,22 @@
       <!-- filters -->
       <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;">
         <Field :label="$t('admin.actor')" :mb="0" style="width: 160px;">
-          <select class="input" v-model="user" @change="loadData">
+          <Select v-model="user" @change="loadData">
             <option value="">{{ $t('ui.none') }}</option>
             <option value="DepleteJob">DepleteJob</option>
             <option v-for="a in admins" :key="a" :value="a">{{ a }}</option>
-          </select>
+          </Select>
         </Field>
         <Field :label="$t('admin.key')" :mb="0" style="width: 160px;">
-          <select class="input" v-model="key" @change="loadData">
+          <Select v-model="key" @change="loadData">
             <option value="">{{ $t('ui.none') }}</option>
             <option v-for="k in keys" :key="k" :value="k">{{ k }}</option>
-          </select>
+          </Select>
         </Field>
         <Field :label="$t('count')" :mb="0" style="width: 100px;">
-          <select class="input" v-model.number="chngCount" @change="loadData">
+          <Select v-model.number="chngCount" @change="loadData">
             <option v-for="c in [10, 20, 30, 50, 100]" :key="c" :value="c">{{ c }}</option>
-          </select>
+          </Select>
         </Field>
         <div style="flex: 1;" />
         <Btn :loading="loading" @click="loadData"><Ico name="refresh" :size="15" /> {{ $t('actions.update') }}</Btn>
@@ -74,6 +74,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { ref, watch } from 'vue'
 import HttpUtils from '@/plugins/httputil'
 import { locale } from '@/locales'

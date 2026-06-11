@@ -17,9 +17,9 @@
         <input class="input mono" type="number" min="1" v-model.number="udpTimeout" />
       </Field>
       <Field label="Stack">
-        <select class="input" v-model="data.stack">
+        <Select v-model="data.stack">
           <option v-for="s in ['system', 'gvisor', 'mixed']" :key="s" :value="s">{{ s }}</option>
-        </select>
+        </Select>
       </Field>
     </div>
     <div style="display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 15px;">
@@ -38,6 +38,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'

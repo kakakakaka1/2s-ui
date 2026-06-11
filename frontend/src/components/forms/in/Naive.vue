@@ -6,10 +6,10 @@
       <div class="grid2">
         <Network :data="data" />
         <Field :label="$t('types.naive.quicCongestion')">
-          <select class="input" v-model="quicCongestion">
+          <Select v-model="quicCongestion">
             <option value="">{{ $t('none') }}</option>
             <option v-for="c in inbCngs" :key="c.value" :value="c.value">{{ c.title }}</option>
-          </select>
+          </Select>
         </Field>
       </div>
     </template>
@@ -27,6 +27,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'

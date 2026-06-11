@@ -30,19 +30,19 @@
           <input class="input mono" v-model="tls.server_name" />
         </Field>
         <Field v-if="tls.min_version" :label="$t('tls.minVer')">
-          <select class="input" v-model="tls.min_version">
+          <Select v-model="tls.min_version">
             <option v-for="v in tlsVersions" :key="v" :value="v">{{ v }}</option>
-          </select>
+          </Select>
         </Field>
         <Field v-if="tls.max_version" :label="$t('tls.maxVer')">
-          <select class="input" v-model="tls.max_version">
+          <Select v-model="tls.max_version">
             <option v-for="v in tlsVersions" :key="v" :value="v">{{ v }}</option>
-          </select>
+          </Select>
         </Field>
         <Field v-if="tls.utls != undefined" label="Fingerprint">
-          <select class="input" v-model="tls.utls.fingerprint">
+          <Select v-model="tls.utls.fingerprint">
             <option v-for="f in fingerprints" :key="f.value" :value="f.value">{{ f.title }}</option>
-          </select>
+          </Select>
         </Field>
       </div>
 
@@ -121,6 +121,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref } from 'vue'
 import { oTls, defaultOutTls } from '@/types/tls'
 import Field from '@/components/ui/Field.vue'

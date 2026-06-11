@@ -3,10 +3,10 @@
     <MultiPick v-model="outboundsValue" :options="tags ?? []" />
   </Field>
   <Field :label="$t('types.lb.defaultOut')">
-    <select class="input" v-model="defaultOut">
+    <Select v-model="defaultOut">
       <option value="">{{ $t('none') }}</option>
       <option v-for="o in data.outbounds ?? []" :key="o" :value="o">{{ o }}</option>
-    </select>
+    </Select>
   </Field>
   <div style="margin-bottom: 15px;">
     <CheckLabel v-model="interrupt" :label="$t('types.lb.interruptConn')" />
@@ -14,6 +14,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import MultiPick from '@/components/ui/MultiPick.vue'

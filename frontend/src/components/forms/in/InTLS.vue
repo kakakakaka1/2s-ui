@@ -1,12 +1,13 @@
 <template>
   <Field :label="$t('objects.tls')">
-    <select class="input" v-model="inbound.tls_id">
+    <Select v-model="inbound.tls_id">
       <option v-for="it in tlsItems" :key="it.value" :value="it.value">{{ it.title }}</option>
-    </select>
+    </Select>
   </Field>
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Field from '@/components/ui/Field.vue'

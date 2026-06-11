@@ -4,12 +4,12 @@
     <div v-if="muxEnable" class="fade-up">
       <div class="grid2">
         <Field :label="$t('protocol')">
-          <select class="input" v-model="protocol">
+          <Select v-model="protocol">
             <option value="">{{ $t('none') }}</option>
             <option value="smux">smux</option>
             <option value="yamux">yamux</option>
             <option value="h2mux">h2mux</option>
-          </select>
+          </Select>
         </Field>
         <Field :label="$t('mux.maxConn')">
           <input class="input mono" type="number" min="0" v-model.number="maxConnections" />
@@ -38,6 +38,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import { oMultiplex } from '@/types/multiplex'
 import Field from '@/components/ui/Field.vue'

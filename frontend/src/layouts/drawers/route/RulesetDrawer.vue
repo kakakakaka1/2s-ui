@@ -18,10 +18,10 @@
     <Segmented v-model="kind" block :options="[['local', $t('ruleset.local')], ['remote', $t('ruleset.remote')]]" />
 
     <Field :label="$t('ruleset.format')">
-      <select class="input" v-model="form.format">
+      <Select v-model="form.format">
         <option value="source">source</option>
         <option value="binary">binary</option>
-      </select>
+      </Select>
     </Field>
 
     <template v-if="form.type === 'local'">
@@ -35,10 +35,10 @@
       </Field>
       <div class="grid2">
         <Field :label="$t('objects.outbound')">
-          <select class="input" v-model="downloadDetour">
+          <Select v-model="downloadDetour">
             <option value="">{{ $t('ui.none') }}</option>
             <option v-for="o in outTags" :key="o" :value="o">{{ o }}</option>
-          </select>
+          </Select>
         </Field>
         <Field :label="$t('ruleset.interval') + ' (' + $t('date.d') + ')'">
           <input class="input mono" type="number" min="0" v-model.number="updateIntervals" />
@@ -49,6 +49,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref, watch } from 'vue'
 import MDrawer from '@/components/ui/MDrawer.vue'
 import Segmented from '@/components/ui/Segmented.vue'

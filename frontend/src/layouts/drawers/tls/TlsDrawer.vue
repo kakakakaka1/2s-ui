@@ -32,14 +32,14 @@
     <template v-if="tlsType == 0">
       <div class="grid2">
         <Field v-if="inTls.min_version" :label="$t('tls.minVer')">
-          <select class="input" v-model="inTls.min_version">
+          <Select v-model="inTls.min_version">
             <option v-for="v in tlsVersions" :key="v" :value="v">{{ v }}</option>
-          </select>
+          </Select>
         </Field>
         <Field v-if="inTls.max_version" :label="$t('tls.maxVer')">
-          <select class="input" v-model="inTls.max_version">
+          <Select v-model="inTls.max_version">
             <option v-for="v in tlsVersions" :key="v" :value="v">{{ v }}</option>
-          </select>
+          </Select>
         </Field>
       </div>
       <Field v-if="inTls.alpn" label="ALPN">
@@ -120,9 +120,9 @@
     <!-- shared extras (store / kernel TLS / uTLS fingerprint) -->
     <div v-if="optionStore || optionKtls" class="grid2">
       <Field v-if="optionStore" :label="$t('tls.store')">
-        <select class="input" v-model="storeValue">
+        <Select v-model="storeValue">
           <option v-for="s in storeItems" :key="s.value" :value="s.value">{{ s.title }}</option>
-        </select>
+        </Select>
       </Field>
     </div>
     <div v-if="optionKtls" style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 14px;">
@@ -131,9 +131,9 @@
     </div>
     <div v-if="outTls.utls != undefined" class="grid2">
       <Field label="Fingerprint">
-        <select class="input" v-model="fingerprint">
+        <Select v-model="fingerprint">
           <option v-for="f in fingerprints" :key="f.value" :value="f.value">{{ f.title }}</option>
-        </select>
+        </Select>
       </Field>
     </div>
 
@@ -174,6 +174,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { push } from 'notivue'

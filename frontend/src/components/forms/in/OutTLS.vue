@@ -48,14 +48,14 @@
       </Field>
       <div class="grid2">
         <Field v-if="tls.min_version" :label="$t('tls.minVer')">
-          <select class="input" v-model="tls.min_version">
+          <Select v-model="tls.min_version">
             <option v-for="ver in tlsVersions" :key="ver" :value="ver">{{ ver }}</option>
-          </select>
+          </Select>
         </Field>
         <Field v-if="tls.max_version" :label="$t('tls.maxVer')">
-          <select class="input" v-model="tls.max_version">
+          <Select v-model="tls.max_version">
             <option v-for="ver in tlsVersions" :key="ver" :value="ver">{{ ver }}</option>
-          </select>
+          </Select>
         </Field>
       </div>
       <ChipSelect
@@ -66,9 +66,9 @@
         style="margin-bottom: 15px;"
       />
       <Field v-if="tls.utls != undefined" label="Fingerprint">
-        <select class="input" v-model="tls.utls.fingerprint">
+        <Select v-model="tls.utls.fingerprint">
           <option v-for="f in fingerprints" :key="f.value" :value="f.value">{{ f.title }}</option>
-        </select>
+        </Select>
       </Field>
       <div v-if="tls.reality != undefined" class="grid2">
         <Field :label="$t('tls.pubKey')">
@@ -110,6 +110,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref } from 'vue'
 import { defaultOutTls } from '@/types/tls'
 import Field from '@/components/ui/Field.vue'

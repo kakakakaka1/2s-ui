@@ -25,9 +25,9 @@
       </Field>
     </div>
     <Field v-if="optionDetour" :label="$t('listen.detourText')">
-      <select class="input" v-model="data.detour">
+      <Select v-model="data.detour">
         <option v-for="tg in inTags ?? []" :key="tg" :value="tg">{{ tg }}</option>
-      </select>
+      </Select>
     </Field>
     <div v-if="optionTCP" class="fade-up" style="display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 15px;">
       <SwitchLabel v-model="data.tcp_fast_open" label="TCP Fast Open" />
@@ -58,6 +58,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'

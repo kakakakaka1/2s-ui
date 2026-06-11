@@ -11,9 +11,9 @@
     @save="saveChanges"
   >
     <Field :label="$t('actions.action')">
-      <select class="input" v-model="actionMode" @change="onActionChange">
+      <Select v-model="actionMode" @change="onActionChange">
         <option v-for="m in actionModes" :key="m.value" :value="m.value">{{ m.title }}</option>
-      </select>
+      </Select>
     </Field>
 
     <template v-if="actionMode === 'change_limits'">
@@ -69,9 +69,9 @@
       <SectionLabel>{{ $t('pages.clients') }}</SectionLabel>
     </div>
     <Field>
-      <select class="input" v-model="selectedClients.model" @change="selectedClients.values = []">
+      <Select v-model="selectedClients.model" @change="selectedClients.values = []">
         <option v-for="m in selectModels" :key="m.value" :value="m.value">{{ m.title }}</option>
-      </select>
+      </Select>
     </Field>
 
     <Field v-if="selectedClients.model === 'group'" :label="$t('client.group')">
@@ -94,6 +94,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'

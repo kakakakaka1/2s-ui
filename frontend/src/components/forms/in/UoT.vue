@@ -1,12 +1,13 @@
 <template>
   <Field label="UDP over TCP">
-    <select class="input" v-model="udpOverTcp">
+    <Select v-model="udpOverTcp">
       <option v-for="v in versions" :key="v.value" :value="v.value">{{ v.title }}</option>
-    </select>
+    </Select>
   </Field>
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Field from '@/components/ui/Field.vue'

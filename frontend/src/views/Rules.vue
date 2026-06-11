@@ -78,10 +78,10 @@
         <div class="card" style="padding: 18px; margin-top: 10px;">
           <div class="field-grid">
             <Field :label="$t('basic.routing.defaultOut')" :mb="0">
-              <select class="input" v-model="routeFinal">
+              <Select v-model="routeFinal">
                 <option value="">{{ $t('ui.none') }}</option>
                 <option v-for="tag in outboundTags" :key="tag" :value="tag">{{ tag }}</option>
-              </select>
+              </Select>
             </Field>
             <Field :label="$t('basic.routing.defaultIf')" :mb="0">
               <input class="input mono" v-model="defaultInterface" placeholder="eth0" />
@@ -164,6 +164,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, onBeforeMount, ref } from 'vue'
 import Data from '@/store/modules/data'
 import RuleDrawer from '@/layouts/drawers/route/RuleDrawer.vue'

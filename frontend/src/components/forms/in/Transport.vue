@@ -3,9 +3,9 @@
     <MSwitchRow v-model="tpEnable" :label="$t('objects.transport')" :desc="$t('transport.enable')" />
     <div v-if="tpEnable" class="fade-up">
       <Field :label="$t('type')">
-        <select class="input" v-model="transportType">
+        <Select v-model="transportType">
           <option v-for="(value, key) in trspTypes" :key="value" :value="value">{{ key }}</option>
-        </select>
+        </Select>
       </Field>
       <TransportHttp v-if="trsp.type == trspTypes.HTTP" :transport="trsp" />
       <TransportWs v-if="trsp.type == trspTypes.WebSocket" :transport="trsp" />
@@ -16,6 +16,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import { TrspTypes } from '@/types/transport'
 import Field from '@/components/ui/Field.vue'

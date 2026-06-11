@@ -7,11 +7,11 @@
       <input class="input mono" type="password" v-model="password" />
     </Field>
     <Field :label="$t('version')" :mb="0">
-      <select class="input" v-model="data.version">
+      <Select v-model="data.version">
         <option value="4">4</option>
         <option value="4a">4a</option>
         <option value="5">5</option>
-      </select>
+      </Select>
     </Field>
     <Network :data="data" />
     <UoT :data="data" />
@@ -19,6 +19,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import Network from '../Network.vue'

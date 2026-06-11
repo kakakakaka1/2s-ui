@@ -16,9 +16,9 @@
       <Segmented v-model="endpointType" block :options="typeOptions" />
     </div>
     <Field v-else :label="$t('type')">
-      <select class="input" v-model="endpoint.type" disabled>
+      <Select v-model="endpoint.type" disabled>
         <option v-for="(value, key) in epTypes" :key="value" :value="value">{{ key }}</option>
-      </select>
+      </Select>
     </Field>
 
     <Field :label="$t('objects.tag')">
@@ -41,6 +41,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { push } from 'notivue'

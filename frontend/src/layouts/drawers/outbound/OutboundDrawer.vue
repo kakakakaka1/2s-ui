@@ -17,9 +17,9 @@
     <div v-if="tab === 'basics'">
       <div class="grid2">
         <Field :label="$t('type')">
-          <select class="input" v-model="outboundType">
+          <Select v-model="outboundType">
             <option v-for="(value, key) in outTypes" :key="value" :value="value">{{ key }}</option>
-          </select>
+          </Select>
         </Field>
         <Field :label="$t('objects.tag')">
           <input class="input mono" v-model="outbound.tag" />
@@ -72,6 +72,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'

@@ -3,18 +3,18 @@
     <SectionLabel style="margin-bottom: 12px;">ShadowTls</SectionLabel>
     <div class="grid2">
       <Field :label="$t('version')">
-        <select class="input" :disabled="data.id > 0" v-model="version">
+        <Select :disabled="data.id > 0" v-model="version">
           <option v-for="v in [1, 2, 3]" :key="v" :value="v">{{ v }}</option>
-        </select>
+        </Select>
       </Field>
       <Field v-if="data.password != undefined" :label="$t('types.pw')">
         <input class="input mono" v-model="data.password" />
       </Field>
       <Field v-if="data.wildcard_sni != undefined" label="Wildcard SNI">
-        <select class="input" v-model="data.wildcard_sni">
+        <Select v-model="data.wildcard_sni">
           <option value="">{{ $t('none') }}</option>
           <option v-for="w in ['off', 'authed', 'all']" :key="w" :value="w">{{ w }}</option>
-        </select>
+        </Select>
       </Field>
     </div>
     <div class="grid2">
@@ -66,6 +66,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'

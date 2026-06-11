@@ -11,9 +11,9 @@
     </Field>
   </div>
   <Field :label="$t('dial.detourText')">
-    <select class="input" v-model="data.detour">
+    <Select v-model="data.detour">
       <option v-for="tag in outTags" :key="tag" :value="tag">{{ tag }}</option>
-    </select>
+    </Select>
   </Field>
 
   <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
@@ -45,6 +45,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Data from '@/store/modules/data'
 import Field from '@/components/ui/Field.vue'

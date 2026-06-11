@@ -52,16 +52,16 @@
         <div class="card" style="padding: 18px; margin-top: 10px;">
           <div class="field-grid">
             <Field :label="$t('dns.final')" :mb="0">
-              <select class="input" v-model="finalDns">
+              <Select v-model="finalDns">
                 <option value="">{{ $t('dns.firstServer') }}</option>
                 <option v-for="tag in dnsServerTags" :key="tag" :value="tag">{{ tag }}</option>
-              </select>
+              </Select>
             </Field>
             <Field :label="$t('dns.domainStrategy')" :mb="0">
-              <select class="input" v-model="dnsStrategy">
+              <Select v-model="dnsStrategy">
                 <option value="">{{ $t('ui.none') }}</option>
                 <option v-for="s in strategies" :key="s" :value="s">{{ s }}</option>
-              </select>
+              </Select>
             </Field>
             <Field :label="$t('dns.rule.action.clientSubnet')" :mb="0">
               <input class="input mono" v-model="clientSubnet" placeholder="0.0.0.0/0" />
@@ -151,6 +151,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, onBeforeMount, ref } from 'vue'
 import Data from '@/store/modules/data'
 import DnsServerDrawer from '@/layouts/drawers/dns/DnsServerDrawer.vue'

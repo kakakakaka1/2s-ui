@@ -1,11 +1,11 @@
 <template>
   <div class="grid2" style="margin-bottom: 15px;">
     <Field :label="$t('version')" :mb="0">
-      <select class="input" v-model.number="version">
+      <Select v-model.number="version">
         <option :value="1">1</option>
         <option :value="2">2</option>
         <option :value="3">3</option>
-      </select>
+      </Select>
     </Field>
     <Field v-if="data.version > 1" :label="$t('types.pw')" :mb="0">
       <input class="input mono" v-model="data.password" />
@@ -14,6 +14,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 

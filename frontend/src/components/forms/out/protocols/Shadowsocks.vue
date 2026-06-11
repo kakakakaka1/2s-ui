@@ -1,9 +1,9 @@
 <template>
   <div class="grid2" style="margin-bottom: 15px;">
     <Field :label="$t('in.ssMethod')" :mb="0">
-      <select class="input" v-model="data.method">
+      <Select v-model="data.method">
         <option v-for="m in ssMethods" :key="m" :value="m">{{ m }}</option>
-      </select>
+      </Select>
     </Field>
     <Network :data="data" />
     <UoT :data="data" />
@@ -14,6 +14,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import Field from '@/components/ui/Field.vue'
 import Network from '../Network.vue'
 import UoT from '../UoT.vue'

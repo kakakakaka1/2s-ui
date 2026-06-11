@@ -147,16 +147,16 @@
 
         <div class="field-grid" style="margin-top: 16px;">
           <Field :label="$t('ruleset.format')" :mb="0">
-            <select class="input" v-model="importFormat">
+            <Select v-model="importFormat">
               <option value="source">source</option>
               <option value="binary">binary</option>
-            </select>
+            </Select>
           </Field>
           <Field :label="$t('objects.outbound')" :mb="0">
-            <select class="input" v-model="importDetour">
+            <Select v-model="importDetour">
               <option value="">{{ $t('ui.none') }}</option>
               <option v-for="o in outTags" :key="o" :value="o">{{ o }}</option>
-            </select>
+            </Select>
           </Field>
           <Field :label="$t('ruleset.interval') + ' (' + $t('date.d') + ')'" :mb="0">
             <input class="input mono" type="number" min="0" v-model.number="importInterval" />
@@ -213,6 +213,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Modal from '@/components/ui/Modal.vue'

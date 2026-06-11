@@ -7,10 +7,10 @@
       <input class="input mono" v-model="transport.path" />
     </Field>
     <Field :label="$t('transport.httpMethod')">
-      <select class="input" v-model="method">
+      <Select v-model="method">
         <option value="">{{ $t('none') }}</option>
         <option v-for="m in methodList" :key="m" :value="m">{{ m }}</option>
-      </select>
+      </Select>
     </Field>
     <Field :label="$t('transport.idleTimeout') + ' (' + $t('date.s') + ')'">
       <input class="input mono" type="number" min="1" v-model.number="idleTimeout" />
@@ -23,6 +23,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import { HTTP } from '@/types/transport'
 import Field from '@/components/ui/Field.vue'

@@ -12,15 +12,16 @@
       />
     </Field>
     <Field :label="$t('objects.inbound')" :mb="0" style="flex: 1;">
-      <select class="input" :value="server.value" @change="updateValue(index, ($event.target as HTMLSelectElement).value)">
+      <Select :value="server.value" @change="updateValue(index, ($event.target as HTMLSelectElement).value)">
         <option v-for="tag in ssTags ?? []" :key="tag" :value="tag">{{ tag }}</option>
-      </select>
+      </Select>
     </Field>
     <IconBtn name="trash" danger :title="$t('actions.del')" style="margin-bottom: 7px;" @click="delServer(index)" />
   </div>
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import Btn from '@/components/ui/Btn.vue'

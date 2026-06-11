@@ -16,8 +16,8 @@
     </div>
     <template v-else>
       <Field :label="$t('ui.protocolType')">
-        <select
-          class="input mono"
+        <Select
+          class="mono"
           :style="{ color: protoColor(inbound.type), fontWeight: 700 }"
           v-model="inbound.type"
           @change="changeType"
@@ -28,7 +28,7 @@
           <optgroup :label="$t('ui.protoGroupLocal')">
             <option v-for="p in localTypes" :key="p" :value="p">{{ p }}</option>
           </optgroup>
-        </select>
+        </Select>
       </Field>
       <Field :label="$t('objects.tag')">
         <input class="input mono" required v-model="inbound.tag" />
@@ -98,6 +98,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'

@@ -55,10 +55,10 @@
         <input class="input mono" v-model="settings.webDomain" placeholder="panel.example.com" />
       </SRow>
       <SRow :label="$t('setting.deployNginx')" :hint="webNginxHint">
-        <select class="input" v-model="settings.webNginx">
+        <Select v-model="settings.webNginx">
           <option value="false">{{ $t('no') }}</option>
           <option value="true">{{ $t('yes') }}</option>
-        </select>
+        </Select>
       </SRow>
       <SRow :label="$t('setting.acmeEmail')" :hint="$t('setting.acmeHint')">
         <input class="input mono" v-model="settings.webAcmeEmail" placeholder="you@example.com" />
@@ -142,9 +142,9 @@
         <div class="sub-label">{{ $t('basic.log.title') }}</div>
         <div class="field-grid">
           <Field :label="$t('basic.log.level')" :mb="0">
-            <select class="input" v-model="subJsonExt.log.level">
+            <Select v-model="subJsonExt.log.level">
               <option v-for="l in levels" :key="l" :value="l">{{ l }}</option>
-            </select>
+            </Select>
           </Field>
           <div style="display: flex; align-items: flex-end; padding-bottom: 6px;">
             <SwitchLabel v-model="subJsonExt.log.timestamp" :label="$t('setting.timestamp')" />
@@ -156,23 +156,23 @@
         <div class="sub-label">{{ $t('ui.dnsOpt') }}</div>
         <div class="field-grid">
           <Field :label="$t('dns.final')" :mb="0">
-            <select class="input" v-model="subJsonExt.dns.final">
+            <Select v-model="subJsonExt.dns.final">
               <option v-for="tg in dnsTags" :key="tg" :value="tg">{{ tg }}</option>
-            </select>
+            </Select>
           </Field>
           <Field :label="$t('basic.routing.defaultDns')" :mb="0">
-            <select class="input" v-model="defaultResolver">
+            <Select v-model="defaultResolver">
               <option value="">{{ $t('ui.none') }}</option>
               <option v-for="tg in dnsTags" :key="tg" :value="tg">{{ tg }}</option>
-            </select>
+            </Select>
           </Field>
         </div>
         <div class="grid2" style="margin-top: 14px;">
           <Field :label="$t('setting.globalDns')" :mb="0">
             <div style="display: flex; gap: 8px;">
-              <select class="input" style="flex: 1; min-width: 0;" :value="proxyDns.type" @change="setDnsType(proxyDns, ($event.target as HTMLSelectElement).value)">
+              <Select style="flex: 1; min-width: 0;" :value="proxyDns.type" @change="setDnsType(proxyDns, ($event.target as HTMLSelectElement).value)">
                 <option v-for="dt in dnsTypes" :key="dt" :value="dt">{{ dt }}</option>
-              </select>
+              </Select>
               <template v-if="proxyDns.type !== 'local'">
                 <input class="input mono" style="flex: 1.5; min-width: 0;" v-model="proxyDns.server" :placeholder="$t('in.addr')" />
                 <input class="input mono" style="width: 76px; flex: none;" type="number" min="1" v-model.number="proxyDns.server_port" :placeholder="$t('in.port')" />
@@ -181,9 +181,9 @@
           </Field>
           <Field :label="$t('setting.directDns')" :mb="0">
             <div style="display: flex; gap: 8px;">
-              <select class="input" style="flex: 1; min-width: 0;" :value="directDns.type" @change="setDnsType(directDns, ($event.target as HTMLSelectElement).value)">
+              <Select style="flex: 1; min-width: 0;" :value="directDns.type" @change="setDnsType(directDns, ($event.target as HTMLSelectElement).value)">
                 <option v-for="dt in dnsTypes" :key="dt" :value="dt">{{ dt }}</option>
-              </select>
+              </Select>
               <template v-if="directDns.type !== 'local'">
                 <input class="input mono" style="flex: 1.5; min-width: 0;" v-model="directDns.server" :placeholder="$t('in.addr')" />
                 <input class="input mono" style="width: 76px; flex: none;" type="number" min="1" v-model.number="directDns.server_port" :placeholder="$t('in.port')" />
@@ -246,9 +246,9 @@
           <input class="input mono" v-model="externalController" />
         </Field>
         <Field v-if="optionLog" :label="$t('basic.log.title') + ' - ' + $t('basic.log.level')" :mb="0">
-          <select class="input" v-model="clashLogLevel">
+          <Select v-model="clashLogLevel">
             <option v-for="l in clashLevels" :key="l" :value="l">{{ l }}</option>
-          </select>
+          </Select>
         </Field>
       </div>
 
@@ -281,6 +281,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import yaml from 'yaml'
 import { push } from 'notivue'

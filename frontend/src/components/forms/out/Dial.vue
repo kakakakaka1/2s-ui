@@ -26,9 +26,9 @@
 
     <div class="grid2">
       <Field v-if="optionDetour" :label="$t('dial.detourText')">
-        <select class="input" v-model="dial.detour">
+        <Select v-model="dial.detour">
           <option v-for="tag in outTags" :key="tag" :value="tag">{{ tag }}</option>
-        </select>
+        </Select>
       </Field>
       <Field v-if="optionBind" :label="$t('dial.bindIf')">
         <input class="input mono" v-model="dial.bind_interface" />
@@ -46,9 +46,9 @@
         <input class="input mono" type="number" min="1" v-model.number="connectTimeout" />
       </Field>
       <Field v-if="optionDR" :label="$t('dial.domainResolver')">
-        <select class="input" v-model="dial.domain_resolver">
+        <Select v-model="dial.domain_resolver">
           <option v-for="tag in dnsTags" :key="tag" :value="tag">{{ tag }}</option>
-        </select>
+        </Select>
       </Field>
     </div>
 
@@ -80,6 +80,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Data from '@/store/modules/data'
 import Field from '@/components/ui/Field.vue'

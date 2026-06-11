@@ -14,10 +14,10 @@
       <div class="grid2">
         <Network :data="data" />
         <Field label="UDP Relay Mode">
-          <select class="input" v-model="udpRelayMode">
+          <Select v-model="udpRelayMode">
             <option value="">{{ $t('none') }}</option>
             <option v-for="m in ['native', 'quic']" :key="m" :value="m">{{ m }}</option>
-          </select>
+          </Select>
         </Field>
       </div>
       <div style="display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 15px;">
@@ -26,9 +26,9 @@
     </template>
     <div class="grid2">
       <Field :label="$t('types.tuic.congControl')">
-        <select class="input" v-model="data.congestion_control">
+        <Select v-model="data.congestion_control">
           <option v-for="c in congestion_controls" :key="c" :value="c">{{ c }}</option>
-        </select>
+        </Select>
       </Field>
       <Field v-if="direction == 'in'" :label="$t('types.tuic.authTimeout') + ' (' + $t('date.s') + ')'">
         <input class="input mono" type="number" min="1" v-model.number="auth_timeout" />
@@ -44,6 +44,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'

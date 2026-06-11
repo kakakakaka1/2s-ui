@@ -24,9 +24,9 @@
         <input class="input mono" type="number" min="1" max="65535" required v-model.number="data.listen_port" />
       </Field>
       <Field v-if="optionDetour" :label="$t('listen.detourText')">
-        <select class="input" v-model="data.detour">
+        <Select v-model="data.detour">
           <option v-for="tag in inTags" :key="tag" :value="tag">{{ tag }}</option>
-        </select>
+        </Select>
       </Field>
       <Field v-if="optionUDP" :label="'UDP NAT expiration (' + $t('date.m') + ')'">
         <input class="input mono" type="number" min="1" v-model.number="udpTimeout" />
@@ -56,6 +56,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import Btn from '@/components/ui/Btn.vue'

@@ -3,17 +3,17 @@
     <div style="padding: 18px 20px;">
       <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;">
         <Field :label="$t('basic.log.level')" :mb="0" style="width: 160px;">
-          <select class="input" v-model="logLevel" @change="loadData">
+          <Select v-model="logLevel" @change="loadData">
             <option value="debug">DEBUG</option>
             <option value="info">INFO</option>
             <option value="warning">WARNING</option>
             <option value="err">ERROR</option>
-          </select>
+          </Select>
         </Field>
         <Field :label="$t('count')" :mb="0" style="width: 120px;">
-          <select class="input" v-model.number="logCount" @change="loadData">
+          <Select v-model.number="logCount" @change="loadData">
             <option v-for="c in [10, 20, 30, 50, 100]" :key="c" :value="c">{{ c }}</option>
-          </select>
+          </Select>
         </Field>
         <div style="flex: 1;" />
         <Btn :loading="loading" @click="loadData"><Ico name="refresh" :size="15" /> {{ $t('actions.update') }}</Btn>
@@ -27,6 +27,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { ref, watch } from 'vue'
 import HttpUtils from '@/plugins/httputil'
 import Modal from '@/components/ui/Modal.vue'

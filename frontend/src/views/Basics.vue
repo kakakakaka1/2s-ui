@@ -14,10 +14,10 @@
         <div class="panel-body">
           <div class="field-grid">
             <Field :label="$t('basic.log.level')" :mb="0">
-              <select class="input" v-model="logLevel">
+              <Select v-model="logLevel">
                 <option value="">{{ $t('ui.none') }}</option>
                 <option v-for="l in levels" :key="l" :value="l">{{ l }}</option>
-              </select>
+              </Select>
             </Field>
             <Field :label="$t('basic.log.output')" :mb="0">
               <input class="input mono" v-model="appConfig.log.output" />
@@ -52,9 +52,9 @@
             <div class="sub-label">{{ $t('objects.dial') }}</div>
             <div class="field-grid">
               <Field v-if="optDetour" :label="$t('dial.detourText')" :mb="0">
-                <select class="input" v-model="appConfig.ntp.detour">
+                <Select v-model="appConfig.ntp.detour">
                   <option v-for="tag in outboundTags" :key="tag" :value="tag">{{ tag }}</option>
-                </select>
+                </Select>
               </Field>
               <Field v-if="optBind" :label="$t('dial.bindIf')" :mb="0">
                 <input class="input mono" v-model="appConfig.ntp.bind_interface" />
@@ -78,9 +78,9 @@
                 <input class="input mono" v-model="appConfig.ntp.tcp_keep_alive_interval" />
               </Field>
               <Field v-if="optDR" :label="$t('dial.domainResolver')" :mb="0">
-                <select class="input" v-model="appConfig.ntp.domain_resolver">
+                <Select v-model="appConfig.ntp.domain_resolver">
                   <option v-for="tag in dialDnsTags" :key="tag" :value="tag">{{ tag }}</option>
-                </select>
+                </Select>
               </Field>
             </div>
             <div v-if="optBindNoPort || optRA || optTCP || optUDP || optTcpKeepAlive" class="switch-row">
@@ -151,10 +151,10 @@
                 <input class="input mono" v-model="appConfig.experimental.clash_api.external_ui_download_url" />
               </Field>
               <Field :label="$t('basic.exp.extUiDownloadDetour')" :mb="0">
-                <select class="input" v-model="extUiDownloadDetour">
+                <Select v-model="extUiDownloadDetour">
                   <option value="">{{ $t('ui.none') }}</option>
                   <option v-for="tag in outboundTags" :key="tag" :value="tag">{{ tag }}</option>
-                </select>
+                </Select>
               </Field>
               <Field :label="$t('basic.exp.defaultMode')" :mb="0">
                 <input class="input mono" v-model="appConfig.experimental.clash_api.default_mode" />
@@ -191,6 +191,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, onBeforeMount, ref } from 'vue'
 import Data from '@/store/modules/data'
 import { Config, Ntp } from '@/types/config'

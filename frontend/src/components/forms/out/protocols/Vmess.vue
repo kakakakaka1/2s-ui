@@ -7,16 +7,16 @@
       <input class="input mono" type="number" min="0" v-model.number="data.alter_id" />
     </Field>
     <Field :label="$t('types.vmess.security')" :mb="0">
-      <select class="input" v-model="data.security">
+      <Select v-model="data.security">
         <option v-for="s in securities" :key="s" :value="s">{{ s }}</option>
-      </select>
+      </Select>
     </Field>
     <Field :label="$t('types.vless.udpEnc')" :mb="0">
-      <select class="input" v-model="packetEncoding">
+      <Select v-model="packetEncoding">
         <option value="none">none</option>
         <option value="packetaddr">packetaddr</option>
         <option value="xudp">xudp</option>
-      </select>
+      </Select>
     </Field>
     <Network :data="data" />
   </div>
@@ -27,6 +27,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import RandomUtil from '@/plugins/randomUtil'
 import Field from '@/components/ui/Field.vue'

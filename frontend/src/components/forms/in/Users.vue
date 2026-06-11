@@ -2,9 +2,9 @@
   <div>
     <SectionLabel style="margin-bottom: 12px;">{{ $t('pages.clients') }}</SectionLabel>
     <Field>
-      <select class="input" v-model="data.model" @change="data.values = []">
+      <Select v-model="data.model" @change="data.values = []">
         <option v-for="m in initUsersModels" :key="m.value" :value="m.value">{{ m.title }}</option>
-      </select>
+      </Select>
     </Field>
     <Field v-if="data.model == 'group'" :label="$t('client.group')">
       <MultiPick v-model="data.values" :options="groupNames" />
@@ -30,6 +30,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Field from '@/components/ui/Field.vue'

@@ -12,9 +12,9 @@
   >
     <div class="grid2">
       <Field :label="$t('type')">
-        <select class="input" v-model="serverType">
+        <Select v-model="serverType">
           <option v-for="dt in dnsTypes" :key="dt.value" :value="dt.value">{{ dt.title }}</option>
-        </select>
+        </Select>
       </Field>
       <Field :label="$t('objects.tag')">
         <input class="input mono" v-model="server.tag" />
@@ -82,14 +82,14 @@
     <!-- tailscale / resolved -->
     <template v-if="server.type === 'tailscale' || server.type === 'resolved'">
       <Field v-if="server.type === 'tailscale'" :label="$t('objects.endpoint')">
-        <select class="input" v-model="server.endpoint">
+        <Select v-model="server.endpoint">
           <option v-for="e in tsTags" :key="e" :value="e">{{ e }}</option>
-        </select>
+        </Select>
       </Field>
       <Field v-if="server.type === 'resolved'" :label="$t('objects.service')">
-        <select class="input" v-model="server.service">
+        <Select v-model="server.service">
           <option v-for="s in rslvdTags" :key="s" :value="s">{{ s }}</option>
-        </select>
+        </Select>
       </Field>
       <MSwitchRow :label="$t('dns.rule.acceptDefault')" :model-value="!!server.accept_default_resolvers" @update:model-value="server.accept_default_resolvers = $event" />
     </template>
@@ -123,9 +123,9 @@
 
       <div class="grid2">
         <Field v-if="optionDetour" :label="$t('dial.detourText')">
-          <select class="input" v-model="server.detour">
+          <Select v-model="server.detour">
             <option v-for="o in outTags" :key="o" :value="o">{{ o }}</option>
-          </select>
+          </Select>
         </Field>
         <Field v-if="optionBind" :label="$t('dial.bindIf')">
           <input class="input mono" v-model="server.bind_interface" />
@@ -143,9 +143,9 @@
           <input class="input mono" type="number" min="1" v-model.number="connectTimeout" />
         </Field>
         <Field v-if="optionDR" :label="$t('dial.domainResolver')">
-          <select class="input" v-model="server.domain_resolver">
+          <Select v-model="server.domain_resolver">
             <option v-for="d in dnsTags" :key="d" :value="d">{{ d }}</option>
-          </select>
+          </Select>
         </Field>
       </div>
       <div v-if="optionBindNoPort || optionRA || optionTCP || optionUDP" style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px;">
@@ -219,19 +219,19 @@
             <input class="input mono" v-model="tls.server_name" />
           </Field>
           <Field v-if="tls.min_version" :label="$t('tls.minVer')">
-            <select class="input" v-model="tls.min_version">
+            <Select v-model="tls.min_version">
               <option v-for="v in tlsVersions" :key="v" :value="v">{{ v }}</option>
-            </select>
+            </Select>
           </Field>
           <Field v-if="tls.max_version" :label="$t('tls.maxVer')">
-            <select class="input" v-model="tls.max_version">
+            <Select v-model="tls.max_version">
               <option v-for="v in tlsVersions" :key="v" :value="v">{{ v }}</option>
-            </select>
+            </Select>
           </Field>
           <Field v-if="tls.utls !== undefined" label="Fingerprint">
-            <select class="input" v-model="tls.utls.fingerprint">
+            <Select v-model="tls.utls.fingerprint">
               <option v-for="f in fingerprints" :key="f.value" :value="f.value">{{ f.title }}</option>
-            </select>
+            </Select>
           </Field>
         </div>
 
@@ -316,6 +316,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed, ref, watch } from 'vue'
 import MDrawer from '@/components/ui/MDrawer.vue'
 import Field from '@/components/ui/Field.vue'

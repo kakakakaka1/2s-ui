@@ -8,10 +8,10 @@
         <input class="input mono" v-model="email" placeholder="you@example.com" />
       </Field>
       <Field :label="$t('tls.acme.caProvider')">
-        <select class="input" v-model="caProvider">
+        <Select v-model="caProvider">
           <option value="">{{ $t('none') }}</option>
           <option v-for="p in providerList" :key="p.value" :value="p.value">{{ p.title }}</option>
-        </select>
+        </Select>
       </Field>
     </div>
     <Field v-if="caProvider == 'custom'" :label="$t('tls.acme.customCa')">
@@ -23,9 +23,9 @@
         <input class="input mono" v-model="acme.data_directory" />
       </Field>
       <Field v-if="optionDefault" :label="$t('tls.acme.defaultDomain')">
-        <select class="input" v-model="acme.default_server_name">
+        <Select v-model="acme.default_server_name">
           <option v-for="d in acme.domain" :key="d" :value="d">{{ d }}</option>
-        </select>
+        </Select>
       </Field>
     </div>
 
@@ -54,10 +54,10 @@
 
     <template v-if="acme.dns01_challenge != undefined">
       <Field :label="$t('tls.acme.dns01Provider')">
-        <select class="input" :value="acme.dns01_challenge.provider"
+        <Select :value="acme.dns01_challenge.provider"
           @change="acme.dns01_challenge = { provider: ($event.target as HTMLSelectElement).value }">
           <option v-for="d in dnsProviders" :key="d.provider" :value="d.provider">{{ d.provider }}</option>
-        </select>
+        </Select>
       </Field>
       <div class="grid2">
         <Field
@@ -90,6 +90,7 @@
 </template>
 
 <script lang="ts" setup>
+import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import { acme as acmeType } from '@/types/tls'
 import Field from '@/components/ui/Field.vue'
