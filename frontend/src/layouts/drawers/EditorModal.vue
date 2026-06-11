@@ -10,7 +10,7 @@
       />
     </div>
     <template #footer>
-      <Btn sm @click="$emit('close')">{{ $t('actions.cancel') }}</Btn>
+      <Btn sm @click="$emit('close')">{{ $t('ui.cancel') }}</Btn>
       <Btn variant="primary" sm @click="$emit('save', draft); $emit('close')">{{ $t('actions.save') }}</Btn>
     </template>
   </Modal>

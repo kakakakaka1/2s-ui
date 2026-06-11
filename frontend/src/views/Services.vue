@@ -1,131 +1,114 @@
 <template>
-  <ServiceVue 
-    v-model="modal.visible"
-    :visible="modal.visible"
-    :id="modal.id"
-    :data="modal.data"
-    :inTags="inTags"
-    :tsTags="tsTags"
-    :ssTags="ssTags"
-    :tlsConfigs="tlsConfigs"
-    @close="closeModal"
+  <ServiceDrawer
+    :visible="drawer.visible"
+    :id="drawer.id"
+    :data="drawer.data"
+    :in-tags="inTags"
+    :ts-tags="tsTags"
+    :ss-tags="ssTags"
+    :tls-configs="tlsConfigs"
+    @close="drawer.visible = false"
   />
-  <v-row>
-    <v-col cols="12" justify="center" align="center">
-      <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
-    </v-col>
-  </v-row>
-  <v-row>
-    <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>services" :key="item.tag">
-      <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
-        <v-card-subtitle style="margin-top: -15px;">
-          <v-row>
-            <v-col>{{ item.type }}</v-col>
-          </v-row>
-        </v-card-subtitle>
-        <v-card-text>
-          <v-row>
-            <v-col>{{ $t('in.addr') }}</v-col>
-            <v-col>
-              {{ item.listen }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('in.port') }}</v-col>
-            <v-col>
-              {{ item.listen_port }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('objects.tls') }}</v-col>
-            <v-col>
-              {{ item.tls_id > 0 ? $t('enable') : $t('disable') }}
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-divider></v-divider>
-        <v-card-actions style="padding: 0;">
-          <v-btn icon="mdi-file-edit" @click="showModal(item.id)">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.edit')"></v-tooltip>
-          </v-btn>
-          <v-btn icon="mdi-file-remove" style="margin-inline-start:0;" color="warning" @click="delOverlay[index] = true">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.del')"></v-tooltip>
-          </v-btn>
-          <v-overlay
-            v-model="delOverlay[index]"
-            contained
-            class="align-center justify-center"
-          >
-            <v-card :title="$t('actions.del')" rounded="lg">
-              <v-divider></v-divider>
-              <v-card-text>{{ $t('confirm') }}</v-card-text>
-              <v-card-actions>
-                <v-btn color="error" variant="outlined" @click="delSrv(item.id)">{{ $t('yes') }}</v-btn>
-                <v-btn color="success" variant="outlined" @click="delOverlay[index] = false">{{ $t('no') }}</v-btn>
-              </v-card-actions>
-            </v-card>
-          </v-overlay>
-        </v-card-actions>
-      </v-card>      
-    </v-col>
-  </v-row>
+
+  <!-- delete confirmation -->
+  <Modal :open="del.visible" :title="$t('actions.del')" :width="380" @close="del.visible = false">
+    <div style="padding: 18px; font-size: 13.5px;">{{ $t('confirm') }}</div>
+    <template #footer>
+      <Btn @click="del.visible = false">{{ $t('no') }}</Btn>
+      <Btn style="color: var(--rose);" :loading="deleting" @click="confirmDelete">
+        <Ico name="trash" :size="15" /> {{ $t('yes') }}
+      </Btn>
+    </template>
+  </Modal>
+
+  <div class="page-stack fade-up">
+    <div class="toolbar" style="justify-content: center;">
+      <Btn variant="primary" sm @click="openDrawer(0)">
+        <Ico name="plus" :size="15" /> {{ $t('actions.add') }}
+      </Btn>
+    </div>
+
+    <div class="entity-grid">
+      <EntityCard
+        v-for="item in services"
+        :key="item.tag"
+        :title="item.tag"
+        :type="item.type"
+        color="var(--brand)"
+        icon="services"
+        :rows="cardRows(item)"
+      >
+        <template #actions>
+          <CardBtn icon="edit" :title="$t('actions.edit')" @click="openDrawer(item.id)" />
+          <CardBtn icon="trash" border danger :title="$t('actions.del')" @click="askDelete(item.id)" />
+        </template>
+      </EntityCard>
+    </div>
+  </div>
 </template>
 
 <script lang="ts" setup>
+import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'
 import { Srv } from '@/types/services'
-import { computed, ref } from 'vue'
-import ServiceVue from '@/layouts/modals/Service.vue'
+import Btn from '@/components/ui/Btn.vue'
+import Ico from '@/components/ui/Ico.vue'
+import Modal from '@/components/ui/Modal.vue'
+import CardBtn from '@/components/ui/CardBtn.vue'
+import EntityCard, { EntityRow } from '@/components/ui/EntityCard.vue'
+import ServiceDrawer from '@/layouts/drawers/service/ServiceDrawer.vue'
 
-const services = computed((): Srv[] => {
-  return <Srv[]> Data().services
-})
+const { t } = useI18n({ useScope: 'global' })
+const dataStore = Data()
 
-const srvTags = computed((): any[] => {
-  return services.value?.map((o:Srv) => o.tag)
-})
+// ---------------- store data ----------------
+const services = computed((): Srv[] => <Srv[]>dataStore.services)
 
-const tsTags = computed((): any[] => {
-  return Data().endpoints?.filter((o:any) => o.type == "tailscale")?.map((o:any) => o.tag)
-})
+const tsTags = computed((): string[] =>
+  dataStore.endpoints?.filter((o: any) => o.type == 'tailscale')?.map((o: any) => o.tag))
 
-const ssTags = computed((): any[] => {
-  return Data().inbounds?.filter((o:any) => o.type == "shadowsocks" && !o.users)?.map((o:any) => o.tag)
-})
+const ssTags = computed((): string[] =>
+  dataStore.inbounds?.filter((o: any) => o.type == 'shadowsocks' && !o.users)?.map((o: any) => o.tag))
 
-const inTags = computed((): any[] => {
-  return [...Data().inbounds?.map((o:any) => o.tag).filter(t => t != null), ...Data().endpoints?.filter((e:any) => e.listen_port > 0).map((e:any) => e.tag)]
-})
+const inTags = computed((): string[] => [
+  ...dataStore.inbounds?.map((o: any) => o.tag).filter((tag: any) => tag != null),
+  ...dataStore.endpoints?.filter((e: any) => e.listen_port > 0).map((e: any) => e.tag),
+])
 
-const tlsConfigs = computed((): any[] => {
-  return <any[]> Data().tlsConfigs
-})
+const tlsConfigs = computed((): any[] => <any[]>dataStore.tlsConfigs)
 
-const modal = ref({
-  visible: false,
-  id: 0,
-  data: "",
-})
+// ---------------- card rows ----------------
+const cardRows = (item: any): EntityRow[] => [
+  { k: t('in.addr'), v: item.listen, mono: true },
+  { k: t('in.port'), v: item.listen_port, mono: true },
+  {
+    k: t('objects.tls'),
+    v: t(item.tls_id > 0 ? 'enable' : 'disable'),
+    color: item.tls_id > 0 ? 'var(--emerald)' : undefined,
+  },
+]
 
-let delOverlay = ref(new Array<boolean>)
-
-const showModal = (id: number) => {
-  modal.value.id = id
-  modal.value.data = id == 0 ? '' : JSON.stringify(services.value.findLast(o => o.id == id))
-  modal.value.visible = true
+// ---------------- drawer ----------------
+const drawer = ref({ visible: false, id: 0, data: '' })
+const openDrawer = (id: number) => {
+  drawer.value.id = id
+  drawer.value.data = id == 0 ? '' : JSON.stringify(services.value.findLast((o) => o.id == id))
+  drawer.value.visible = true
 }
 
-const closeModal = () => {
-  modal.value.visible = false
+// ---------------- delete (with confirm) ----------------
+const del = ref({ visible: false, id: 0 })
+const deleting = ref(false)
+const askDelete = (id: number) => {
+  del.value = { visible: true, id }
 }
-
-const delSrv = async (id: number) => {
-  const index = services.value.findIndex(i => i.id == id)
-  const tag = services.value[index].tag
-
-  const success = await Data().save("services", "del", tag)
-  if (success) delOverlay.value[index] = false
+const confirmDelete = async () => {
+  const item = services.value.find((i) => i.id == del.value.id)
+  if (!item) return
+  deleting.value = true
+  const success = await Data().save('services', 'del', item.tag)
+  if (success) del.value.visible = false
+  deleting.value = false
 }
 </script>

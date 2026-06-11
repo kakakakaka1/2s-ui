@@ -1,176 +1,148 @@
 <template>
-  <EndpointVue 
-    v-model="modal.visible"
-    :visible="modal.visible"
-    :id="modal.id"
-    :data="modal.data"
+  <EndpointDrawer
+    :visible="drawer.visible"
+    :id="drawer.id"
+    :data="drawer.data"
     :tags="endpointTags"
-    @close="closeModal"
+    @close="drawer.visible = false"
   />
-  <Stats
-    v-model="stats.visible"
+  <StatsModal
     :visible="stats.visible"
     :resource="stats.resource"
     :tag="stats.tag"
-    @close="closeStats"
+    @close="stats.visible = false"
   />
-  <QrCode
-    v-model="qrcode.visible"
-    :visible="qrcode.visible"
-    :data="qrcode.data"
-    @close="closeQrCode"
-  />
-  <v-row>
-    <v-col cols="12" justify="center" align="center">
-      <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
-    </v-col>
-  </v-row>
-  <v-row>
-    <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>endpoints" :key="item.tag">
-      <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
-        <v-card-subtitle style="margin-top: -15px;">
-          <v-row>
-            <v-col>{{ item.type }}</v-col>
-          </v-row>
-        </v-card-subtitle>
-        <v-card-text>
-          <v-row>
-            <v-col>{{ $t('in.addr') }}</v-col>
-            <v-col>
-              {{ item.address?.length>0 ? item.address[0] : '-' }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('in.port') }}</v-col>
-            <v-col>
-              {{ item.listen_port>0 ? item.listen_port : '-' }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('types.wg.peers') }}</v-col>
-            <v-col>
-              {{ item.peers?.length?? '-'  }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('online') }}</v-col>
-            <v-col>
-              <template v-if="onlines.includes(item.tag)">
-                <v-chip density="comfortable" size="small" color="success" variant="flat">{{ $t('online') }}</v-chip>
-              </template>
-              <template v-else>-</template>
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-divider></v-divider>
-        <v-card-actions style="padding: 0;">
-          <v-btn icon="mdi-file-edit" @click="showModal(item.id)">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.edit')"></v-tooltip>
-          </v-btn>
-          <v-btn icon="mdi-file-remove" style="margin-inline-start:0;" color="warning" @click="delOverlay[index] = true">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.del')"></v-tooltip>
-          </v-btn>
-          <v-overlay
-            v-model="delOverlay[index]"
-            contained
-            class="align-center justify-center"
-          >
-            <v-card :title="$t('actions.del')" rounded="lg">
-              <v-divider></v-divider>
-              <v-card-text>{{ $t('confirm') }}</v-card-text>
-              <v-card-actions>
-                <v-btn color="error" variant="outlined" @click="delEndpoint(item.tag)">{{ $t('yes') }}</v-btn>
-                <v-btn color="success" variant="outlined" @click="delOverlay[index] = false">{{ $t('no') }}</v-btn>
-              </v-card-actions>
-            </v-card>
-          </v-overlay>
-          <v-icon
-          class="me-2"
-          v-if="item.type == 'wireguard' && item.peers?.length>0"
-          @click="showQrCode(item.id)"
-        >
-          mdi-qrcode
-        </v-icon>
-          <v-btn icon="mdi-chart-line" @click="showStats(item.tag)" v-if="Data().enableTraffic">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('stats.graphTitle')"></v-tooltip>
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-col>
-  </v-row>
+  <WgQrModal :visible="qrcode.visible" :data="qrcode.data" @close="qrcode.visible = false" />
+
+  <!-- delete confirmation -->
+  <Modal :open="del.visible" :title="$t('actions.del')" :width="380" @close="del.visible = false">
+    <div style="padding: 18px; font-size: 13.5px;">{{ $t('confirm') }}</div>
+    <template #footer>
+      <Btn @click="del.visible = false">{{ $t('no') }}</Btn>
+      <Btn style="color: var(--rose);" :loading="deleting" @click="confirmDelete">
+        <Ico name="trash" :size="15" /> {{ $t('yes') }}
+      </Btn>
+    </template>
+  </Modal>
+
+  <div class="page-stack fade-up">
+    <div class="toolbar" style="justify-content: center;">
+      <Btn variant="primary" sm @click="openDrawer(0)">
+        <Ico name="plus" :size="15" /> {{ $t('actions.add') }}
+      </Btn>
+    </div>
+
+    <div class="entity-grid">
+      <EntityCard
+        v-for="item in endpoints"
+        :key="item.tag"
+        :title="item.tag"
+        :type="item.type"
+        :color="item.type === 'tailscale' ? 'var(--violet)' : 'var(--cyan)'"
+        icon="endpoint"
+        :rows="cardRows(item)"
+      >
+        <template #chip>
+          <Chip v-if="onlines.includes(item.tag)" color="emerald" dot>{{ $t('online') }}</Chip>
+          <Chip v-else>{{ $t('ui.none') }}</Chip>
+        </template>
+        <template #actions>
+          <CardBtn icon="edit" :title="$t('actions.edit')" @click="openDrawer(item.id)" />
+          <CardBtn icon="trash" border danger :title="$t('actions.del')" @click="askDelete(item.tag)" />
+          <CardBtn
+            v-if="item.type == 'wireguard' && item.peers?.length > 0"
+            icon="qr"
+            border
+            title="QR"
+            @click="showQrCode(item.id)"
+          />
+          <CardBtn
+            v-if="dataStore.enableTraffic"
+            icon="chart"
+            border
+            :title="$t('stats.graphTitle')"
+            @click="showStats(item.tag)"
+          />
+        </template>
+      </EntityCard>
+    </div>
+  </div>
 </template>
 
 <script lang="ts" setup>
-import Data from '@/store/modules/data'
-import EndpointVue from '@/layouts/modals/Endpoint.vue'
-import Stats from '@/layouts/modals/Stats.vue'
-import QrCode from '@/layouts/modals/WgQrCode.vue'
-import { Endpoint } from '@/types/endpoints'
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import Data from '@/store/modules/data'
+import { Endpoint } from '@/types/endpoints'
+import Btn from '@/components/ui/Btn.vue'
+import Ico from '@/components/ui/Ico.vue'
+import Chip from '@/components/ui/Chip.vue'
+import Modal from '@/components/ui/Modal.vue'
+import CardBtn from '@/components/ui/CardBtn.vue'
+import EntityCard, { EntityRow } from '@/components/ui/EntityCard.vue'
+import EndpointDrawer from '@/layouts/drawers/endpoint/EndpointDrawer.vue'
+import WgQrModal from '@/layouts/drawers/endpoint/WgQrModal.vue'
+import StatsModal from '@/layouts/drawers/StatsModal.vue'
 
-const endpoints = computed((): Endpoint[] => {
-  return <Endpoint[]> Data().endpoints
-})
+const { t } = useI18n({ useScope: 'global' })
+const dataStore = Data()
 
-const endpointTags = computed((): any[] => {
-  return endpoints.value?.map((o:Endpoint) => o.tag)
-})
+// ---------------- store data ----------------
+const endpoints = computed((): Endpoint[] => <Endpoint[]>dataStore.endpoints)
 
-const onlines = computed(() => {
-  return [...Data().onlines.inbound?? [], ...Data().onlines.outbound??[] ]
-})
+const endpointTags = computed((): string[] => endpoints.value?.map((o: Endpoint) => o.tag))
 
-const modal = ref({
-  visible: false,
-  id: 0,
-  data: "",
-})
+const onlines = computed(() => [
+  ...dataStore.onlines.inbound ?? [],
+  ...dataStore.onlines.outbound ?? [],
+])
 
-let delOverlay = ref(new Array<boolean>)
+// ---------------- card rows ----------------
+const cardRows = (item: any): EntityRow[] => [
+  {
+    k: t('in.addr'),
+    v: item.address?.length > 0 ? item.address[0] : t('ui.none'),
+    mono: item.address?.length > 0,
+  },
+  {
+    k: t('in.port'),
+    v: item.listen_port > 0 ? item.listen_port : t('ui.none'),
+    mono: item.listen_port > 0,
+  },
+  { k: t('types.wg.peers'), v: item.peers?.length ?? t('ui.none') },
+]
 
-const showModal = (id: number) => {
-  modal.value.id = id
-  modal.value.data = id == 0 ? '' : JSON.stringify(endpoints.value.findLast(o => o.id == id))
-  modal.value.visible = true
+// ---------------- drawers / modals ----------------
+const drawer = ref({ visible: false, id: 0, data: '' })
+const openDrawer = (id: number) => {
+  drawer.value.id = id
+  drawer.value.data = id == 0 ? '' : JSON.stringify(endpoints.value.findLast((o) => o.id == id))
+  drawer.value.visible = true
 }
 
-const closeModal = () => {
-  modal.value.visible = false
-}
-
-const stats = ref({
-  visible: false,
-  resource: "endpoint",
-  tag: "",
-})
-
-const delEndpoint = async (tag: string) => {
-  const index = endpoints.value.findIndex(i => i.tag == tag)
-  const success = await Data().save("endpoints", "del", tag)
-  if (success) delOverlay.value[index] = false
-}
-
+const stats = ref({ visible: false, resource: 'endpoint', tag: '' })
 const showStats = (tag: string) => {
   stats.value.tag = tag
   stats.value.visible = true
 }
-const closeStats = () => {
-  stats.value.visible = false
-}
 
-const qrcode = ref({
-  visible: false,
-  data: <any>{},
-})
-
+const qrcode = ref({ visible: false, data: <any>{} })
 const showQrCode = (id: number) => {
-  qrcode.value.data = endpoints.value.findLast(o => o.id == id)
+  qrcode.value.data = endpoints.value.findLast((o) => o.id == id)
   qrcode.value.visible = true
 }
-const closeQrCode = () => {
-  qrcode.value.visible = false
+
+// ---------------- delete (with confirm) ----------------
+const del = ref({ visible: false, tag: '' })
+const deleting = ref(false)
+const askDelete = (tag: string) => {
+  del.value = { visible: true, tag }
+}
+const confirmDelete = async () => {
+  if (del.value.tag.length === 0) return
+  deleting.value = true
+  const success = await Data().save('endpoints', 'del', del.value.tag)
+  if (success) del.value.visible = false
+  deleting.value = false
 }
 </script>

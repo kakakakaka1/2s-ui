@@ -20,7 +20,7 @@
     <div :key="seq"><slot /></div>
 
     <template #footer>
-      <Btn style="flex: 1;" @click="$emit('close')">{{ $t('actions.cancel') }}</Btn>
+      <Btn style="flex: 1;" @click="$emit('close')">{{ $t('ui.cancel') }}</Btn>
       <Btn variant="primary" style="flex: 1;" :loading="loading" @click="$emit('save')">
         <Ico name="check" :size="16" /> {{ saveLabel ?? $t('actions.save') }}
       </Btn>
