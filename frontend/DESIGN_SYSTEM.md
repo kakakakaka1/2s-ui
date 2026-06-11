@@ -1,114 +1,255 @@
-# 2S-UI Redesign — 设计系统使用手册
+# 2S-UI 设计系统 — 组件手册
 
-> redesign 分支:弃用 Vuetify,使用自有设计系统。本文档是所有页面重写的统一参照。
-> 视觉真相:`../design_handoff_2s_ui_console/` 下的 JSX 文件(像素级对照);业务真相:旧 Vuetify 页面里的字段与 API 调用逻辑。
+这套面板 UI 用**自有设计系统**实现(不依赖 Vuetify/Element Plus 等组件库),所有组件手写、零样式覆盖层,以便像素级贴合设计稿。本文是维护这套 UI 的权威参照:改样式、加页面、加组件都先看这里。
 
-## 全局规则
+> 为什么不用第三方组件库:设计稿是高保真定制稿,任何成熟库的默认外观都对不上,需要大量覆盖样式才能贴近——那层覆盖反而更难维护。手写组件换来的是 100% 还原 + 零覆盖层 + 完全可控。代价(没有公开文档/社区)由本文 + 统一的 API 规范来补。
 
-- **禁止使用任何 `v-*` Vuetify 组件**。新页面只用本设计系统 + 原生元素。
-- 颜色/间距/字号一律用 `src/styles/tokens.css` 的 CSS 变量(`var(--brand)`、`var(--surface-3)`、`var(--text-2)`、`var(--line)` …),**不得硬编码色值**(设计稿 JSX 中出现的 `#ff7eb6` 等特例除外,已收录在 `plugins/colors.ts`)。
-- 等宽数字/代码一律加 `class="mono"`。
-- 文案一律走 i18n:`$t('key')` / `useI18n().t`。优先复用现有 key(`actions.*`、`objects.*`、`client.*`、`in.*`、`out.*` 等,见 `src/locales/en.ts`);新视觉文案用 `ui.*` 前缀新 key(已在 locales 中补充)。
-- 页面根元素:`<div class="page-stack fade-up">`(间距 16)或 `page-stack-lg`(18)。
-- 业务数据/保存:沿用 Pinia `Data` store(`@/store/modules/data`):`loadData()`、`save(object, action, data, initUsers?)`;HTTP 用 `@/plugins/httputil`。**不要改 store 与 API 层。**
+---
 
-## 布局类(src/styles/app.css)
+## 1. 目录结构
+
+```
+src/
+├─ styles/
+│  ├─ tokens.css        # 设计 token(颜色/圆角/字体/缓动)+ 明暗主题 —— 改主题来这里
+│  └─ app.css           # 布局类、表格、抽屉/弹窗、表单网格等
+├─ components/
+│  ├─ ui/               # 全部基础组件(本文第 4-9 节)
+│  │  └─ icons.ts       # 描边图标注册表(name → SVG path)
+│  └─ charts/           # 纯 SVG 图表(第 10 节)
+├─ layouts/
+│  ├─ default/          # 应用外壳:Sidebar / Topbar / LangMenu / Default
+│  └─ drawers/          # 业务弹层(Stats/Qr/Logs/Backup/Editor… 第 11 节)
+│     └─ <entity>/      # 各实体编辑抽屉(client/inbound/outbound/…)
+├─ views/               # 13 个路由页
+├─ plugins/             # colors / utils / httputil / clipboard / randomUtil
+└─ locales/             # 6 语言;ui.* 为本次重设计新增文案
+```
+
+约定:**组件按需显式 import,无全局注册** —— `import Btn from '@/components/ui/Btn.vue'`。
+
+---
+
+## 2. 全局规则(写任何页面都遵守)
+
+- **颜色/间距/字号一律用 token**(`var(--brand)`、`var(--surface-3)`、`var(--text-2)`、`var(--line)`…),不硬编码色值。协议/动作等语义色走 `@/plugins/colors`。
+- **等宽数字/代码加 `class="mono"`**(启用 tabular-nums + JetBrains Mono)。
+- **文案走 i18n**:`$t('key')`。优先复用既有 key(`actions.*`、`objects.*`、`client.*`、`in.*`、`out.*`…),重设计新增文案在 `ui.*` 下(6 语言已补齐,见 `scripts/gen-ui-locales.mjs`)。
+- **数据/保存走 Pinia `Data` store**(`@/store/modules/data`):`loadData()`、`save(object, action, data, initUsers?)`;HTTP 用 `@/plugins/httputil`。
+- 页面根元素:`<div class="page-stack fade-up">`(竖向堆叠 gap 16,带入场动画);更宽间距用 `page-stack-lg`(18)。
+
+---
+
+## 3. 设计 token 速查（`tokens.css`，明暗两套）
+
+| 类别 | 变量 |
+|---|---|
+| 品牌 | `--brand #635bff` · `--brand-600`(hover)· `--brand-700`(active)· `--brand-soft`(12% 底) |
+| 语义色 | `--cyan` `--emerald` `--amber` `--rose` `--violet` |
+| 表面 | `--bg` · `--surface` · `--surface-2` · `--surface-3` · `--elevated` |
+| 文字 | `--text` · `--text-2` · `--text-3` |
+| 线条 | `--line`(.07)· `--line-2`(.12) |
+| 圆角 | `--radius-xs 7` · `-sm 10` · `-md 14` · `-lg 18` · `-xl 24` |
+| 字体 | `--font-ui`(Manrope)· `--font-mono`(JetBrains Mono) |
+| 缓动 | `--ease cubic-bezier(.22,.61,.36,1)` |
+| 阴影 | `--shadow-card` · `--shadow-pop`(浮层) |
+
+**换主题色 = 改 `tokens.css` 里的 `--brand` 三档**,全站自动生效。明暗由 `<html data-theme="dark|light">` 切换(`store/modules/app.ts` 的 `toggleTheme`)。
+
+---
+
+## 4. 布局类（`app.css`）
 
 | class | 用途 |
 |---|---|
-| `.page-stack` / `.page-stack-lg` | 页面内容竖向堆叠(gap 16/18) |
-| `.toolbar` | 页头操作条(flex、gap 10、wrap),`.grow` 占位 |
-| `.entity-grid` | 卡片网格 `auto-fill minmax(248px,1fr)` gap 14 |
-| `.grid2` | 表单两列 `1fr 1fr` gap 12 |
-| `.field-grid` | 表单网格 `auto-fill minmax(180px,1fr)` gap 14 |
-| `.form-divider` | 表单分隔线(`<hr class="form-divider">`) |
-| `.dtable` | 数据表(thead 大写小标题、行 hover、`tr.clickable`) |
-| `.kv-row` | 卡片内 key/value 行(`.k`/`.v`,`.v.mono`) |
-| `.tabs` / `.tabs.page-tabs` | 下划线 tab(组件 `Tabs.vue` 已封装) |
-| `.chip` + `.chip-emerald/rose/amber/brand/cyan` | 徽章(组件 `Chip.vue` 已封装) |
-| `.input` | 文本框/选择框/textarea 通用(`<input class="input">`、`<select class="input">`、`<textarea class="input mono">`) |
+| `.page-stack` / `.page-stack-lg` | 页面竖向堆叠(gap 16 / 18) |
+| `.toolbar` | 页头操作条(flex/wrap/gap 10);内放 `.grow` 占位撑开 |
+| `.entity-grid` | 实体卡网格 `auto-fill minmax(248px,1fr)` gap 14 |
+| `.grid2` | 表单两列 |
+| `.field-grid` | 表单自适应网格 `minmax(180px,1fr)` |
+| `.form-divider` | 表单分隔线 `<hr class="form-divider">` |
+| `.dtable` | 数据表(大写表头、行 hover、`tr.clickable`) |
+| `.kv-row` | 卡内 key/value 行（`.k` / `.v` / `.v.mono`） |
+| `.input` | 文本框/textarea 通用样式(`<input class="input">`、`<textarea class="input mono">`) |
 | `.card` | 卡片容器 |
+| `.mono` | 等宽数字 |
 
-## UI 组件(src/components/ui/)
+> 下拉**不要用原生 `<select>`**(OS 渲染的弹层在暗色下很丑)——用 `<Select>`(第 5 节)。
 
-所有组件按需显式 import(无全局注册):`import Btn from '@/components/ui/Btn.vue'`
+---
 
-| 组件 | Props / 说明 |
-|---|---|
-| `Ico` | `name`(见 icons.ts 注册表)、`size=18`、`stroke=1.75` |
-| `Btn` | `variant='primary'\|'ghost'(默认)\|'subtle'`、`sm`、`icon`(方形)、`loading`、`disabled`;slot 内容 `<Ico…/> 文本` |
-| `Chip` | `color` = 预设名(emerald/rose/amber/brand/cyan)或任意 CSS 颜色(自动 tint);`dot` 加圆点 |
-| `Toggle` | `v-model`(boolean)、`scale` |
-| `Check` | `:checked` + `@toggle`(非 v-model,便于行内 stopPropagation) |
-| `Segmented` | `v-model` + `options: [value,label][]`;`block` = drawer 内满宽样式 |
-| `Tabs` | `v-model` + `tabs: [key,label][]`;`page` = 页级 tab(Settings) |
-| `Field` | `label`、`hint`、`mb=15`;slot 放 `<input class="input">` 等 |
-| `IconBtn` | 表格行内图标按钮:`name`、`danger`、`title` |
-| `CardBtn` | 卡片底部动作按钮:`icon`、`label`(空=46px 方块)、`border`(左分隔线)、`danger` |
-| `Avatar` | `name`、`size=30`(hash 渐变头像) |
-| `Pop` | 弹出菜单容器。slot `#trigger="{ toggle, open }"` 放触发按钮,默认 slot `="{ close }"` 放 `.pop-item` 按钮列表;`width`、`align='end'`、`direction='down'` |
-| `Drawer` | 右滑抽屉(RTL 自适应):`open`、`width=460`、`@close`;slots: `#title`、默认、`#footer` |
-| `MDrawer` | 实体编辑抽屉(带图标头 + Cancel/Save 脚):`open`、`icon`、`color`、`title`、`sub`、`saveLabel`、`width=500`、`loading`、`@close`、`@save`;内容每次打开自动 remount |
-| `Modal` | 居中模态:`open`、`title`、`width=720`、`@close`;slot 默认 + `#footer` |
-| `DPanel` | 面板卡(头部 title/sub + #right 槽):`title`、`sub`、`pad=20`(0 = 内容无 padding,信息行列表用) |
-| `EntityCard` | 实体卡:`title`、`type`、`color`、`icon`、`rows: {k,v,mono?,color?}[]`;slots `#chip`、`#actions`(放 CardBtn) |
-| `RuleCard` | 规则卡:`n`、`logical`、`mode`、`action`、`targetKey`、`target`、`rules`、`invert`、`@edit`、`@del` |
-| `SectionLabel` | 区块小标题(大写字距) |
-| `MSwitchRow` | 圆角开关行(surface-3 背景):`v-model`、`label`、`desc` |
-| `SwitchLabel` / `CheckLabel` | 行内 开关/复选 + 文字:`v-model`、`label` |
-| `MultiPick` | chip 多选(selector/urltest 成员):`v-model: string[]`、`options: string[]` |
-| `ChipSelect` | 下拉多选(chip 显示):`v-model: string[]`、`options:{title,value}[]`、`label` |
-| `KeyInput` | 密钥输入 + 重新生成按钮:`v-model`、`placeholder`、`secret`、`@regenerate` |
-| `MHint` | 虚线提示框(slot 文案) |
-| `SettingsGroup` | Settings 卡片容器:`title?`、`desc?` |
-| `SRow` | Settings 行(左 label 200px + 右控件 max 280px,移动端纵排):`label`、`hint` |
-| `ToggleRow` | Settings 开关行:`v-model`、`label`、`desc` |
-| `EmptyState` | 空状态:`icon`、`title`、`desc` |
+## 5. 表单控件
 
-### 共享业务组件(src/layouts/drawers/ 与 ui/)
+| 组件 | Props | Emits | Slots | 说明 |
+|---|---|---|---|---|
+| `Field` | `label?` `hint?` `mb=15` | — | default | 表单项外壳:标签 + 控件 + 提示 |
+| `Select` | `modelValue` `disabled?` | `update:modelValue` `change` | default | **替代原生 select**;slot 里照常写 `<option>`/`<optgroup>`,组件解析后渲染暗色卡片浮层(分组、选中高亮、Teleport 不被弹窗裁切) |
+| `Toggle` | `modelValue=false` `scale=1` | `update:modelValue` | — | 开关 |
+| `Check` | `checked?` | `toggle` | — | 复选方块（**非 v-model**,便于行内 `@click.stop`） |
+| `CheckLabel` | `modelValue` `label` | `update:modelValue` | — | 复选 + 文字 |
+| `SwitchLabel` | `modelValue` `label` | `update:modelValue` | — | 行内开关 + 文字 |
+| `Segmented` | `modelValue` `options:[value,label][]` `block?` | `update:modelValue` | — | 分段选择;`block` = 抽屉内满宽 |
+| `KeyInput` | `modelValue?` `placeholder?` `secret?` `title?` | `update:modelValue` `regenerate` | — | 密钥框 + 重新生成按钮（密码/UUID） |
+| `DateTimeInput` | `modelValue`(**epoch 秒**,0=无限期) | `update:modelValue` | — | 到期时间;`fa` locale 自动用波斯历 |
+| `ChipSelect` | `modelValue:string[]` `options:{title,value}[]` `label?` `placeholder?` | `update:modelValue` | — | 下拉多选,选中以 chip 展示 |
+| `MultiPick` | `modelValue:string[]` `options:string[]` | `update:modelValue` | — | chip 多选(selector/urltest 成员） |
 
-| 组件 | 契约 |
-|---|---|
-| `layouts/drawers/StatsModal.vue` | 流量统计图模态:`:visible` `:resource`(inbound/outbound/client…对应 `objects.*` key)`:tag` + `@close`。内部走 `api/stats`,10s 自刷新 |
-| `layouts/drawers/QrModal.vue` | 客户端二维码:`:visible` `:id`(client id)+ `@close` |
-| `layouts/drawers/LogsModal.vue` / `BackupModal.vue` / `UsageStatsModal.vue` | `:visible` + `@close` |
-| `layouts/drawers/EditorModal.vue` | 文本编辑模态:`:open` `:title` `:content` + `@save(value)` `@close` |
-| `ui/DateTimeInput.vue` | 到期时间输入:`v-model`(**epoch 秒**,0=无限期);fa locale 自动用波斯历 |
-| `plugins/clipboard.ts` | `copyToClipboard(txt, containerId?)`(带 toast) |
+```vue
+<Field :label="$t('type')">
+  <Select v-model="form.type">
+    <optgroup :label="$t('ui.proxyProtocols')">
+      <option v-for="t in proxyTypes" :key="t" :value="t">{{ t }}</option>
+    </optgroup>
+  </Select>
+</Field>
+<Field :label="$t('client.name')"><input class="input" v-model="form.name" /></Field>
+<SwitchLabel v-model="form.enable" :label="$t('enable')" />
+```
 
-## 图表(src/components/charts/)
+---
 
-`Gauge`(径向仪表)、`AreaChart`(平滑面积图,可双系列 `data2` 虚线)、`Spark`(迷你折线)、`Donut`(`data:{value,color}[]`)、`BarMini`(进度条 `value` 0-100)。全部纯 SVG、theme-aware。
+## 6. 基础元素
 
-## 共享工具
+| 组件 | Props | 说明 |
+|---|---|---|
+| `Ico` | `name` `size=18` `stroke=1.75` | 描边图标;`name` 见 `ui/icons.ts` 注册表 |
+| `Btn` | `variant='ghost'(默认)\|'primary'\|'subtle'\|''` `sm` `icon` `loading` `disabled` `type` | slot 放 `<Ico/> 文本`;`icon` = 方形图标按钮 |
+| `Chip` | `color?` `dot?` | `color` = 预设名(emerald/rose/amber/brand/cyan)或任意 CSS 色(自动 tint） |
+| `Avatar` | `name` `size=30` | 按名字 hash 的渐变头像 |
+| `Logo` | `size=30` | 品牌标 |
 
-- `@/plugins/colors`:`protoColor(type)`、`outColor(type)`、`dnsColor(type)`、`actionColor(action)`
-- `@/plugins/utils`:`HumanReadable.sizeFormat(bytes)`(流量)、`formatSecond`、`remainedDays(epochSec)`
-- `@/store/modules/app`:`theme`、`toggleTheme()`、`setLocale(l)`、`sidebarOpen`(移动端侧栏)
+```vue
+<Btn variant="primary" sm @click="add"><Ico name="plus" :size="16" /> {{ $t('actions.add') }}</Btn>
+<Chip color="emerald" dot>{{ $t('online') }}</Chip>
+```
 
-## Drawer 表单模式(所有编辑抽屉统一)
+---
+
+## 7. 卡片 · 面板 · Settings 行
+
+| 组件 | Props | Slots | 说明 |
+|---|---|---|---|
+| `DPanel` | `title` `sub?` `pad=20` | `right` default | 面板卡(标题行 + 右槽 + 内容);`pad=0` 用于信息行列表 |
+| `EntityCard` | `title` `type?` `color?` `icon?` `rows:EntityRow[]` | `chip` `actions` | 实体卡(Outbounds/Services/TLS…);`rows` = `{k,v,mono?,color?}[]`;`#actions` 放 `CardBtn` |
+| `RuleCard` | `n` `logical?` `mode?` `action` `targetKey` `target?` `rules` `invert?` | `actions` | 编号规则卡(Rules/DNS),`@edit`/`@del` |
+| `SettingsGroup` | `title?` `desc?` | default | Settings 卡片容器 |
+| `SRow` | `label` `hint?` | default | Settings 行(左标签 + 右控件,移动端纵排) |
+| `ToggleRow` | `modelValue` `label` `desc?` | — | Settings 开关行 |
+| `MSwitchRow` | `modelValue` `label` `desc?` | — | 圆角开关区块(抽屉内 TLS/Mux 等开关) |
+| `SectionLabel` | — | default | 区块小标题(大写字距) |
+| `MHint` | — | default | 虚线提示框 |
+| `EmptyState` | `icon='search'` `title` `desc?` | default | 空状态 |
+
+```vue
+<EntityCard :title="o.tag" :type="o.type" :color="outColor(o.type)" icon="outbound" :rows="rows(o)">
+  <template #chip><Chip v-if="online">{{ $t('online') }}</Chip></template>
+  <template #actions>
+    <CardBtn icon="edit" @click="edit(o)" />
+    <CardBtn icon="trash" border danger @click="del(o)" />
+  </template>
+</EntityCard>
+```
+
+---
+
+## 8. 弹层 · 抽屉 · 标签页
+
+> 编辑界面统一是**居中弹窗**(`.drawer-panel` 已定位为屏幕居中,缩放+淡入)。`Drawer`/`MDrawer`/`Modal` 共用这套定位;弹窗里再开确认框/编辑器会正确叠加。
+
+| 组件 | Props | Emits | Slots | 说明 |
+|---|---|---|---|---|
+| `MDrawer` | `open` `icon?` `color?` `title?` `sub?` `saveLabel?` `width=500` `loading?` | `close` `save` | default | **实体编辑弹窗**:带图标头 + Cancel/Save 脚;每次打开自动 remount 内容 |
+| `Drawer` | `open` `width=460` | `close` | `title` default `footer` | 通用弹窗外壳(自定义头/脚时用） |
+| `Modal` | `open` `title?` `width=720` | `close` | default `footer` | 居中模态 |
+| `Pop` | `width?` `minWidth?` `align='end'` `direction='down'` | — | `trigger` default | 弹出菜单:`#trigger="{ toggle }"` 放触发器,默认槽 `="{ close }"` 放 `.pop-item` |
+| `Tabs` | `modelValue` `tabs:[key,label][]` `page?` `mb=18` | `update:modelValue` | — | 下划线标签;`page` = 页级 tab |
+| `IconBtn` | `name` `title?` `danger?` | — | — | 表格行内图标按钮 |
+| `CardBtn` | `icon` `label?` `border?` `danger?` `disabled?` | — | — | 卡片底部动作钮(`label` 空 = 46px 方块,`border` 左分隔线) |
+
+---
+
+## 9. 编辑弹窗标准模式（所有实体抽屉一致）
 
 ```vue
 <MDrawer :open="open" icon="outbound" :color="outColor(form.type)"
-  :title="isNew ? $t('ui.out.new') : item.tag" :sub="…"
+  :title="isNew ? $t('ui.out.new') : item.tag"
   :save-label="isNew ? $t('actions.add') : $t('actions.save')"
   :loading="saving" @close="$emit('close')" @save="save">
+
   <Field :label="$t('type')">
-    <select class="input" v-model="form.type">…</select>
+    <Select v-model="form.type"><option v-for="t in types" :key="t" :value="t">{{ t }}</option></Select>
   </Field>
-  <div class="grid2"> <Field…/> <Field…/> </div>
+  <div class="grid2"><Field …/><Field …/></div>
+  <MSwitchRow v-model="form.tlsOn" :label="$t('ui.tlsReality')" />
 </MDrawer>
 ```
 
-- 打开时由父组件传入 `item`(null = 新建);MDrawer 自动 remount 内容,组件内 `watch(open)` 初始化本地 `form`(参照旧 Vuetify modal 的初始化逻辑)。
-- 保存:组装 payload 后调 `Data().save(object, action, data)`,成功后 `$emit('close')`。**payload 结构必须与旧 modal 完全一致**(对照旧文件逐字段平移,含 `randomUtil` 的默认值生成)。
+```ts
+// 父组件传 item(null=新建);组件内监听 open 初始化本地 form
+watch(() => props.open, (v) => { if (v) form.value = props.item ? clone(props.item) : createOutbound() })
+const save = async () => {
+  saving.value = true
+  const ok = await Data().save('outbounds', isNew.value ? 'new' : 'edit', form.value)
+  saving.value = false
+  if (ok) emit('close')   // payload 结构须与旧逻辑逐字段一致
+}
+```
 
-## 像素细节速查(来自设计稿)
+---
 
-- 卡片圆角 18(`--radius-lg`);按钮/输入框 10;chip 7。
-- 主按钮 hover:`translateY(-1px)` + 加深辉光(tokens.css 已内置)。
-- 抽屉宽:Client 460,实体编辑 500,规则 520;遮罩 `rgba(6,8,16,.5)`。
-- 表格行高 ~42(th)/自适应(td padding `0 16px`,名称列 `11px 16px`)。
-- 在线点:8px 圆 + `box-shadow: 0 0 0 4px color-mix(...18%)`。
-- 协议色:vless=brand、vmess=violet、trojan=emerald、ss=amber、hy2=cyan、tuic=#ff7eb6、naive=#6ea8ff(用 `protoColor`)。
-- 页面过渡 `.fade-up`;一切动效 `var(--ease)`、尊重 `prefers-reduced-motion`(tokens.css 已处理)。
+## 10. 图表（`components/charts/`,纯 SVG、随主题）
+
+| 组件 | Props |
+|---|---|
+| `Gauge` | `value`(0-100)`color` `label` `sub` `size=132` —— 径向仪表 |
+| `AreaChart` | `data:number[]` `data2?`(第二系列虚线)`color` `color2` `height=160` —— 平滑面积图 |
+| `Spark` | `data:number[]` `color` `width=110` `height=34` —— 迷你折线 |
+| `Donut` | `data:{value,color}[]` `size=150` `thickness=18` |
+| `BarMini` | `value`(0-100)`color` `height=6` —— 进度条 |
+
+---
+
+## 11. 共享业务弹层 · 工具
+
+| 模块 | 契约 |
+|---|---|
+| `layouts/drawers/StatsModal.vue` | `:visible :resource(对应 objects.* key) :tag @close`;走 `api/stats`,10s 自刷 |
+| `layouts/drawers/QrModal.vue` | `:visible :id(client) @close` |
+| `LogsModal` / `BackupModal` / `UsageStatsModal` | `:visible @close` |
+| `EditorModal.vue` | `:open :title :content @save(value) @close`(JSON/YAML 编辑) |
+| `plugins/colors.ts` | `protoColor` `outColor` `dnsColor` `actionColor`(语义色统一来源) |
+| `plugins/utils.ts` | `HumanReadable.sizeFormat(bytes)` `formatSecond` `remainedDays(epochSec)` |
+| `plugins/clipboard.ts` | `copyToClipboard(txt, containerId?)`(带 toast) |
+| `store/modules/app.ts` | `theme` `toggleTheme()` `setLocale(l)` `sidebarOpen`(移动端侧栏) |
+
+---
+
+## 12. 维护配方
+
+**改主题色** → `tokens.css` 改 `--brand` 三档(+ 需要的语义色),全站生效。
+
+**加一个新页面**
+1. `views/Xxx.vue`:根 `<div class="page-stack fade-up">` + `.toolbar` + 内容;数据用 `Data()` store。
+2. `router/index.ts` 注册路由;`layouts/default/Sidebar.vue` 加导航项 + `ui/icons.ts` 配图标。
+
+**给实体加一个编辑弹窗** → 拷一个现成的 `layouts/drawers/<entity>/XxxDrawer.vue`,套第 9 节模式,改字段与 `Data().save(object,…)` 的 object 名。
+
+**加一种协议/服务表单** → 在 `components/forms/in|out/` 加 `.vue`,父抽屉按 `form.type` 条件渲染(参照现有协议表单)。
+
+**改/加一个基础组件** → 在 `components/ui/` 内改;保持 API 规范:
+- 输入类用 `v-model`(`modelValue` + `update:modelValue`);多值用 `string[]`。
+- 颜色/尺寸吃 token,不写死。
+- 改完跑 `npx vue-tsc --noEmit`(必须 0 错误);本文表格同步更新。
+
+**加图标** → `ui/icons.ts` 注册 `name: '<path d…>'`,`<Ico name="…" />` 即可用(描边 1.75、24 网格)。
+
+---
+
+## 13. 验证
+
+```bash
+npm run dev            # :3000 dev(proxy /app/api → 后端 :2095)
+npm run build          # vue-tsc 类型检查 + 生产构建 → dist/
+```
+
+无单测;改完构建 + 浏览器逐页手动验收(明暗主题 / 移动端 ≤820px / fa RTL)。生产构建产物嵌入后端 `web/html/`。
