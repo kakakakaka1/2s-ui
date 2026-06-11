@@ -30,9 +30,6 @@ import router from './router'
 import store from './store'
 import AppStore from '@/store/modules/app'
 
-// Plugins
-import { registerPlugins } from '@/plugins'
-
 // Locale
 import { i18n } from '@/locales'
 import Vue3PersianDatetimePicker from 'vue3-persian-datetime-picker'
@@ -57,8 +54,6 @@ const loading = ref(false)
 
 const app = createApp(App)
 app.provide('loading', loading)
-
-registerPlugins(app)
 
 app
   .use(router)

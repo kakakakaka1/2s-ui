@@ -43,7 +43,7 @@
     </Field>
   </div>
   <Field :label="$t('dns.title') + ' ' + $t('commaSeparated')">
-    <input class="input mono" v-model="data.ext.dns" />
+    <input class="input mono" v-model="extDns" />
   </Field>
   <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px;">
     <SwitchLabel v-model="system" :label="$t('types.wg.sysIf')" />
@@ -134,6 +134,10 @@ const udpTimeout = computed({
 })
 const publicKey = computed({
   get: () => props.data.ext?.public_key ?? '',
-  set: (v: string) => { props.data.ext.public_key = v },
+  set: (v: string) => { (props.data.ext ??= {}).public_key = v },
+})
+const extDns = computed({
+  get: () => props.data.ext?.dns ?? '',
+  set: (v: string) => { (props.data.ext ??= {}).dns = v },
 })
 </script>

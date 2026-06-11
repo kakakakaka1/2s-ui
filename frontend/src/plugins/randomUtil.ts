@@ -19,7 +19,8 @@ const RandomUtil = {
     return Math.floor(random * (max - min + 1) + min)
   },
   randomInt(n: number) {
-    return this.randomIntRange(0, n)
+    // exclusive upper bound: callers index arrays with the result
+    return this.randomIntRange(0, n - 1)
   },
   randomSeq(count: number): string {
     if (count <= 0) {

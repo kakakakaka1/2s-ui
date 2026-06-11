@@ -174,7 +174,7 @@ import BackupModal from '@/layouts/drawers/BackupModal.vue'
 import UsageStatsModal from '@/layouts/drawers/UsageStatsModal.vue'
 import { loadTiles, saveTiles, defaultTiles } from './dashboard/tiles'
 
-const { t, locale } = useI18n({ useScope: 'global' })
+const { t, te, locale } = useI18n({ useScope: 'global' })
 const data = Data()
 
 /* ---------- tiles visibility ---------- */
@@ -308,16 +308,8 @@ const ACT_COLORS: Record<string, string> = {
   restart: 'var(--amber)', reset: 'var(--amber)',
 }
 const actColor = (a: string) => ACT_COLORS[a] ?? 'var(--brand)'
-const actionLabel = (a: string) => {
-  const key = 'actions.' + a
-  const v = t(key)
-  return v === key ? a : v
-}
-const objectLabel = (k: string) => {
-  const key = 'objects.' + k
-  const v = t(key)
-  return v === key ? k : v
-}
+const actionLabel = (a: string) => (te('actions.' + a) ? t('actions.' + a) : a)
+const objectLabel = (k: string) => (te('objects.' + k) ? t('objects.' + k) : k)
 
 /* ---------- restart sing-box ---------- */
 const restarting = ref(false)
