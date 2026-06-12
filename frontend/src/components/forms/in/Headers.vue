@@ -41,7 +41,7 @@ const props = defineProps<{ data: any }>()
 
 const hdrs = computed({
   get: (): Header[] => {
-    let headers: Header[] = []
+    const headers: Header[] = []
     const h = props.data.headers
     if (h) {
       Object.keys(h).forEach(key => {
@@ -56,7 +56,7 @@ const hdrs = computed({
   },
   set: (v: Header[]) => {
     if (v.length > 0) {
-      let headers: any = {}
+      const headers: any = {}
       v.forEach((h: Header) => {
         if (headers[h.name]) {
           if (Array.isArray(headers[h.name])) {
@@ -79,17 +79,17 @@ const addHeader = () => {
   hdrs.value = [...hdrs.value, { name: 'Host', value: '' }]
 }
 const delHeader = (i: number) => {
-  let h = hdrs.value
+  const h = hdrs.value
   h.splice(i, 1)
   hdrs.value = h
 }
 const updateKey = (i: number, k: string) => {
-  let h = hdrs.value
+  const h = hdrs.value
   h[i].name = k
   hdrs.value = h
 }
 const updateValue = (i: number, v: string) => {
-  let h = hdrs.value
+  const h = hdrs.value
   h[i].value = v
   hdrs.value = h
 }

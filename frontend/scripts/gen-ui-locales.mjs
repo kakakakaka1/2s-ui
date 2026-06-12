@@ -23,7 +23,6 @@ function extractObject(file, name) {
       depth--
       if (depth === 0) {
         const literal = src.slice(i, j + 1)
-        // eslint-disable-next-line no-eval
         return (0, eval)(`(${literal})`)
       }
     }
