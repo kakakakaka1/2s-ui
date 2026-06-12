@@ -83,15 +83,15 @@ src/
 | 组件 | Props | Emits | Slots | 说明 |
 |---|---|---|---|---|
 | `Field` | `label?` `hint?` `mb=15` | — | default | 表单项外壳:标签 + 控件 + 提示 |
-| `Select` | `modelValue` `disabled?` | `update:modelValue` `change` | default | **替代原生 select**;slot 里照常写 `<option>`/`<optgroup>`,组件解析后渲染暗色卡片浮层(分组、选中高亮、Teleport 不被弹窗裁切) |
-| `Toggle` | `modelValue=false` `scale=1` | `update:modelValue` | — | 开关 |
-| `Check` | `checked?` | `toggle` | — | 复选方块（**非 v-model**,便于行内 `@click.stop`） |
+| `Select` | `modelValue` `disabled?` | `update:modelValue` `change` | default | **替代原生 select**;slot 里照常写 `<option>`/`<optgroup>`,组件直接解析 slot vnode(绑定值保留原始类型,数字不会变字符串),渲染暗色卡片浮层(分组、选中高亮、Teleport 不被弹窗裁切)。键盘:↑↓/Home/End 移动高亮、Enter/Space 选中、Esc 关闭;带 listbox/option ARIA |
+| `Toggle` | `modelValue=false` `scale=1` | `update:modelValue` | — | 开关;`role="switch"` + `aria-checked`,Tab/Space 可用 |
+| `Check` | `checked?` | `toggle` | — | 复选方块（**非 v-model**,便于行内 `@click.stop`）;Tab 可聚焦,Space/Enter 合成真实 click(与鼠标同事件路径,包在 `<label @click>` 里不会双触发) |
 | `CheckLabel` | `modelValue` `label` | `update:modelValue` | — | 复选 + 文字 |
 | `SwitchLabel` | `modelValue` `label` | `update:modelValue` | — | 行内开关 + 文字 |
 | `Segmented` | `modelValue` `options:[value,label][]` `block?` | `update:modelValue` | — | 分段选择;`block` = 抽屉内满宽 |
 | `KeyInput` | `modelValue?` `placeholder?` `secret?` `title?` | `update:modelValue` `regenerate` | — | 密钥框 + 重新生成按钮（密码/UUID） |
 | `DateTimeInput` | `modelValue`(**epoch 秒**,0=无限期) | `update:modelValue` | — | 到期时间;`fa` locale 自动用波斯历 |
-| `ChipSelect` | `modelValue:string[]` `options:{title,value}[]` `label?` `placeholder?` | `update:modelValue` | — | 下拉多选,选中以 chip 展示 |
+| `ChipSelect` | `modelValue:string[]` `options:{title,value}[]` `label?` `placeholder?` | `update:modelValue` | — | 下拉多选,选中以 chip 展示;面板 Teleport 到 body(弹窗内不被 `overflow` 裁切),视口不足自动向上翻转,chips 换行时自动跟随锚点。键盘 combobox 模式:焦点始终留在锚点,↑↓ 移高亮、Enter/Space 切换选中(面板不关)、Esc 关闭 |
 | `MultiPick` | `modelValue:string[]` `options:string[]` | `update:modelValue` | — | chip 多选(selector/urltest 成员） |
 
 ```vue
@@ -155,13 +155,15 @@ src/
 ## 8. 弹层 · 抽屉 · 标签页
 
 > 编辑界面统一是**居中弹窗**(`.drawer-panel` 已定位为屏幕居中,缩放+淡入)。`Drawer`/`MDrawer`/`Modal` 共用这套定位;弹窗里再开确认框/编辑器会正确叠加。
+>
+> 浮层公共行为在 `ui/overlay.ts`(Esc 覆盖栈 / body 滚动锁 / 焦点陷阱):`Modal`/`Drawer` 打开即锁背景滚动 + 焦点陷阱(Tab 在面板内循环,关闭时焦点还原到触发元素),`role="dialog" aria-modal`。**Esc 只关最上层**(如 drawer 内开 Select,Esc 先关 Select 再关 drawer)。z-index 阶梯:drawer 40/41 → modal 60 → pop/sel/chip 浮层 98/99(全部 Teleport 到 body,永远压在弹窗之上)。新写浮层组件一律走 `pushOverlay()`,不要自己监听 Esc。
 
 | 组件 | Props | Emits | Slots | 说明 |
 |---|---|---|---|---|
 | `MDrawer` | `open` `icon?` `color?` `title?` `sub?` `saveLabel?` `width=500` `loading?` | `close` `save` | default | **实体编辑弹窗**:带图标头 + Cancel/Save 脚;每次打开自动 remount 内容 |
 | `Drawer` | `open` `width=460` | `close` | `title` default `footer` | 通用弹窗外壳(自定义头/脚时用） |
 | `Modal` | `open` `title?` `width=720` | `close` | default `footer` | 居中模态 |
-| `Pop` | `width?` `minWidth?` `align='end'` `direction='down'` | — | `trigger` default | 弹出菜单:`#trigger="{ toggle }"` 放触发器,默认槽 `="{ close }"` 放 `.pop-item` |
+| `Pop` | `width?` `minWidth?` `align='end'` `direction='down'` | — | `trigger` default | 弹出菜单:`#trigger="{ toggle }"` 放触发器,默认槽 `="{ close }"` 放 `.pop-item`。菜单 Teleport 到 body 按触发器定位(在 `overflow` 容器/弹窗里不会被裁切),`align` 是逻辑端(RTL 自动镜像),`direction` 是首选方向、视口不足自动翻转 |
 | `Tabs` | `modelValue` `tabs:[key,label][]` `page?` `mb=18` | `update:modelValue` | — | 下划线标签;`page` = 页级 tab |
 | `IconBtn` | `name` `title?` `danger?` | — | — | 表格行内图标按钮 |
 | `CardBtn` | `icon` `label?` `border?` `danger?` `disabled?` | — | — | 卡片底部动作钮(`label` 空 = 46px 方块,`border` 左分隔线) |

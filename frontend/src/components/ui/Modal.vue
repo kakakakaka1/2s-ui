@@ -2,7 +2,11 @@
   <Teleport to="body">
     <div v-if="open" class="modal-scrim" @click="$emit('close')">
       <div
+        ref="panel"
         class="card"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="title"
         :style="{ width: `min(${width}px, 100%)`, maxHeight: '90vh', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }"
         @click.stop
       >
@@ -27,14 +31,32 @@
 </template>
 
 <script lang="ts" setup>
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import Ico from './Ico.vue'
+import { lockScroll, pushOverlay, trapFocus } from './overlay'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   open: boolean
   title?: string
   width?: number
 }>(), {
   width: 720,
 })
-defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: [] }>()
+
+const panel = ref<HTMLElement>()
+let releases: (() => void)[] = []
+
+const engage = async () => {
+  releases.push(pushOverlay(() => emit('close'), { closeChildren: true }), lockScroll())
+  await nextTick()
+  if (panel.value) releases.push(trapFocus(panel.value))
+}
+const disengage = () => {
+  releases.forEach((fn) => fn())
+  releases = []
+}
+
+watch(() => props.open, (v) => (v ? engage() : disengage()), { immediate: true })
+onBeforeUnmount(disengage)
 </script>

@@ -3,6 +3,8 @@
     type="button"
     class="toggle"
     :class="{ on: modelValue }"
+    role="switch"
+    :aria-checked="modelValue"
     :style="scale !== 1 ? { transform: `scale(${scale})` } : undefined"
     @click.prevent="$emit('update:modelValue', !modelValue)"
   />

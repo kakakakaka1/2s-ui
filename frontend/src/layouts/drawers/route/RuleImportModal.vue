@@ -59,11 +59,12 @@
               {{ $t('rule.import.conflictDesc', { rules: existingRulesCount, rulesets: existingRulesetsCount }) }}
             </div>
             <div style="display: flex; flex-direction: column; gap: 2px;">
+              <!-- Check 仅作装饰:button 内禁止嵌套可聚焦控件 -->
               <button type="button" class="pop-item" :class="{ active: importMode === 'merge' }" @click="importMode = 'merge'">
-                <Check :checked="importMode === 'merge'" /> {{ $t('rule.import.merge') }}
+                <Check :checked="importMode === 'merge'" tabindex="-1" aria-hidden="true" /> {{ $t('rule.import.merge') }}
               </button>
               <button type="button" class="pop-item" :class="{ active: importMode === 'replace' }" @click="importMode = 'replace'">
-                <Check :checked="importMode === 'replace'" /> {{ $t('rule.import.replace') }}
+                <Check :checked="importMode === 'replace'" tabindex="-1" aria-hidden="true" /> {{ $t('rule.import.replace') }}
               </button>
             </div>
           </div>
