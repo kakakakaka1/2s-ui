@@ -102,7 +102,7 @@ const openDrawer = (id: number) => {
 }
 
 const clone = async (obj: any) => {
-  let data = JSON.parse(JSON.stringify(obj))
+  const data = JSON.parse(JSON.stringify(obj))
   data.id = 0
   while (tlsConfigs.value.findIndex((c) => c.name == data.name) != -1) {
     data.name += '-copy'

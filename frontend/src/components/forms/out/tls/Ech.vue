@@ -72,8 +72,8 @@ const genECH = async () => {
     props.iTls.ech.key_path = undefined
     useEchPath.value = 1
     if (msg.obj.length > 0) {
-      let config = <string[]>[]
-      let key = <string[]>[]
+      const config = <string[]>[]
+      const key = <string[]>[]
       let isConfig = false
       let isKey = false
 

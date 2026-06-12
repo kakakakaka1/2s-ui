@@ -874,7 +874,7 @@ const ruleToBlock = computed({
 })
 
 const updateRuleSets = () => {
-  let tags = <string[]>[]
+  const tags = <string[]>[]
   if ((dns.value?.rules?.length ?? 0) > 0) dns.value.rules.forEach((r: any) => { if (r.rule_set) tags.push(...r.rule_set) })
   if ((rules.value?.length ?? 0) > 0) rules.value.forEach((r: any) => { if (r.rule_set) tags.push(...r.rule_set) })
   if (tags.length > 0) {
@@ -965,7 +965,7 @@ const metaJson = computed({
 })
 
 const updateMetaJson = (data: any, key: string) => {
-  let newMetaJson = metaJson.value
+  const newMetaJson = metaJson.value
   if (data == null) {
     delete newMetaJson[key]
   } else {
@@ -1043,7 +1043,7 @@ const clashTun = computed({
 const clashRules = computed({
   get: (): string[] => (metaJson.value.rules?.length ?? 0) > 0 ? metaJson.value.rules.filter((r: string) => r != "MATCH,Proxy") : [],
   set: (v: string[]) => {
-    let newRules = <string[]>[]
+    const newRules = <string[]>[]
     v.forEach((r: string) => { newRules.push(r) })
     updateMetaJson([...newRules, "MATCH,Proxy"], 'rules')
   }

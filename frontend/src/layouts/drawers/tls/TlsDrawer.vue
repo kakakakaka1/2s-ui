@@ -311,8 +311,8 @@ const genSelfSigned = async () => {
     inTls.value.certificate_path = undefined
     usePath.value = 1
     if (msg.obj.length > 0) {
-      let privateKey = <string[]>[]
-      let publicKey = <string[]>[]
+      const privateKey = <string[]>[]
+      const publicKey = <string[]>[]
       let isPrivateKey = false
       let isPublicKey = false
 

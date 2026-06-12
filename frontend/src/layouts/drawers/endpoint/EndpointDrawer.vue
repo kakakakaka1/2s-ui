@@ -145,7 +145,7 @@ const genWgKey = async (): Promise<{ private_key: string; public_key: string }> 
   loading.value = true
   const msg = await HttpUtils.get('api/keypairs', { k: 'wireguard' })
   loading.value = false
-  let result = { private_key: '', public_key: '' }
+  const result = { private_key: '', public_key: '' }
   if (msg.success) {
     msg.obj.forEach((line: string) => {
       if (line.startsWith('PrivateKey')) {

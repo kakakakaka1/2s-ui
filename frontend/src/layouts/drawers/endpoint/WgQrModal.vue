@@ -74,8 +74,8 @@ const getWireguardLink = (peerId: number, address: string): string => {
 const copy = (txt: string) => copyToClipboard(txt, 'wg-qrcode-modal')
 
 const download = (text: string, i: number) => {
-  let filename = wgData.value.tag + '_peer_' + (i + 1) + '.conf'
-  let element = document.createElement('a')
+  const filename = wgData.value.tag + '_peer_' + (i + 1) + '.conf'
+  const element = document.createElement('a')
   element.setAttribute('href', 'data:application/json;charset=utf-8,' + encodeURIComponent(text))
   element.setAttribute('download', filename)
 
