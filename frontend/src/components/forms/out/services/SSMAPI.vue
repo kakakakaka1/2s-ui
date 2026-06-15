@@ -12,7 +12,7 @@
       />
     </Field>
     <Field :label="$t('objects.inbound')" :mb="0" style="flex: 1;">
-      <Select :value="server.value" @change="updateValue(index, ($event.target as HTMLSelectElement).value)">
+      <Select :model-value="server.value" @change="updateValue(index, $event)">
         <option v-for="tag in ssTags ?? []" :key="tag" :value="tag">{{ tag }}</option>
       </Select>
     </Field>

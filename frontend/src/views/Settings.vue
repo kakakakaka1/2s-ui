@@ -170,7 +170,7 @@
         <div class="grid2" style="margin-top: 14px;">
           <Field :label="$t('setting.globalDns')" :mb="0">
             <div style="display: flex; gap: 8px;">
-              <Select style="flex: 1; min-width: 0;" :value="proxyDns.type" @change="setDnsType(proxyDns, ($event.target as HTMLSelectElement).value)">
+              <Select style="flex: 1; min-width: 0;" :model-value="proxyDns.type" @change="setDnsType(proxyDns, $event)">
                 <option v-for="dt in dnsTypes" :key="dt" :value="dt">{{ dt }}</option>
               </Select>
               <template v-if="proxyDns.type !== 'local'">
@@ -181,7 +181,7 @@
           </Field>
           <Field :label="$t('setting.directDns')" :mb="0">
             <div style="display: flex; gap: 8px;">
-              <Select style="flex: 1; min-width: 0;" :value="directDns.type" @change="setDnsType(directDns, ($event.target as HTMLSelectElement).value)">
+              <Select style="flex: 1; min-width: 0;" :model-value="directDns.type" @change="setDnsType(directDns, $event)">
                 <option v-for="dt in dnsTypes" :key="dt" :value="dt">{{ dt }}</option>
               </Select>
               <template v-if="directDns.type !== 'local'">

@@ -106,7 +106,7 @@
           :key="k"
           style="display: grid; grid-template-columns: 150px 1fr 34px; gap: 8px; align-items: start;"
         >
-          <Select style="height: 38px; font-size: 12.5px;" :value="k" @change="changeKey(r, k, ($event.target as HTMLSelectElement).value)">
+          <Select style="height: 38px; font-size: 12.5px;" :model-value="k" @change="changeKey(r, k, $event)">
             <option v-for="mk in MATCH_KEYS" :key="mk" :value="mk" :disabled="mk !== k && r[mk] !== undefined">{{ mk }}</option>
           </Select>
 
@@ -117,7 +117,7 @@
             :options="optionsFor(k)"
             @update:model-value="r[k] = $event"
           />
-          <Select v-else-if="kindOf(k) === 'ipver'" style="height: 38px; font-size: 12.5px;" :value="String(r[k])" @change="r[k] = Number(($event.target as HTMLSelectElement).value)">
+          <Select v-else-if="kindOf(k) === 'ipver'" style="height: 38px; font-size: 12.5px;" :model-value="String(r[k])" @change="r[k] = Number($event)">
             <option value="4">4</option>
             <option value="6">6</option>
           </Select>

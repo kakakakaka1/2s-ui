@@ -54,8 +54,8 @@
 
     <template v-if="acme.dns01_challenge != undefined">
       <Field :label="$t('tls.acme.dns01Provider')">
-        <Select :value="acme.dns01_challenge.provider"
-          @change="acme.dns01_challenge = { provider: ($event.target as HTMLSelectElement).value }">
+        <Select :model-value="acme.dns01_challenge.provider"
+          @change="acme.dns01_challenge = { provider: $event }">
           <option v-for="d in dnsProviders" :key="d.provider" :value="d.provider">{{ d.provider }}</option>
         </Select>
       </Field>
