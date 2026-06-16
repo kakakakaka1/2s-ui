@@ -49,9 +49,9 @@
         </template>
         <div style="display: flex; gap: 22px; margin-bottom: 12px; flex-wrap: wrap;">
           <Legend color="var(--brand)" :label="$t('stats.download')" :value="HumanReadable.sizeFormat(netInNow) + '/s'" />
-          <Legend color="var(--cyan)" :label="$t('stats.upload')" :value="HumanReadable.sizeFormat(netOutNow) + '/s'" dashed />
+          <Legend color="var(--emerald)" :label="$t('stats.upload')" :value="HumanReadable.sizeFormat(netOutNow) + '/s'" dashed />
         </div>
-        <AreaChart :data="buf.netIn" :data2="buf.netOut" :height="180" />
+        <AreaChart :data="buf.netIn" :data2="buf.netOut" :height="180" :labels="trafficLabels" :value-formatter="netFmt" />
         <div class="mono" style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 10.5px; color: var(--text-3);">
           <span v-for="l in trafficAxis" :key="l">{{ l }}</span>
         </div>
@@ -94,11 +94,11 @@
           <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3);">
             <span style="width: 8px; height: 8px; border-radius: 3px; background: var(--cyan);" />{{ $t('ui.inboundLbl') }}
           </div>
-          <AreaChart :data="buf.netIn" color="var(--cyan)" :height="88" />
+          <AreaChart :data="buf.netIn" color="var(--cyan)" :height="88" :labels="trafficLabels" :value-formatter="netFmt" />
           <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); margin-top: 4px;">
             <span style="width: 8px; height: 8px; border-radius: 3px; background: var(--violet);" />{{ $t('ui.outboundLbl') }}
           </div>
-          <AreaChart :data="buf.netOut" color="var(--violet)" :height="88" />
+          <AreaChart :data="buf.netOut" color="var(--violet)" :height="88" :labels="trafficLabels" :value-formatter="netFmt" />
         </div>
       </DPanel>
 
@@ -250,6 +250,12 @@ const trafficAxis = computed(() => {
   if (span <= 0) return []
   return [`-${span}s`, `-${Math.round(span * 0.75)}s`, `-${Math.round(span * 0.5)}s`, `-${Math.round(span * 0.25)}s`, 'now']
 })
+
+// 实时图 tooltip：速率带单位，标签用相对时间（最后一点为 now）
+const netFmt = (v: number) => HumanReadable.sizeFormat(v) + '/s'
+const trafficLabels = computed(() =>
+  buf.netIn.map((_, i, a) => (i === a.length - 1 ? 'now' : `-${(a.length - 1 - i) * 2}s`)),
+)
 
 const pctOf = (d: any) => (d && d.total ? Math.min(100, Math.ceil((d.current * 100) / d.total)) : 0)
 const subOf = (d: any) => (d && d.total ? `${HumanReadable.sizeFormat(d.current, 0)} / ${HumanReadable.sizeFormat(d.total, 0)}` : '')

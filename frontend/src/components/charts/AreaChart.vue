@@ -1,28 +1,11 @@
 <template>
-  <svg width="100%" :viewBox="`0 0 ${width} ${height}`" preserveAspectRatio="none" style="display: block;">
-    <defs>
-      <linearGradient :id="gid" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" :stop-color="color" stop-opacity="0.32" />
-        <stop offset="100%" :stop-color="color" stop-opacity="0" />
-      </linearGradient>
-    </defs>
-    <line
-      v-for="f in [0.25, 0.5, 0.75]"
-      :key="f"
-      :x1="pad" :x2="width - pad"
-      :y1="10 + f * (height - 26)" :y2="10 + f * (height - 26)"
-      stroke="var(--line)" stroke-width="1"
-    />
-    <path :d="area" :fill="`url(#${gid})`" />
-    <path v-if="line2" :d="line2" fill="none" :stroke="color2" stroke-width="2" stroke-opacity="0.85" stroke-dasharray="3 3" />
-    <path :d="line" fill="none" :stroke="color" stroke-width="2.4" stroke-linecap="round" />
-    <circle v-if="pts.length" :cx="pts[pts.length - 1][0]" :cy="pts[pts.length - 1][1]" r="3.5" :fill="color" stroke="var(--surface)" stroke-width="2" />
-  </svg>
+  <div ref="el" :style="{ width: '100%', height: height + 'px' }" />
 </template>
 
 <script lang="ts" setup>
-import { computed, useId } from 'vue'
-import { smoothPath } from './path'
+import { ref, watch } from 'vue'
+import echarts from '@/plugins/echarts'
+import { useChart, resolveColor, withAlpha, cssVar } from './useChart'
 
 const props = withDefaults(defineProps<{
   data: number[]
@@ -32,30 +15,121 @@ const props = withDefaults(defineProps<{
   height?: number
   width?: number
   pad?: number
+  /** tooltip 数值格式化（如流量传 HumanReadable.sizeFormat）；不传则千分位展示 */
+  valueFormatter?: (v: number) => string
+  /** x 轴每个点的标签（日期/时间），用于 tooltip 标题行 */
+  labels?: string[]
 }>(), {
   color: 'var(--brand)',
-  color2: 'var(--cyan)',
+  color2: 'var(--emerald)',
   height: 160,
   width: 600,
   pad: 8,
 })
 
-const gid = `g${useId().replace(/[:-]/g, '')}`
+const el = ref<HTMLElement>()
 
-const max = computed(() => {
+const build = (chart: ReturnType<typeof echarts.init>, host: HTMLElement) => {
+  const c1 = resolveColor(host, props.color)
+  const c2 = resolveColor(host, props.color2)
+  const lineCol = cssVar(host, '--line')
+  const muted = cssVar(host, '--text-3')
+  const surface = cssVar(host, '--surface')
+  const elevated = cssVar(host, '--elevated') || surface
+  const text = cssVar(host, '--text')
+  const fmt = props.valueFormatter ?? ((v: number) => Math.round(v).toLocaleString())
+
   const all = props.data2 ? [...props.data, ...props.data2] : props.data
-  return Math.max(...all) * 1.12 || 1
-})
-const xStep = computed(() => (props.width - props.pad * 2) / Math.max(1, props.data.length - 1))
-const toPts = (arr: number[]): [number, number][] =>
-  arr.map((v, i) => [props.pad + i * xStep.value, props.height - 10 - (v / max.value) * (props.height - 26)])
+  const max = (Math.max(...all, 0) || 1) * 1.12
+  const last = props.data.length - 1
 
-const pts = computed(() => toPts(props.data))
-const line = computed(() => smoothPath(pts.value))
-const area = computed(() => {
-  const p = pts.value
-  if (!p.length) return ''
-  return `${line.value} L ${p[p.length - 1][0]},${props.height - 6} L ${p[0][0]},${props.height - 6} Z`
-})
-const line2 = computed(() => (props.data2 ? smoothPath(toPts(props.data2)) : ''))
+  const series: any[] = [
+    {
+      type: 'line',
+      smooth: 0.4,
+      showSymbol: false,
+      clip: false, // 末端圆点贴边时不被裁剪
+      lineStyle: { color: c1, width: 2.4, cap: 'round' },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: withAlpha(c1, 0.32) },
+          { offset: 1, color: withAlpha(c1, 0) },
+        ]),
+      },
+      data: props.data,
+      z: 3,
+      markPoint: {
+        symbol: 'circle',
+        symbolSize: 7,
+        silent: true,
+        label: { show: false },
+        itemStyle: { color: c1, borderColor: surface, borderWidth: 2 },
+        data: last >= 0 ? [{ coord: [last, props.data[last]] }] : [],
+      },
+    },
+  ]
+
+  if (props.data2) {
+    series.push({
+      type: 'line',
+      smooth: 0.4,
+      showSymbol: false,
+      clip: false,
+      lineStyle: { color: c2, width: 2, type: 'dashed', opacity: 0.85 },
+      data: props.data2,
+      z: 2,
+    })
+  }
+
+  const option: any = {
+    animationDurationUpdate: 300,
+    grid: { left: props.pad, right: props.pad + 4, top: 14, bottom: 10, containLabel: false },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: elevated,
+      borderColor: lineCol,
+      borderWidth: 1,
+      padding: [6, 10],
+      textStyle: { color: text, fontSize: 12 },
+      axisPointer: { type: 'line', lineStyle: { color: muted, width: 1, type: 'dashed' } },
+      formatter: (ps: any[]) => {
+        const idx = ps[0]?.dataIndex ?? 0
+        const lbl = props.labels?.[idx]
+        const head = lbl ? `<div style="font-size:11px;color:${muted};margin-bottom:5px;">${lbl}</div>` : ''
+        return head + ps
+          .map(
+            (p) =>
+              `<div style="display:flex;align-items:center;gap:7px;line-height:1.65;"><span style="width:8px;height:8px;border-radius:2px;background:${p.color};flex:none;"></span><span class="mono">${fmt(Number(p.value))}</span></div>`,
+          )
+          .join('')
+      },
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      show: false,
+      data: props.labels ?? props.data.map((_, i) => i),
+    },
+    yAxis: {
+      // show:true 但关掉轴线/刻度/标签 —— 否则 show:false 会连带隐藏 splitLine 网格线
+      type: 'value',
+      min: 0,
+      max,
+      show: true,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { show: false },
+      splitNumber: 3,
+      splitLine: { show: true, lineStyle: { color: lineCol, width: 1 } },
+    },
+    series,
+  }
+
+  chart.setOption(option) // merge 模式：数据变化平滑过渡
+}
+
+const { render } = useChart(el, build)
+
+// 实时数据变化时重渲染
+watch(() => [props.data, props.data2], render, { deep: true })
 </script>

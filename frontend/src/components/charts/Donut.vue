@@ -1,26 +1,13 @@
 <template>
-  <svg :width="size" :height="size" style="transform: rotate(-90deg);">
-    <circle :cx="size / 2" :cy="size / 2" :r="r" fill="none" stroke="var(--track)" :stroke-width="thickness" />
-    <circle
-      v-for="(s, i) in segments"
-      :key="i"
-      :cx="size / 2" :cy="size / 2" :r="r"
-      fill="none"
-      :stroke="s.color"
-      :stroke-width="thickness"
-      :stroke-dasharray="s.dash"
-      :stroke-dashoffset="s.off"
-      stroke-linecap="round"
-      style="transition: all .8s var(--ease);"
-    />
-  </svg>
+  <div ref="el" :style="{ width: size + 'px', height: size + 'px' }" />
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { ref, watch } from 'vue'
+import { useChart, resolveColor, cssVar, type EChart } from './useChart'
 
 const props = withDefaults(defineProps<{
-  data: { value: number; color: string }[]
+  data: { value: number; color: string; name?: string }[]
   size?: number
   thickness?: number
 }>(), {
@@ -28,17 +15,48 @@ const props = withDefaults(defineProps<{
   thickness: 18,
 })
 
-const r = computed(() => props.size / 2 - props.thickness / 2 - 2)
+const el = ref<HTMLElement>()
 
-const segments = computed(() => {
-  const total = props.data.reduce((a, b) => a + b.value, 0) || 1
-  const c = 2 * Math.PI * r.value
-  let acc = 0
-  return props.data.map((d) => {
-    const frac = d.value / total
-    const seg = { color: d.color, dash: `${frac * c} ${c}`, off: -acc * c }
-    acc += frac
-    return seg
-  })
-})
+const build = (chart: EChart, host: HTMLElement) => {
+  const surface = cssVar(host, '--surface')
+  const track = cssVar(host, '--track')
+  const text = cssVar(host, '--text')
+  const elevated = cssVar(host, '--elevated') || surface
+  const lineCol = cssVar(host, '--line')
+  const outer = props.size / 2 - 2
+  const inner = Math.max(0, outer - props.thickness)
+  const seg = props.data.map((d) => ({
+    value: d.value,
+    name: d.name ?? '',
+    itemStyle: { color: resolveColor(host, d.color) },
+  }))
+  const option: any = {
+    tooltip: {
+      show: true,
+      trigger: 'item',
+      backgroundColor: elevated,
+      borderColor: lineCol,
+      borderWidth: 1,
+      textStyle: { color: text, fontSize: 12 },
+      formatter: (p: any) => `${p.name ? p.name + ' · ' : ''}${p.percent}%`,
+    },
+    series: [{
+      type: 'pie',
+      radius: [inner, outer],
+      center: ['50%', '50%'],
+      avoidLabelOverlap: false,
+      label: { show: false },
+      labelLine: { show: false },
+      itemStyle: { borderRadius: 4, borderColor: surface, borderWidth: 2 },
+      emphasis: { scaleSize: 3 },
+      // 数据为空时画一圈 track 占位（与旧 SVG 版的背景环一致）
+      data: seg.length ? seg : [{ value: 1, name: '', itemStyle: { color: track } }],
+      silent: seg.length === 0,
+    }],
+  }
+  chart.setOption(option, true)
+}
+
+const { render } = useChart(el, build)
+watch(() => [props.data, props.size, props.thickness], render, { deep: true })
 </script>

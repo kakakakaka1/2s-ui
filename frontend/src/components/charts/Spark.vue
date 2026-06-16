@@ -1,12 +1,10 @@
 <template>
-  <svg :width="width" :height="height" style="display: block;">
-    <path :d="d" fill="none" :stroke="color" stroke-width="2" stroke-linecap="round" />
-  </svg>
+  <div ref="el" :style="{ width: width + 'px', height: height + 'px' }" />
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
-import { smoothPath } from './path'
+import { ref, watch } from 'vue'
+import { useChart, resolveColor, type EChart } from './useChart'
 
 const props = withDefaults(defineProps<{
   data: number[]
@@ -19,14 +17,29 @@ const props = withDefaults(defineProps<{
   height: 34,
 })
 
-const d = computed(() => {
-  const max = Math.max(...props.data) || 1
-  const min = Math.min(...props.data)
-  const xStep = props.width / Math.max(1, props.data.length - 1)
-  const pts: [number, number][] = props.data.map((v, i) => [
-    i * xStep,
-    props.height - 3 - ((v - min) / (max - min || 1)) * (props.height - 8),
-  ])
-  return smoothPath(pts)
-})
+const el = ref<HTMLElement>()
+
+const build = (chart: EChart, host: HTMLElement) => {
+  const col = resolveColor(host, props.color)
+  const min = Math.min(...props.data, 0)
+  const max = Math.max(...props.data, 1)
+  const option: any = {
+    grid: { left: 2, right: 2, top: 3, bottom: 3 },
+    xAxis: { type: 'category', show: false, boundaryGap: false, data: props.data.map((_, i) => i) },
+    yAxis: { type: 'value', show: false, min, max },
+    series: [{
+      type: 'line',
+      data: props.data,
+      showSymbol: false,
+      smooth: 0.4,
+      lineStyle: { color: col, width: 2, cap: 'round' },
+      silent: true,
+    }],
+    tooltip: { show: false },
+  }
+  chart.setOption(option)
+}
+
+const { render } = useChart(el, build)
+watch(() => [props.data, props.color], render, { deep: true })
 </script>
