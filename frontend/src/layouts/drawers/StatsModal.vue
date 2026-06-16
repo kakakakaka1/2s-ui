@@ -20,14 +20,14 @@
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="width: 16px; height: 3px; border-radius: 2px; border-top: 2px dashed var(--cyan);" />
+            <span style="width: 16px; height: 3px; border-radius: 2px; border-top: 2px dashed var(--emerald);" />
             <div>
               <div style="font-size: 11.5px; color: var(--text-3);">{{ $t('stats.upload') }}</div>
               <div class="mono" style="font-size: 14px; font-weight: 700;">{{ HumanReadable.sizeFormat(totalUp) }}</div>
             </div>
           </div>
         </div>
-        <AreaChart :data="down" :data2="up" :height="220" />
+        <AreaChart :data="down" :data2="up" :height="220" :labels="tooltipLabels" :value-formatter="HumanReadable.sizeFormat" />
         <div class="mono" style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 10.5px; color: var(--text-3);">
           <span v-for="l in axisLabels" :key="l">{{ l }}</span>
         </div>
@@ -61,6 +61,8 @@ const periods = computed<[string, string][]>(() => [
   ['hour', '1' + t('date.h')],
   ['day', '1' + t('date.d')],
   ['month', '30' + t('date.d')],
+  ['60day', '60' + t('date.d')],
+  ['90day', '90' + t('date.d')],
 ])
 
 const up = ref<number[]>([])
@@ -74,13 +76,24 @@ const totalDown = computed(() => down.value.reduce((a, b) => a + b, 0))
 const genLabel = (ms: number) => {
   const l = String(locale.value) == 'fa' ? 'fa-IR' : 'en-US'
   const d = new Date(ms)
-  if (period.value === 'month') return d.toLocaleDateString(l, { month: '2-digit', day: '2-digit' })
-  return d.toLocaleTimeString(l, { hour: '2-digit', minute: '2-digit', hour12: false })
+  // 小时/单日维度显示「时:分」；30/60/90 天等多日维度显示「月-日」
+  if (period.value === 'hour' || period.value === 'day') return d.toLocaleTimeString(l, { hour: '2-digit', minute: '2-digit', hour12: false })
+  return d.toLocaleDateString(l, { month: '2-digit', day: '2-digit' })
 }
 const axisLabels = computed(() => {
   if (times.value.length < 2) return []
   const pick = [0, .25, .5, .75, 1].map((f) => times.value[Math.round(f * (times.value.length - 1))])
   return [...new Set(pick)].map((tms) => genLabel(tms * 1000))
+})
+
+// tooltip 标题：每个数据点的完整日期/时间（小时/单日到分钟；多日到「月-日 时:分」）
+const tooltipLabels = computed(() => {
+  const l = String(locale.value) == 'fa' ? 'fa-IR' : 'en-US'
+  return times.value.map((tms) => {
+    const d = new Date(tms * 1000)
+    if (period.value === 'hour' || period.value === 'day') return d.toLocaleString(l, { hour: '2-digit', minute: '2-digit', hour12: false })
+    return d.toLocaleString(l, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+  })
 })
 
 const loadData = async () => {
