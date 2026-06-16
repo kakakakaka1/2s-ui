@@ -181,6 +181,7 @@ export default {
     autoCert: "Auto SSL (ACME)",
     acmeEmail: "ACME Email (optional)",
     acmeHint: "Requires port 80 open & domain pointed to this server",
+    acmeMigrated: "Legacy auto-ACME setting detected; switched to manual / acme.sh. Please verify certificate renewal.",
     deployNginx: "Deploy behind Nginx",
     deployNginxHint: "Nginx terminates SSL; the panel serves HTTP. Certificate is issued for Nginx.",
     nginxDetected: "Nginx detected and running",

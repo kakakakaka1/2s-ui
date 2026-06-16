@@ -181,6 +181,7 @@ export default {
     autoCert: "Tự động cấp SSL (ACME)",
     acmeEmail: "Email ACME (tùy chọn)",
     acmeHint: "Yêu cầu mở cổng 80 và tên miền trỏ về máy chủ này",
+    acmeMigrated: "Phát hiện cấu hình auto-ACME cũ; đã chuyển sang thủ công / acme.sh. Vui lòng kiểm tra việc gia hạn chứng chỉ.",
     deployNginx: "Triển khai sau Nginx",
     deployNginxHint: "Nginx kết thúc SSL; bảng điều khiển chạy HTTP. Chứng chỉ được cấp cho Nginx.",
     nginxDetected: "Đã phát hiện Nginx đang chạy",

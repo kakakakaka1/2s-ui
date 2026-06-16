@@ -361,26 +361,19 @@ const loadData = async () => {
 
 const setData = (data: any) => {
   settings.value = data
+  // 已移除面板内置「自动 ACME」模式：旧数据残留的 'acme' 规整为手动文件模式，并提示用户去确认续期
+  const hadAcme = settings.value.webCertMode === 'acme' || settings.value.subCertMode === 'acme'
+  if (settings.value.webCertMode === 'acme') settings.value.webCertMode = ''
+  if (settings.value.subCertMode === 'acme') settings.value.subCertMode = ''
+  if (hadAcme) {
+    push.warning({ message: i18n.global.t('setting.acmeMigrated'), duration: 8000 })
+  }
   loadSubJsonExt()
   oldSettings.value = { ...settings.value }
 }
 
 const save = async () => {
   loading.value = true
-  // 开了「自动申请证书 (ACME)」时,保存前先真去申请一次校验;失败就拦下不保存,
-  // 并弹出真实原因(如 80 端口连不上)。成功的话证书也顺便申请好了。
-  const acmeChecks = [
-    { on: settings.value.webCertMode === 'acme', domain: settings.value.webDomain, email: settings.value.webAcmeEmail },
-    { on: settings.value.subCertMode === 'acme', domain: settings.value.subDomain, email: settings.value.subAcmeEmail },
-  ]
-  for (const chk of acmeChecks) {
-    if (!chk.on) continue
-    const r = await HttpUtils.post('api/testAcme', { domain: chk.domain, email: chk.email })
-    if (!r.success) {
-      loading.value = false
-      return
-    }
-  }
   const msg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(settings.value) })
   if (msg.success) {
     push.success({

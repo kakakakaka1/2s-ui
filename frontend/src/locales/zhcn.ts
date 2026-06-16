@@ -181,6 +181,7 @@ export default {
     autoCert: "自动申请证书 (ACME)",
     acmeEmail: "ACME 邮箱 (可选)",
     acmeHint: "需开放 80 端口并将域名解析到本机",
+    acmeMigrated: "检测到旧的自动 ACME 配置，已切换为手动 / acme.sh，请确认证书续期方式",
     deployNginx: "已部署 Nginx",
     deployNginxHint: "由 Nginx 终结 SSL,面板自身只跑 HTTP;证书申请给 Nginx 使用",
     nginxDetected: "已检测到 Nginx 正在运行",
