@@ -216,7 +216,7 @@ export default {
   selectHint: "選擇…",
   controlPanel: "控制面板",
   nav: {
-    home: "儀表板",
+    home: "首頁",
     inbounds: "入站管理",
     clients: "用戶管理",
     outbounds: "出站管理",
@@ -236,7 +236,7 @@ export default {
   superAdmin: "超級管理員",
   logout: "登出",
   title: {
-    home: "儀表板",
+    home: "首頁",
     inbounds: "入站",
     clients: "用戶端",
     outbounds: "出站",

@@ -216,7 +216,7 @@ export default {
   selectHint: "Выберите…",
   controlPanel: "ПАНЕЛЬ УПРАВЛЕНИЯ",
   nav: {
-    home: "Дашборд",
+    home: "Главная",
     inbounds: "Входящие",
     clients: "Клиенты",
     outbounds: "Исходящие",
@@ -236,7 +236,7 @@ export default {
   superAdmin: "Суперадминистратор",
   logout: "Выйти",
   title: {
-    home: "Панель",
+    home: "Главная",
     inbounds: "Входящие",
     clients: "Клиенты",
     outbounds: "Исходящие",

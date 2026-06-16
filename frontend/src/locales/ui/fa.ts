@@ -216,7 +216,7 @@ export default {
   selectHint: "انتخاب…",
   controlPanel: "پنل کنترل",
   nav: {
-    home: "داشبورد",
+    home: "خانه",
     inbounds: "ورودی‌ها",
     clients: "کاربران",
     outbounds: "خروجی‌ها",
@@ -236,7 +236,7 @@ export default {
   superAdmin: "مدیر ارشد",
   logout: "خروج",
   title: {
-    home: "داشبورد",
+    home: "خانه",
     inbounds: "ورودی‌ها",
     clients: "کلاینت‌ها",
     outbounds: "خروجی‌ها",

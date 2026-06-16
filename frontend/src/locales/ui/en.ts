@@ -216,7 +216,7 @@ export default {
   selectHint: "Select…",
   controlPanel: "CONTROL PANEL",
   nav: {
-    home: "Dashboard",
+    home: "Home",
     inbounds: "Inbounds",
     clients: "Clients",
     outbounds: "Outbounds",
@@ -236,7 +236,7 @@ export default {
   superAdmin: "Super administrator",
   logout: "Log out",
   title: {
-    home: "Dashboard",
+    home: "Home",
     inbounds: "Inbounds",
     clients: "Clients",
     outbounds: "Outbounds",

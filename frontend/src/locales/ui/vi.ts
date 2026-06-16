@@ -216,7 +216,7 @@ export default {
   selectHint: "Chọn…",
   controlPanel: "BẢNG ĐIỀU KHIỂN",
   nav: {
-    home: "Bảng điều khiển",
+    home: "Trang chủ",
     inbounds: "Đầu vào",
     clients: "Khách hàng",
     outbounds: "Đầu ra",
@@ -236,7 +236,7 @@ export default {
   superAdmin: "Quản trị viên cấp cao",
   logout: "Đăng xuất",
   title: {
-    home: "Tổng quan",
+    home: "Trang chủ",
     inbounds: "Inbound",
     clients: "Khách hàng",
     outbounds: "Outbound",

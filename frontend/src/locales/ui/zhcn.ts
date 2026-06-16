@@ -216,7 +216,7 @@ export default {
   selectHint: "选择…",
   controlPanel: "控制面板",
   nav: {
-    home: "仪表盘",
+    home: "首页",
     inbounds: "入站管理",
     clients: "用户管理",
     outbounds: "出站管理",
@@ -236,7 +236,7 @@ export default {
   superAdmin: "超级管理员",
   logout: "退出登录",
   title: {
-    home: "仪表盘",
+    home: "首页",
     inbounds: "入站",
     clients: "客户端",
     outbounds: "出站",
@@ -402,7 +402,7 @@ export default {
   tighterSpacing: "表格更紧凑的间距",
   saveSettings: "保存设置",
   customize: "自定义",
-  tilesTitle: "仪表盘磁贴",
+  tilesTitle: "首页磁贴",
   grpStats: "统计",
   grpCharts: "图表",
   grpMonitors: "监控",
