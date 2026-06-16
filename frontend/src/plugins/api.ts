@@ -64,6 +64,9 @@ if ((import.meta as any).env?.DEV) {
       return await builtin(config)
     } catch (err) {
       if (axios.isCancel(err)) throw err
+      // 只在网络层失败（拿不到响应，如后端没起）时用 mock 兜底；
+      // HTTP 4xx/5xx 是有响应的真实故障，照常抛出，避免被假数据掩盖
+      if (axios.isAxiosError(err) && err.response) throw err
       const { getMock } = await import('./mock')
       const m = getMock(config.url || '', config.params)
       if (m) return { data: m, status: 200, statusText: 'OK (mock)', headers: {}, config, request: {} } as any
