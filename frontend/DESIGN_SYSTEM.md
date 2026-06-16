@@ -16,7 +16,7 @@ src/
 ├─ components/
 │  ├─ ui/               # 全部基础组件(本文第 4-9 节)
 │  │  └─ icons.ts       # 描边图标注册表(name → SVG path)
-│  └─ charts/           # 纯 SVG 图表(第 10 节)
+│  └─ charts/           # 图表组件(ECharts,第 10 节)
 ├─ layouts/
 │  ├─ default/          # 应用外壳:Sidebar / Topbar / LangMenu / Default
 │  └─ drawers/          # 业务弹层(Stats/Qr/Logs/Backup/Editor… 第 11 节)
@@ -199,7 +199,9 @@ const save = async () => {
 
 ---
 
-## 10. 图表（`components/charts/`,纯 SVG、随主题）
+## 10. 图表（`components/charts/`,ECharts、随主题）
+
+底层 **ECharts**(`echarts/core` 按需引入 + `SVGRenderer`,模块注册在 `plugins/echarts.ts`)。各图表共用 `charts/useChart.ts`:`shallowRef` 存实例、`ResizeObserver` 跟容器尺寸、`MutationObserver` 跟 `data-theme` 重渲染、卸载时 `dispose`;配色经 `resolveColor/cssVar/withAlpha` 从 CSS 变量解析(ECharts 不认 `var()`)。**加新图表类型** → 先在 `echarts.ts` `use()` 注册对应 charts/components 模块,再复用 `useChart`。`BarMini` 例外,是纯 CSS 进度条。
 
 | 组件 | Props |
 |---|---|
