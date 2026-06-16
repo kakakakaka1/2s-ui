@@ -14,7 +14,7 @@
     @close="clashEditor = false"
   />
 
-  <div class="page-stack-lg fade-up" style="max-width: 760px;">
+  <div class="page-stack-lg fade-up" style="max-width: 1040px;">
     <!-- page tabs + actions -->
     <div class="head-row">
       <Tabs v-model="tab" page :mb="0" :tabs="tabItems" style="border-bottom: none; flex: 1 1 auto; min-width: 0;" />
@@ -41,7 +41,7 @@
     </div>
 
     <!-- ===================== Interface ===================== -->
-    <SettingsGroup v-if="tab === 'interface'">
+    <SettingsGroup v-if="tab === 'interface'" grid>
       <SRow :label="$t('setting.addr')">
         <input class="input mono" v-model="settings.webListen" placeholder="0.0.0.0" />
       </SRow>
@@ -63,21 +63,18 @@
       <SRow :label="$t('setting.acmeEmail')" :hint="$t('setting.acmeHint')">
         <input class="input mono" v-model="settings.webAcmeEmail" placeholder="you@example.com" />
       </SRow>
-      <div class="srow-btn">
-        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.webDomain" @click="issueCert">
+      <div class="srow-btn sg-span">
+        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.webDomain" @click="issueCert('web')">
           <Ico name="shield" :size="15" /> {{ $t('setting.issueCert') }}
         </Btn>
       </div>
       <template v-if="settings.webNginx !== 'true'">
-        <ToggleRow v-model="webAcme" :label="$t('setting.autoCert')" />
-        <template v-if="!webAcme">
-          <SRow :label="$t('setting.sslKey')">
-            <input class="input mono" v-model="settings.webKeyFile" placeholder="/path/key.pem" />
-          </SRow>
-          <SRow :label="$t('setting.sslCert')">
-            <input class="input mono" v-model="settings.webCertFile" placeholder="/path/cert.pem" />
-          </SRow>
-        </template>
+        <SRow :label="$t('setting.sslKey')">
+          <input class="input mono" v-model="settings.webKeyFile" placeholder="/path/key.pem" />
+        </SRow>
+        <SRow :label="$t('setting.sslCert')">
+          <input class="input mono" v-model="settings.webCertFile" placeholder="/path/cert.pem" />
+        </SRow>
       </template>
       <SRow :label="$t('setting.webUri')">
         <input class="input mono" v-model="settings.webURI" placeholder="https://panel.example.com/app/" />
@@ -94,7 +91,7 @@
     </SettingsGroup>
 
     <!-- ===================== Subscription ===================== -->
-    <SettingsGroup v-else-if="tab === 'sub'">
+    <SettingsGroup v-else-if="tab === 'sub'" grid>
       <ToggleRow v-model="subEncode" :label="$t('setting.subEncode')" />
       <ToggleRow v-model="subShowInfo" :label="$t('setting.subInfo')" />
       <SRow :label="$t('setting.addr')">
@@ -103,20 +100,22 @@
       <SRow :label="$t('setting.port')">
         <input class="input mono" type="number" min="1" v-model.number="subPort" />
       </SRow>
-      <ToggleRow v-model="subAcme" :label="$t('setting.autoCert')" />
-      <SRow v-if="subAcme" :label="$t('setting.acmeEmail')" :hint="$t('setting.acmeHint')">
-        <input class="input mono" v-model="settings.subAcmeEmail" placeholder="you@example.com" />
-      </SRow>
-      <template v-else>
-        <SRow :label="$t('setting.sslKey')">
-          <input class="input mono" v-model="settings.subKeyFile" placeholder="/path/key.pem" />
-        </SRow>
-        <SRow :label="$t('setting.sslCert')">
-          <input class="input mono" v-model="settings.subCertFile" placeholder="/path/cert.pem" />
-        </SRow>
-      </template>
       <SRow :label="$t('setting.domain')">
         <input class="input mono" v-model="settings.subDomain" placeholder="sub.example.com" />
+      </SRow>
+      <SRow :label="$t('setting.acmeEmail')" :hint="$t('setting.acmeHint')">
+        <input class="input mono" v-model="settings.subAcmeEmail" placeholder="you@example.com" />
+      </SRow>
+      <div class="srow-btn sg-span">
+        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.subDomain" @click="issueCert('sub')">
+          <Ico name="shield" :size="15" /> {{ $t('setting.issueCert') }}
+        </Btn>
+      </div>
+      <SRow :label="$t('setting.sslKey')">
+        <input class="input mono" v-model="settings.subKeyFile" placeholder="/path/key.pem" />
+      </SRow>
+      <SRow :label="$t('setting.sslCert')">
+        <input class="input mono" v-model="settings.subCertFile" placeholder="/path/cert.pem" />
       </SRow>
       <SRow :label="$t('setting.path')">
         <input class="input mono" v-model="settings.subPath" />
@@ -447,19 +446,28 @@ const detectNginx = async () => {
 }
 
 // 用 acme.sh 申请证书:无 nginx 走 standalone、面板自身加载证书;有 nginx 走 nginx 模式、证书给 nginx
-const issueCert = async () => {
-  if (!settings.value.webDomain) return
+const issueCert = async (scope: 'web' | 'sub' = 'web') => {
+  const isWeb = scope === 'web'
+  const domain = isWeb ? settings.value.webDomain : settings.value.subDomain
+  if (!domain) return
   loading.value = true
   const r = await HttpUtils.post('api/issueCert', {
-    domain: settings.value.webDomain,
-    email: settings.value.webAcmeEmail,
-    nginx: settings.value.webNginx === 'true' ? 'true' : 'false',
+    domain,
+    email: isWeb ? settings.value.webAcmeEmail : settings.value.subAcmeEmail,
+    // 订阅没有 nginx 选项，统一走 standalone 模式
+    nginx: isWeb && settings.value.webNginx === 'true' ? 'true' : 'false',
   })
   if (r.success && r.obj) {
-    if (settings.value.webNginx !== 'true') {
-      settings.value.webCertFile = r.obj.certFile
-      settings.value.webKeyFile = r.obj.keyFile
-      settings.value.webCertMode = ''
+    if (isWeb) {
+      if (settings.value.webNginx !== 'true') {
+        settings.value.webCertFile = r.obj.certFile
+        settings.value.webKeyFile = r.obj.keyFile
+        settings.value.webCertMode = ''
+      }
+    } else {
+      settings.value.subCertFile = r.obj.certFile
+      settings.value.subKeyFile = r.obj.keyFile
+      settings.value.subCertMode = ''
     }
     push.success({
       title: i18n.global.t('success'),
@@ -470,15 +478,7 @@ const issueCert = async () => {
   loading.value = false
 }
 
-const webAcme = computed({
-  get: () => { return settings.value.webCertMode == "acme" },
-  set: (v: boolean) => { settings.value.webCertMode = v ? "acme" : "" }
-})
-
-const subAcme = computed({
-  get: () => { return settings.value.subCertMode == "acme" },
-  set: (v: boolean) => { settings.value.subCertMode = v ? "acme" : "" }
-})
+// 证书统一走「手动文件 / acme.sh 申请」，不再提供面板内置自动 ACME 开关
 
 const subEncode = computed({
   get: () => { return settings.value.subEncode == "true" },
