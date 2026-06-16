@@ -21,7 +21,7 @@
           @click.prevent="$emit('toggle', w.id)"
         >
           <span :style="{ flex: 1, color: show[w.id] ? 'var(--text)' : 'var(--text-3)', fontSize: '13px', fontWeight: 600 }">{{ $t('ui.' + w.k) }}</span>
-          <Toggle :model-value="!!show[w.id]" :scale="0.85" @update:model-value="$emit('toggle', w.id)" />
+          <Toggle :model-value="!!show[w.id]" :scale="0.85" />
         </label>
       </div>
     </div>
