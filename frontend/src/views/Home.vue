@@ -15,12 +15,12 @@
 
     <!-- top overview: resources / server / key metrics -->
     <div v-if="topCount > 0" class="top-grid" :style="{ '--top-cols': topCount }">
-      <DPanel v-if="tiles.resources" :title="$t('ui.systemResources')" :sub="$t('ui.realtimeUtil')">
+      <DPanel v-if="tiles.resources" :title="$t('ui.systemResources')">
         <div class="res-grid">
-          <ResBar :label="$t('ui.cpu')" :value="gCpu.pct" color="var(--brand)" />
-          <ResBar :label="$t('ui.memory')" :value="gMem.pct" color="var(--cyan)" :sub="gMem.sub" />
-          <ResBar :label="$t('ui.disk')" :value="gDsk.pct" color="var(--violet)" :sub="gDsk.sub" />
-          <ResBar :label="$t('ui.swap')" :value="gSwp.pct" color="var(--emerald)" :sub="gSwp.sub" />
+          <Gauge :label="$t('ui.cpu')" :value="gCpu.pct" color="var(--brand)" :size="76" />
+          <Gauge :label="$t('ui.memory')" :value="gMem.pct" color="var(--cyan)" :sub="gMem.sub" :size="76" />
+          <Gauge :label="$t('ui.disk')" :value="gDsk.pct" color="var(--violet)" :sub="gDsk.sub" :size="76" />
+          <Gauge :label="$t('ui.swap')" :value="gSwp.pct" color="var(--emerald)" :sub="gSwp.sub" :size="76" />
         </div>
       </DPanel>
 
@@ -42,7 +42,7 @@
         </div>
       </DPanel>
 
-      <DPanel v-if="tiles.keymetrics" :title="$t('ui.keymetrics')" :sub="$t('ui.keymetricsSub')">
+      <DPanel v-if="tiles.keymetrics" :title="$t('ui.keymetrics')">
         <template #right>
           <Chip color="emerald" dot>{{ $t('ui.live') }}</Chip>
         </template>
@@ -154,7 +154,7 @@ import AreaChart from '@/components/charts/AreaChart.vue'
 import Donut from '@/components/charts/Donut.vue'
 import TilesMenu from './dashboard/TilesMenu.vue'
 import Legend from './dashboard/Legend.vue'
-import ResBar from './dashboard/ResBar.vue'
+import Gauge from '@/components/charts/Gauge.vue'
 import MetricItem from './dashboard/MetricItem.vue'
 import LogsModal from '@/layouts/drawers/LogsModal.vue'
 import BackupModal from '@/layouts/drawers/BackupModal.vue'
@@ -315,8 +315,8 @@ const restartSb = async () => {
 
 <style scoped>
 .top-grid { display: grid; grid-template-columns: repeat(var(--top-cols, 3), minmax(0, 1fr)); gap: 14px; }
-.res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
-.km-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 14px; }
+.res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; height: 100%; align-content: center; }
+.km-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 14px; height: 100%; align-content: center; }
 .srv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px 14px; padding: 16px 20px; }
 .srv-k { font-size: 10.5px; color: var(--text-3); margin-bottom: 3px; }
 .srv-v { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
