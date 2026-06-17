@@ -25,7 +25,7 @@ function applyDir(locale: string) {
 
 const AppStore = defineStore('App', {
   state: () => ({
-    theme: (localStorage.getItem(THEME_KEY) as Theme) || 'dark',
+    theme: (localStorage.getItem(THEME_KEY) as Theme) || 'system',
     sidebarOpen: false, // mobile overlay sidebar
   }),
   getters: {
