@@ -19,7 +19,7 @@
 
   <Teleport to="body">
     <template v-if="open">
-      <div class="sel-scrim" @click="close" @wheel.prevent />
+      <div class="sel-scrim" @click="close" />
       <div :id="panelId" ref="panel" class="card sel-panel hide-scroll" role="listbox" :style="panelStyle" @mouseleave="hl = -1">
         <template v-for="(it, i) in items" :key="i">
           <div v-if="it.group !== undefined" class="sel-group">{{ it.group }}</div>
@@ -162,6 +162,7 @@ const toggle = async () => {
   // first ArrowDown lands on the first enabled option via move()
   hl.value = items.value.findIndex((it) => it.group === undefined && isActive(it))
   open.value = true
+  bindWin()
   releaseEsc = pushOverlay(close)
   await nextTick()
   panel.value?.querySelector<HTMLElement>('.sel-option.active')?.scrollIntoView({ block: 'nearest' })
@@ -170,6 +171,7 @@ const toggle = async () => {
 const close = () => {
   if (!open.value) return
   open.value = false
+  unbindWin()
   releaseEsc?.()
   releaseEsc = undefined
   // mouse picks focus the option button; hand focus back so an enclosing
@@ -217,11 +219,19 @@ const onWin = (e?: Event) => {
   if (e?.type === 'scroll' && panel.value && e.target instanceof Node && panel.value.contains(e.target)) return
   close()
 }
-window.addEventListener('resize', onWin)
-window.addEventListener('scroll', onWin, true)
-onBeforeUnmount(() => {
+// only listen while the panel is open: this component is reused 100+ times,
+// and a permanently-bound capture-phase scroll handler per instance would fire
+// on every page scroll for nothing
+const bindWin = () => {
+  window.addEventListener('resize', onWin)
+  window.addEventListener('scroll', onWin, true)
+}
+const unbindWin = () => {
   window.removeEventListener('resize', onWin)
   window.removeEventListener('scroll', onWin, true)
+}
+onBeforeUnmount(() => {
+  unbindWin()
   releaseEsc?.()
 })
 </script>
