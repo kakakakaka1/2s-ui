@@ -182,6 +182,10 @@ const status = ref<any>({})
 const sys = ref<any>({})
 const sbd = computed(() => status.value.sbd ?? {})
 const sbVersion = computed(() => sbd.value.version || '—')
+
+// 轮询周期:setInterval 间隔与"增量→每秒速率"换算共用,避免散落魔法数字
+const POLL_MS = 2000
+const POLL_SEC = POLL_MS / 1000
 const BUF = 40
 const buf = reactive({
   netIn: [] as number[],
@@ -200,12 +204,17 @@ const poll = async () => {
   if (!msg.success || !msg.obj) return
   status.value = { ...status.value, ...msg.obj }
   const net = msg.obj.net
-  if (net) {
+  // net.recv/sent 可能缺失(后端取不到 IO 计数器时返回空对象)
+  if (net && Number.isFinite(net.recv) && Number.isFinite(net.sent)) {
+    // 有基准才出速率;恢复后的首个有效拍只重建基准,避免把跨缺口的累计增量当作单拍速率
     if (lastNet) {
-      push(buf.netIn, Math.max(0, (net.recv - lastNet.recv) / 2))
-      push(buf.netOut, Math.max(0, (net.sent - lastNet.sent) / 2))
+      push(buf.netIn, Math.max(0, (net.recv - lastNet.recv) / POLL_SEC))
+      push(buf.netOut, Math.max(0, (net.sent - lastNet.sent) / POLL_SEC))
     }
     lastNet = { recv: net.recv, sent: net.sent }
+  } else {
+    // 计数器中断:作废基准,使恢复后首拍走上面"只重建基准"分支,既挡住 NaN 也避免速率尖峰
+    lastNet = null
   }
   push(buf.users, data.onlines.user?.length ?? 0)
   push(buf.inbounds, data.onlines.inbound?.length ?? 0)
@@ -221,7 +230,7 @@ onMounted(() => {
   loadSys()
   poll()
   loadChanges()
-  pollId = setInterval(poll, 2000)
+  pollId = setInterval(poll, POLL_MS)
 })
 onBeforeUnmount(() => { if (pollId) clearInterval(pollId) })
 
@@ -233,7 +242,7 @@ const onlineInbounds = computed(() => data.onlines.inbound?.length ?? 0)
 const totalDown = computed(() => data.clients.reduce((a: number, c: any) => a + (c.down ?? 0), 0))
 const totalUp = computed(() => data.clients.reduce((a: number, c: any) => a + (c.up ?? 0), 0))
 const trafficAxis = computed(() => {
-  const span = (buf.netIn.length - 1) * 2
+  const span = (buf.netIn.length - 1) * POLL_SEC
   if (span <= 0) return []
   return [`-${span}s`, `-${Math.round(span * 0.75)}s`, `-${Math.round(span * 0.5)}s`, `-${Math.round(span * 0.25)}s`, 'now']
 })
