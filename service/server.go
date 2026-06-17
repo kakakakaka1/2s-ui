@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -134,6 +135,18 @@ func (s *ServerService) GetNetInfo() map[string]interface{} {
 	return info
 }
 
+// singboxVersion is resolved once from build info (compile-time constant).
+var singboxVersion = func() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, dep := range info.Deps {
+			if dep.Path == "github.com/sagernet/sing-box" {
+				return dep.Version
+			}
+		}
+	}
+	return ""
+}()
+
 func (s *ServerService) GetSingboxInfo() map[string]interface{} {
 	var rtm runtime.MemStats
 	runtime.ReadMemStats(&rtm)
@@ -144,6 +157,7 @@ func (s *ServerService) GetSingboxInfo() map[string]interface{} {
 	}
 	return map[string]interface{}{
 		"running": isRunning,
+		"version": singboxVersion,
 		"stats": map[string]interface{}{
 			"NumGoroutine": uint32(runtime.NumGoroutine()),
 			"Alloc":        rtm.Alloc,
