@@ -13,9 +13,27 @@
 
     <LangMenu />
 
-    <Btn icon :title="$t('ui.theme')" @click="app.toggleTheme()">
-      <Ico :name="app.theme === 'dark' ? 'sun' : 'moon'" :size="17" />
-    </Btn>
+    <Pop :width="184">
+      <template #trigger="{ toggle }">
+        <Btn icon :title="$t('ui.theme')" @click="toggle">
+          <Ico :name="themeIcon" :size="17" />
+        </Btn>
+      </template>
+      <template #default="{ close }">
+        <button
+          v-for="t in THEMES"
+          :key="t.value"
+          type="button"
+          class="pop-item"
+          :class="{ active: app.theme === t.value }"
+          @click="app.setTheme(t.value); close()"
+        >
+          <Ico :name="t.icon" :size="16" />
+          <span style="flex: 1;">{{ $t(t.label) }}</span>
+          <Ico v-if="app.theme === t.value" name="check" :size="15" />
+        </button>
+      </template>
+    </Pop>
 
     <div class="topbar-divider" />
 
@@ -25,7 +43,6 @@
           <span class="user-avatar">{{ initials }}</span>
           <span class="user-meta">
             <span class="user-name">{{ username }}</span>
-            <span class="user-role">{{ $t('ui.superAdmin') }}</span>
           </span>
           <Ico class="user-caret" name="chevronDown" :size="14" />
         </button>
@@ -46,13 +63,20 @@ import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Pop from '@/components/ui/Pop.vue'
 import LangMenu from './LangMenu.vue'
-import AppStore from '@/store/modules/app'
+import AppStore, { type Theme } from '@/store/modules/app'
 import { logout } from '@/plugins/httputil'
 
 const app = AppStore()
 const route = useRoute()
 
 const pageId = computed(() => String(route.name).replace('pages.', '') || 'home')
+
+const THEMES: { value: Theme; label: string; icon: string }[] = [
+  { value: 'light', label: 'ui.themeLight', icon: 'sun' },
+  { value: 'dark', label: 'ui.themeDark', icon: 'moon' },
+  { value: 'system', label: 'ui.themeSystem', icon: 'monitor' },
+]
+const themeIcon = computed(() => THEMES.find((t) => t.value === app.theme)?.icon ?? 'moon')
 
 const username = computed(() => localStorage.getItem('2sui-user') || 'admin')
 const initials = computed(() => username.value.slice(0, 2).toUpperCase())
@@ -74,8 +98,7 @@ const doLogout = () => logout()
   color: #fff; font-weight: 700; font-size: 11.5px;
 }
 .user-meta { text-align: start; line-height: 1.15; }
-.user-name { display: block; font-size: 12.5px; font-weight: 700; color: var(--text); }
-.user-role { display: block; font-size: 10.5px; font-weight: 600; color: var(--text-3); }
+.user-name { display: block; font-size: 13px; font-weight: 700; color: var(--text); }
 @media (max-width: 820px) {
   .user-meta, .user-caret { display: none; }
   .user-chip { height: 38px; padding: 0 5px; }

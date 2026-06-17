@@ -1,13 +1,22 @@
 import { defineStore } from 'pinia'
 import { i18n } from '@/locales'
 
-export type Theme = 'dark' | 'light'
+export type Theme = 'dark' | 'light' | 'system'
+export type ResolvedTheme = 'dark' | 'light'
 
 const THEME_KEY = '2sui-theme'
 const RTL_LOCALES = new Set(['fa'])
 
+const darkMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+// 'system' tracks the OS preference; any other value is taken literally
+function resolveTheme(theme: Theme): ResolvedTheme {
+  if (theme === 'system') return darkMedia.matches ? 'dark' : 'light'
+  return theme
+}
+
 function applyTheme(theme: Theme) {
-  document.documentElement.dataset.theme = theme
+  document.documentElement.dataset.theme = resolveTheme(theme)
 }
 
 function applyDir(locale: string) {
@@ -21,16 +30,27 @@ const AppStore = defineStore('App', {
   }),
   getters: {
     isRtl: () => RTL_LOCALES.has(i18n.global.locale.value),
+    // the dark/light actually painted (resolves 'system' to the OS preference)
+    resolvedTheme: (state): ResolvedTheme => resolveTheme(state.theme),
   },
   actions: {
     init() {
       applyTheme(this.theme)
       applyDir(i18n.global.locale.value)
+      // re-paint when the OS flips its theme, but only while following the system
+      darkMedia.addEventListener('change', () => {
+        if (this.theme === 'system') applyTheme('system')
+      })
+    },
+    setTheme(theme: Theme) {
+      this.theme = theme
+      localStorage.setItem(THEME_KEY, theme)
+      applyTheme(theme)
     },
     toggleTheme() {
-      this.theme = this.theme === 'dark' ? 'light' : 'dark'
-      localStorage.setItem(THEME_KEY, this.theme)
-      applyTheme(this.theme)
+      // cycle light → dark → system (kept for any non-menu callers)
+      const order: Theme[] = ['light', 'dark', 'system']
+      this.setTheme(order[(order.indexOf(this.theme) + 1) % order.length])
     },
     setLocale(l: string) {
       i18n.global.locale.value = l as any
