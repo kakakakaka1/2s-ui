@@ -1,141 +1,126 @@
 <template>
-    <TlsVue 
-    v-model="modal.visible"
-    :visible="modal.visible"
-    :id="modal.id"
-    :data="modal.data"
-    @close="closeModal"
-    @save="saveModal"
+  <TlsDrawer
+    :visible="drawer.visible"
+    :id="drawer.id"
+    :data="drawer.data"
+    @close="drawer.visible = false"
   />
-  <v-row>
-    <v-col cols="12" justify="center" align="center">
-      <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
-    </v-col>
-  </v-row>
-  <v-row>
-    <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>tlsConfigs" :key="item.id">
-      <v-card rounded="xl" elevation="5" min-width="200" :title="item.name">
-        <v-card-subtitle style="margin-top: -15px;">
-          {{ item.server?.server_name?.length>0 ? item.server.server_name : "-" }}
-        </v-card-subtitle>
-        <v-card-text>
-          <v-row>
-            <v-col>{{ $t('pages.inbounds') }}</v-col>
-            <v-col>
-              <template v-if="tlsInbounds(item.id).length>0">
-                <v-tooltip activator="parent" dir="ltr" location="bottom">
-                  <span v-for="i in tlsInbounds(item.id)">{{ i }}<br /></span>
-                </v-tooltip>
-                {{ tlsInbounds(item.id).length }}
-              </template>
-              <template v-else>-</template>
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>ACME</v-col>
-            <v-col>
-              {{ $t(item.server?.acme == undefined ? 'no' : 'yes') }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>ECH</v-col>
-            <v-col>
-              {{ $t(item.server?.ech == undefined ? 'no' : 'yes') }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>Reality</v-col>
-            <v-col>
-              {{ $t(item.server?.reality == undefined ? 'no' : 'yes') }}
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-divider></v-divider>
-        <v-card-actions style="padding: 0;">
-          <v-btn icon="mdi-file-edit" @click="showModal(item.id)">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.edit')"></v-tooltip>
-          </v-btn>
-          <v-btn v-if="tlsInbounds(item.id).length == 0" icon="mdi-file-remove" style="margin-inline-start:0;" color="warning" @click="delOverlay[index] = true">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.del')"></v-tooltip>
-          </v-btn>
-          <v-overlay
-            v-model="delOverlay[index]"
-            contained
-            class="align-center justify-center"
-          >
-            <v-card :title="$t('actions.del')" rounded="lg">
-              <v-divider></v-divider>
-              <v-card-text>{{ $t('confirm') }}</v-card-text>
-              <v-card-actions>
-                <v-btn color="error" variant="outlined" @click="delTls(item.id)">{{ $t('yes') }}</v-btn>
-                <v-btn color="success" variant="outlined" @click="delOverlay[index] = false">{{ $t('no') }}</v-btn>
-              </v-card-actions>
-            </v-card>
-          </v-overlay>
-          <v-btn icon="mdi-content-duplicate" @click="clone(item)">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.clone')"></v-tooltip>
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-col>
-  </v-row>
+
+  <!-- delete confirmation -->
+  <Modal :open="del.visible" :title="$t('actions.del')" :width="380" @close="del.visible = false">
+    <div style="padding: 18px; font-size: 13.5px;">{{ $t('confirm') }}</div>
+    <template #footer>
+      <Btn @click="del.visible = false">{{ $t('no') }}</Btn>
+      <Btn style="color: var(--rose);" :loading="deleting" @click="confirmDelete">
+        <Ico name="trash" :size="15" /> {{ $t('yes') }}
+      </Btn>
+    </template>
+  </Modal>
+
+  <div class="page-stack fade-up">
+    <div class="toolbar" style="justify-content: center;">
+      <Btn variant="primary" sm @click="openDrawer(0)">
+        <Ico name="plus" :size="15" /> {{ $t('actions.add') }}
+      </Btn>
+    </div>
+
+    <div class="entity-grid">
+      <EntityCard
+        v-for="item in tlsConfigs"
+        :key="item.id"
+        :title="item.name"
+        :type="item.server?.server_name?.length > 0 ? item.server.server_name : $t('ui.none')"
+        color="var(--brand)"
+        icon="tls"
+        :rows="cardRows(item)"
+      >
+        <template #actions>
+          <CardBtn icon="edit" :title="$t('actions.edit')" @click="openDrawer(item.id)" />
+          <CardBtn
+            v-if="tlsInbounds(item.id).length == 0"
+            icon="trash"
+            border
+            danger
+            :title="$t('actions.del')"
+            @click="askDelete(item.id)"
+          />
+          <CardBtn icon="clone" border :title="$t('actions.clone')" @click="clone(item)" />
+        </template>
+      </EntityCard>
+    </div>
+  </div>
 </template>
 
 <script lang="ts" setup>
-import TlsVue from '@/layouts/modals/Tls.vue'
-import Data from '@/store/modules/data'
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import Data from '@/store/modules/data'
 import { Inbound } from '@/types/inbounds'
-import { tls } from '@/types/tls'
+import Btn from '@/components/ui/Btn.vue'
+import Ico from '@/components/ui/Ico.vue'
+import Modal from '@/components/ui/Modal.vue'
+import CardBtn from '@/components/ui/CardBtn.vue'
+import EntityCard, { EntityRow } from '@/components/ui/EntityCard.vue'
+import TlsDrawer from '@/layouts/drawers/tls/TlsDrawer.vue'
 
-const tlsConfigs = computed((): any[] => {
-  return Data().tlsConfigs
-})
+const { t } = useI18n({ useScope: 'global' })
+const dataStore = Data()
 
-const inbounds = computed((): Inbound[] => {
-  return Data().inbounds
-})
+// ---------------- store data ----------------
+const tlsConfigs = computed((): any[] => dataStore.tlsConfigs)
 
-const tlsInbounds = (id: number): string[] => {
-  return inbounds.value.filter(i => i.tls_id == id).map(i => i.tag)  
+const inbounds = computed((): Inbound[] => dataStore.inbounds)
+
+const tlsInbounds = (id: number): string[] =>
+  inbounds.value.filter((i) => i.tls_id == id).map((i) => i.tag)
+
+// ---------------- card rows ----------------
+const cardRows = (item: any): EntityRow[] => [
+  {
+    k: t('pages.inbounds'),
+    v: tlsInbounds(item.id).length > 0 ? tlsInbounds(item.id).length : t('ui.none'),
+  },
+  {
+    k: 'ACME',
+    v: t(item.server?.acme == undefined ? 'no' : 'yes'),
+    color: item.server?.acme != undefined ? 'var(--emerald)' : undefined,
+  },
+  { k: 'ECH', v: t(item.server?.ech == undefined ? 'no' : 'yes') },
+  {
+    k: 'Reality',
+    v: t(item.server?.reality == undefined ? 'no' : 'yes'),
+    color: item.server?.reality != undefined ? 'var(--brand)' : undefined,
+  },
+]
+
+// ---------------- drawer / clone ----------------
+const drawer = ref({ visible: false, id: 0, data: '' })
+const openDrawer = (id: number) => {
+  drawer.value.id = id
+  drawer.value.data = id == 0 ? '{}' : JSON.stringify(tlsConfigs.value.findLast((c) => c.id == id))
+  drawer.value.visible = true
 }
 
-const modal = ref({
-  visible: false,
-  id: 0,
-  data: "",
-})
-
-const delOverlay = ref(new Array<boolean>(tlsConfigs.value.length).fill(false))
-
-const showModal = (id: number) => {
-  modal.value.id = id
-  modal.value.data = id == 0 ? '{}' : JSON.stringify(tlsConfigs.value.findLast(t => t.id == id))
-  modal.value.visible = true
-}
-const clone = (obj: any) => {
-  let data = JSON.parse(JSON.stringify(obj))
+const clone = async (obj: any) => {
+  const data = JSON.parse(JSON.stringify(obj))
   data.id = 0
-  while (tlsConfigs.value.findIndex(t => t.name == data.name) != -1){
-    data.name += "-copy"
+  while (tlsConfigs.value.findIndex((c) => c.name == data.name) != -1) {
+    data.name += '-copy'
   }
-  saveModal(data)
-}
-const closeModal = () => {
-  modal.value.visible = false
-}
-const saveModal = async (data:tls) => {
-  const success = await Data().save("tls", data.id > 0 ? "edit" : "new", data)
-  if (success) modal.value.visible = false
+  await Data().save('tls', 'new', data)
 }
 
-const delTls = async (id: number) => {
-  const index = tlsConfigs.value.findIndex(t => t.id == id)
-  const success = await Data().save("tls", "del", id)
-  if (success) delOverlay.value[index] = false
+// ---------------- delete (with confirm) ----------------
+const del = ref({ visible: false, id: 0 })
+const deleting = ref(false)
+const askDelete = (id: number) => {
+  del.value = { visible: true, id }
 }
-
+const confirmDelete = async () => {
+  if (del.value.id === 0) return
+  deleting.value = true
+  const success = await Data().save('tls', 'del', del.value.id)
+  if (success) del.value.visible = false
+  deleting.value = false
+}
 </script>

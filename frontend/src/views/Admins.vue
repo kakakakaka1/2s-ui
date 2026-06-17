@@ -1,80 +1,71 @@
 <template>
-  <AdminModal 
-    v-model="editModal.visible"
-    :visible="editModal.visible"
+  <AdminModal
+    :open="editModal.visible"
     :user="editModal.user"
+    :loading="loading"
     @close="closeEditModal"
     @save="saveEditModal"
   />
-  <ChangeModal 
-    v-model="changesModal.visible"
-    :visible="changesModal.visible"
-    :admins="users.map((u:any) => u.username)"
+  <ChangesModal
+    :open="changesModal.visible"
+    :admins="users.map((u: any) => u.username)"
     :actor="changesModal.actor"
     @close="closeChangesModal"
   />
-  <TokenModal 
-    v-model="tokenModal.visible"
-    :visible="tokenModal.visible"
-    @close="closeTokenModal"
-  />
-  <v-row>
-    <v-col cols="12" justify="center" align="center">
-      <v-btn color="primary" @click="showChangesModal('')" style="margin: 0 5px;">{{ $t('admin.changes') }}</v-btn>
-      <v-btn color="primary" @click="showTokenModal()">{{ $t('admin.api.token') }}</v-btn>
-    </v-col>
-  </v-row>
-  <v-row>
-    <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>users" :key="item.id">
-      <v-card rounded="xl" elevation="5" min-width="200" :title="item.username">
-        <v-card-subtitle style="margin-top: -15px;">
-          {{ $t('admin.lastLogin') }}
-        </v-card-subtitle>
-        <v-card-text>
-          <v-row>
-            <v-col>{{ $t('admin.date') }}</v-col>
-            <v-col>
-              {{ item.loginDate }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('admin.time') }}</v-col>
-            <v-col>
-              {{ item.loginTime }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>IP</v-col>
-            <v-col>
-              {{ item.ip }}
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-divider></v-divider>
-        <v-card-actions style="padding: 0;">
-          <v-btn icon="mdi-account-edit" @click="showEditModal(item)">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.edit')"></v-tooltip>
-          </v-btn>
-          <v-btn icon="mdi-list-box-outline" @click="showChangesModal(item.username)">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('admin.changes')"></v-tooltip>
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-col>
-  </v-row>
+  <TokenModal :open="tokenModal.visible" @close="closeTokenModal" />
+
+  <div class="page-stack-lg fade-up">
+    <!-- toolbar -->
+    <div class="toolbar" style="justify-content: center;">
+      <Btn variant="primary" sm @click="showChangesModal('')">{{ $t('ui.changes') }}</Btn>
+      <Btn variant="primary" sm @click="showTokenModal()">{{ $t('ui.apiToken') }}</Btn>
+    </div>
+
+    <!-- admin cards -->
+    <div class="entity-grid">
+      <div v-for="item in users" :key="item.id" class="card admin-card">
+        <div class="admin-head">
+          <Avatar :name="item.username" :size="36" />
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ item.username }}</div>
+            <div style="font-size: 11.5px; color: var(--text-3);">{{ $t('ui.lastLogin') }}</div>
+          </div>
+        </div>
+        <div class="admin-rows">
+          <div class="kv-row">
+            <span class="k">{{ $t('admin.date') }}</span>
+            <span class="v mono">{{ item.loginDate }}</span>
+          </div>
+          <div class="kv-row">
+            <span class="k">{{ $t('admin.time') }}</span>
+            <span class="v mono">{{ item.loginTime }}</span>
+          </div>
+          <div class="kv-row">
+            <span class="k">IP</span>
+            <span class="v mono">{{ item.ip }}</span>
+          </div>
+        </div>
+        <div class="admin-actions">
+          <CardBtn icon="edit" :title="$t('actions.edit')" @click="showEditModal(item)" />
+          <CardBtn icon="list" border :title="$t('ui.changes')" @click="showChangesModal(item.username)" />
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script lang="ts" setup>
-import AdminModal from '@/layouts/modals/Admin.vue'
-import ChangeModal  from '@/layouts/modals/Changes.vue'
-import TokenModal from '@/layouts/modals/Token.vue'
+import AdminModal from '@/layouts/drawers/admin/AdminModal.vue'
+import ChangesModal from '@/layouts/drawers/admin/ChangesModal.vue'
+import TokenModal from '@/layouts/drawers/admin/TokenModal.vue'
 import { i18n } from '@/locales'
 import HttpUtils from '@/plugins/httputil'
-import { Ref, ref, inject, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
+import Btn from '@/components/ui/Btn.vue'
+import Avatar from '@/components/ui/Avatar.vue'
+import CardBtn from '@/components/ui/CardBtn.vue'
 
-const loading:Ref = inject('loading')?? ref(false)
+const loading = ref(false)
 
 const users = ref(<any[]>[])
 
@@ -89,7 +80,8 @@ const loadData = async () => {
   const msg = await HttpUtils.get('api/users')
   loading.value = false
   if (msg.success) {
-    msg.obj.forEach((u:any) => {
+    users.value = []
+    msg.obj.forEach((u: any) => {
       const lastLogin = u.lastLogin.split(" ")
       const localLastLogin = lastLogin.length > 2 ? dateFormatted(Date.parse(lastLogin[0] + " " + lastLogin[1])) : "- -"
       const loginDateTime = localLastLogin.split(" ")
@@ -98,7 +90,7 @@ const loadData = async () => {
         username: u.username,
         loginDate: loginDateTime[0],
         loginTime: loginDateTime[1],
-        ip: lastLogin[2]?? "-",
+        ip: lastLogin[2] ?? "-",
       })
     })
   }
@@ -112,7 +104,7 @@ const dateFormatted = (dt: number): string => {
 
 const editModal = ref({
   visible: false,
-  user: {},
+  user: <any>{},
 })
 
 const showEditModal = (user: any) => {
@@ -123,16 +115,16 @@ const closeEditModal = () => {
   editModal.value.visible = false
   editModal.value.user = {}
 }
-const saveEditModal = async (data:any) => {
-  loading.value=true
-  const response = await HttpUtils.post('api/changePass',data)
-  if(response.success){
+const saveEditModal = async (data: any) => {
+  loading.value = true
+  const response = await HttpUtils.post('api/changePass', data)
+  if (response.success) {
     setTimeout(() => {
-      loading.value=false
+      loading.value = false
       editModal.value.visible = false
     }, 500)
   } else {
-    loading.value=false
+    loading.value = false
   }
 }
 
@@ -159,3 +151,10 @@ const closeTokenModal = () => {
   tokenModal.value.visible = false
 }
 </script>
+
+<style scoped>
+.admin-card { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.admin-head { padding: 14px 15px 4px; display: flex; align-items: center; gap: 11px; }
+.admin-rows { padding: 8px 15px 12px; display: flex; flex-direction: column; }
+.admin-actions { display: flex; border-top: 1px solid var(--line); margin-top: auto; }
+</style>

@@ -1,15 +1,26 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="icon" href="assets/favicon.ico" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="alternate icon" href="assets/favicon.ico" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <script>
     window.BASE_URL = "{{ .BASE_URL }}"
 
     // Dev Mode
     if (window.BASE_URL.charAt(0) === '{') window.BASE_URL = "/app/"
+
+    // apply persisted theme before first paint to avoid a flash
+    try {
+      var t = localStorage.getItem('2sui-theme')
+      // no explicit choice (null/invalid) or 'system' → follow the OS preference
+      if (t !== 'light' && t !== 'dark') t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      document.documentElement.dataset.theme = t
+      var l = localStorage.getItem('locale')
+      if (l === 'fa') document.documentElement.dir = 'rtl'
+    } catch (e) { }
   </script>
   <title>2S-UI</title>
 </head>

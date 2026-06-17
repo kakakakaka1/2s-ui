@@ -1,4 +1,7 @@
+import ui from './ui/zhtw'
+
 export default {
+  ui,
   success: "成功",
   failed: "失敗",
   enable: "啟用",
@@ -178,6 +181,12 @@ export default {
     autoCert: "自動申請憑證 (ACME)",
     acmeEmail: "ACME 信箱 (選填)",
     acmeHint: "需開放 80 連接埠並將網域解析到本機",
+    acmeMigrated: "偵測到舊的自動 ACME 設定，已切換為手動 / acme.sh，請確認憑證續期方式",
+    deployNginx: "已部署 Nginx",
+    deployNginxHint: "由 Nginx 終結 SSL,面板自身僅跑 HTTP;憑證申請給 Nginx 使用",
+    nginxDetected: "已偵測到 Nginx 正在執行",
+    issueCert: "申請憑證 (acme.sh)",
+    issueCertOk: "憑證申請成功",
     webUri: "面板 URI",
     sessionAge: "會話最大連接數",
     trafficAge: "流量最大年齡",

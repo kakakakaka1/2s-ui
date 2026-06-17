@@ -1,160 +1,121 @@
 <template>
-  <OutboundVue 
-    v-model="modal.visible"
-    :visible="modal.visible"
-    :id="modal.id"
-    :data="modal.data"
+  <OutboundDrawer
+    :visible="drawer.visible"
+    :id="drawer.id"
+    :data="drawer.data"
     :tags="outboundTags"
-    @close="closeModal"
+    @close="drawer.visible = false"
   />
-  <OutboundBulk
-    v-model="bulkModal.visible"
-    :visible="bulkModal.visible"
-    :outboundTags="outboundTags"
-    @close="closeBulkModal"
+  <BulkDrawer
+    :visible="bulkVisible"
+    :outbound-tags="outboundTags"
+    @close="bulkVisible = false"
   />
-  <Stats
-    v-model="stats.visible"
+  <StatsModal
     :visible="stats.visible"
     :resource="stats.resource"
     :tag="stats.tag"
-    @close="closeStats"
+    @close="stats.visible = false"
   />
-  <v-row justify="center" align="center">
-    <v-col cols="auto">
-      <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
-    </v-col>
-    <v-col cols="auto">
-      <v-btn color="primary" @click="showBulkModal">{{ $t('actions.addbulk') }}</v-btn>
-    </v-col>
-    <v-col cols="auto">
-      <v-btn
-        color="secondary"
-        variant="outlined"
+
+  <!-- delete confirmation -->
+  <Modal :open="del.visible" :title="$t('actions.del')" :width="380" @close="del.visible = false">
+    <div style="padding: 18px; font-size: 13.5px;">{{ $t('confirm') }}</div>
+    <template #footer>
+      <Btn @click="del.visible = false">{{ $t('no') }}</Btn>
+      <Btn style="color: var(--rose);" :loading="deleting" @click="confirmDelete">
+        <Ico name="trash" :size="15" /> {{ $t('yes') }}
+      </Btn>
+    </template>
+  </Modal>
+
+  <div class="page-stack fade-up">
+    <div class="toolbar" style="justify-content: center;">
+      <Btn variant="primary" sm @click="openDrawer(0)">
+        <Ico name="plus" :size="15" /> {{ $t('actions.add') }}
+      </Btn>
+      <Btn variant="primary" sm @click="bulkVisible = true">
+        <Ico name="upload" :size="15" /> {{ $t('actions.addbulk') }}
+      </Btn>
+      <Btn
+        sm
         :loading="testingAll"
-        append-icon="mdi-speedometer"
         :disabled="testingAll || outbounds.length === 0"
         @click="checkAllOutbounds"
       >
-        {{ $t('actions.testAll') || 'Test all' }}
-      </v-btn>
-    </v-col>
-  </v-row>
-  <v-row>
-    <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>outbounds" :key="item.tag">
-      <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
-        <v-card-subtitle style="margin-top: -15px;">
-          <v-row>
-            <v-col>{{ item.type }}</v-col>
-          </v-row>
-        </v-card-subtitle>
-        <v-card-text>
-          <v-row>
-            <v-col>{{ $t('in.addr') }}</v-col>
-            <v-col>
-              {{ item.server?? '-' }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('in.port') }}</v-col>
-            <v-col>
-              {{ item.server_port?? '-' }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('objects.tls') }}</v-col>
-            <v-col>
-              {{ Object.hasOwn(item,'tls') ? $t(item.tls?.enabled ? 'enable' : 'disable') : '-'  }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('online') }}</v-col>
-            <v-col>
-              <template v-if="onlines.includes(item.tag)">
-                <v-chip density="comfortable" size="small" color="success" variant="flat">{{ $t('online') }}</v-chip>
-              </template>
-              <template v-else>-</template>
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('out.delay') }}</v-col>
-            <v-col>
-              <v-progress-circular
-                v-if="checkResults[item.tag]?.loading"
-                indeterminate
-                size="20"
-              />
-              <v-icon
-                icon="mdi-speedometer"
-                v-else
-                @click="checkOutbound(item.tag)"
-              >
-                <v-tooltip activator="parent" location="top" :text="$t('actions.test')"></v-tooltip>
-              </v-icon>
-              <template v-if="checkResults[item.tag]?.loading == false">
-                <template v-if="checkResults[item.tag]">
-                  <v-chip
-                    v-if="checkResults[item.tag].success"
-                    density="compact"
-                    size="small"
-                    color="success"
-                    variant="flat"
-                  >
-                    {{ checkResults[item.tag].data?.Delay + $t('date.ms') }}
-                  </v-chip>
-                  <v-tooltip v-else location="top" :text="checkResults[item.tag].errorMessage || $t('failed')">
-                    <template v-slot:activator="{ props }">
-                      <v-icon v-bind="props" size="small" color="error" icon="mdi-close-circle" />
-                    </template>
-                  </v-tooltip>
-                </template>
-              </template>
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-divider></v-divider>
-        <v-card-actions style="padding: 0;">
-          <v-btn icon="mdi-file-edit" @click="showModal(item.id)">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.edit')"></v-tooltip>
-          </v-btn>
-          <v-btn icon="mdi-file-remove" style="margin-inline-start:0;" color="warning" @click="delOverlay[index] = true">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.del')"></v-tooltip>
-          </v-btn>
-          <v-overlay
-            v-model="delOverlay[index]"
-            contained
-            class="align-center justify-center"
-          >
-            <v-card :title="$t('actions.del')" rounded="lg">
-              <v-divider></v-divider>
-              <v-card-text>{{ $t('confirm') }}</v-card-text>
-              <v-card-actions>
-                <v-btn color="error" variant="outlined" @click="delOutbound(item.tag)">{{ $t('yes') }}</v-btn>
-                <v-btn color="success" variant="outlined" @click="delOverlay[index] = false">{{ $t('no') }}</v-btn>
-              </v-card-actions>
-            </v-card>
-          </v-overlay>
-          <v-btn icon="mdi-chart-line" @click="showStats(item.tag)" v-if="Data().enableTraffic">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('stats.graphTitle')"></v-tooltip>
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-col>
-  </v-row>
+        <Ico name="chart" :size="15" /> {{ $t('actions.testAll') }}
+      </Btn>
+    </div>
+
+    <div class="entity-grid">
+      <EntityCard
+        v-for="item in outbounds"
+        :key="item.tag"
+        :title="item.tag"
+        :type="item.type"
+        :color="outColor(item.type)"
+        icon="outbound"
+        :rows="cardRows(item)"
+      >
+        <template #chip>
+          <Chip v-if="onlines.includes(item.tag)" color="emerald" dot>{{ $t('online') }}</Chip>
+          <Chip v-else-if="item.server == undefined">{{ $t('ui.coreLbl') }}</Chip>
+          <Chip v-else>{{ $t('ui.none') }}</Chip>
+        </template>
+        <template #actions>
+          <CardBtn icon="edit" :title="$t('actions.edit')" @click="openDrawer(item.id)" />
+          <CardBtn
+            icon="bolt"
+            border
+            :title="$t('ui.delay')"
+            :disabled="checkResults[item.tag]?.loading"
+            @click="checkOutbound(item.tag)"
+          />
+          <CardBtn icon="trash" border danger :title="$t('actions.del')" @click="askDelete(item.tag)" />
+          <CardBtn
+            v-if="dataStore.enableTraffic"
+            icon="chart"
+            border
+            :title="$t('stats.graphTitle')"
+            @click="showStats(item.tag)"
+          />
+        </template>
+      </EntityCard>
+    </div>
+  </div>
 </template>
 
 <script lang="ts" setup>
+import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'
 import HttpUtils from '@/plugins/httputil'
-import OutboundVue from '@/layouts/modals/Outbound.vue'
-import OutboundBulk from '@/layouts/modals/OutboundBulk.vue'
-import Stats from '@/layouts/modals/Stats.vue'
+import { outColor } from '@/plugins/colors'
 import { Outbound } from '@/types/outbounds'
-import { computed, ref } from 'vue'
+import Btn from '@/components/ui/Btn.vue'
+import Ico from '@/components/ui/Ico.vue'
+import Chip from '@/components/ui/Chip.vue'
+import Modal from '@/components/ui/Modal.vue'
+import CardBtn from '@/components/ui/CardBtn.vue'
+import EntityCard, { EntityRow } from '@/components/ui/EntityCard.vue'
+import OutboundDrawer from '@/layouts/drawers/outbound/OutboundDrawer.vue'
+import BulkDrawer from '@/layouts/drawers/outbound/BulkDrawer.vue'
+import StatsModal from '@/layouts/drawers/StatsModal.vue'
 
+const { t } = useI18n({ useScope: 'global' })
+const dataStore = Data()
+
+// ---------------- store data ----------------
+const outbounds = computed((): Outbound[] => <Outbound[]>dataStore.outbounds)
+
+const outboundTags = computed((): string[] => [
+  ...dataStore.outbounds?.map((o: Outbound) => o.tag),
+  ...dataStore.endpoints?.map((e: any) => e.tag),
+])
+
+const onlines = computed(() => dataStore.onlines.outbound ?? [])
+
+// ---------------- delay check (legacy logic) ----------------
 interface CheckResult {
   loading?: boolean
   success: boolean
@@ -171,7 +132,7 @@ const checkOutbound = async (tag: string) => {
   const errorMessage = success ? undefined : (msg.obj?.Error ?? msg.msg ?? '')
   checkResults.value = {
     ...checkResults.value,
-    [tag]: { loading: false, success, data: msg.obj ?? null, errorMessage }
+    [tag]: { loading: false, success, data: msg.obj ?? null, errorMessage },
   }
 }
 
@@ -188,63 +149,57 @@ const checkAllOutbounds = async () => {
   }
 }
 
-const outbounds = computed((): Outbound[] => {
-  return <Outbound[]> Data().outbounds
-})
+// ---------------- card rows ----------------
+const cardRows = (item: any): EntityRow[] => [
+  { k: t('in.addr'), v: item.server ?? t('ui.none'), mono: !!item.server },
+  { k: t('in.port'), v: item.server_port ?? t('ui.none'), mono: !!item.server_port },
+  {
+    k: t('objects.tls'),
+    v: Object.hasOwn(item, 'tls') ? t(item.tls?.enabled ? 'enable' : 'disable') : t('ui.none'),
+    color: item.tls?.enabled ? 'var(--emerald)' : undefined,
+  },
+  delayRow(item),
+]
 
-const outboundTags = computed((): string[] => {
-  return [...Data().outbounds?.map((o:Outbound) => o.tag), ...Data().endpoints?.map((e:any) => e.tag)]
-})
-
-const onlines = computed(() => {
-  return Data().onlines.outbound?? []
-})
-
-const modal = ref({
-  visible: false,
-  id: 0,
-  data: "",
-})
-
-let delOverlay = ref(new Array<boolean>)
-
-const showModal = (id: number) => {
-  modal.value.id = id
-  modal.value.data = id == 0 ? '' : JSON.stringify(outbounds.value.findLast(o => o.id == id))
-  modal.value.visible = true
+const delayRow = (item: any): EntityRow => {
+  const r = checkResults.value[item.tag]
+  if (r?.loading) return { k: t('out.delay'), v: '…', mono: true }
+  if (r && r.loading == false) {
+    if (r.success) {
+      return { k: t('out.delay'), v: (r.data?.Delay ?? 0) + ' ' + t('date.ms'), mono: true, color: 'var(--emerald)' }
+    }
+    return { k: t('out.delay'), v: r.errorMessage || t('failed'), color: 'var(--rose)' }
+  }
+  return { k: t('out.delay'), v: t('ui.none') }
 }
 
-const closeModal = () => {
-  modal.value.visible = false
+// ---------------- drawers / modals ----------------
+const drawer = ref({ visible: false, id: 0, data: '' })
+const openDrawer = (id: number) => {
+  drawer.value.id = id
+  drawer.value.data = id == 0 ? '' : JSON.stringify(outbounds.value.findLast((o) => o.id == id))
+  drawer.value.visible = true
 }
 
-const bulkModal = ref({ visible: false })
+const bulkVisible = ref(false)
 
-const showBulkModal = () => {
-  bulkModal.value.visible = true
-}
-
-const closeBulkModal = () => {
-  bulkModal.value.visible = false
-}
-
-const stats = ref({
-  visible: false,
-  resource: "outbound",
-  tag: "",
-})
-
-const delOutbound = async (tag: string) => {
-  const index = outbounds.value.findIndex(i => i.tag == tag)
-  const success = await Data().save("outbounds", "del", tag)
-  if (success) delOverlay.value[index] = false
-}
-
+const stats = ref({ visible: false, resource: 'outbound', tag: '' })
 const showStats = (tag: string) => {
   stats.value.tag = tag
   stats.value.visible = true
 }
-const closeStats = () => {
-  stats.value.visible = false
+
+// ---------------- delete (with confirm) ----------------
+const del = ref({ visible: false, tag: '' })
+const deleting = ref(false)
+const askDelete = (tag: string) => {
+  del.value = { visible: true, tag }
+}
+const confirmDelete = async () => {
+  if (del.value.tag.length === 0) return
+  deleting.value = true
+  const success = await Data().save('outbounds', 'del', del.value.tag)
+  if (success) del.value.visible = false
+  deleting.value = false
 }
 </script>

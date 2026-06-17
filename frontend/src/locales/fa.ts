@@ -1,4 +1,7 @@
+import ui from './ui/fa'
+
 export default {
+  ui,
   success: "موفق",
   failed: "خطا",
   enable: "فعال",
@@ -178,6 +181,12 @@ export default {
     autoCert: "دریافت خودکار گواهی (ACME)",
     acmeEmail: "ایمیل ACME (اختیاری)",
     acmeHint: "نیازمند باز بودن پورت ۸۰ و اشاره دامنه به این سرور",
+    acmeMigrated: "پیکربندی قدیمی ACME خودکار شناسایی شد؛ به حالت دستی / acme.sh تغییر یافت. لطفاً تمدید گواهی را بررسی کنید.",
+    deployNginx: "استقرار پشت Nginx",
+    deployNginxHint: "Nginx گواهی SSL را مدیریت می‌کند؛ پنل فقط HTTP اجرا می‌شود. گواهی برای Nginx صادر می‌شود.",
+    nginxDetected: "Nginx شناسایی شد و در حال اجراست",
+    issueCert: "صدور گواهی (acme.sh)",
+    issueCertOk: "گواهی با موفقیت صادر شد",
     webUri: "آدرس نهایی پنل",
     sessionAge: "بیشینه زمان لاگین ماندن",
     trafficAge: "بیشینه زمان ذخیره ترافیک",

@@ -1,4 +1,7 @@
+import ui from './ui/en'
+
 export default {
+  ui,
   success: "success",
   failed: "failed",
   enable: "Enable",
@@ -178,6 +181,12 @@ export default {
     autoCert: "Auto SSL (ACME)",
     acmeEmail: "ACME Email (optional)",
     acmeHint: "Requires port 80 open & domain pointed to this server",
+    acmeMigrated: "Legacy auto-ACME setting detected; switched to manual / acme.sh. Please verify certificate renewal.",
+    deployNginx: "Deploy behind Nginx",
+    deployNginxHint: "Nginx terminates SSL; the panel serves HTTP. Certificate is issued for Nginx.",
+    nginxDetected: "Nginx detected and running",
+    issueCert: "Issue Certificate (acme.sh)",
+    issueCertOk: "Certificate issued successfully",
     webUri: "Panel URI",
     sessionAge: "Session Maximum Age",
     trafficAge: "Traffic Maximum Age",

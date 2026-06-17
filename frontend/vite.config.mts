@@ -1,6 +1,5 @@
 // Plugins
 import vue from '@vitejs/plugin-vue'
-import vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
 
 // Utilities
 import { defineConfig } from 'vite'
@@ -18,15 +17,7 @@ function getUniqueFileName(template) {
 export default defineConfig({
   base: '',
   plugins: [
-    vue({
-      template: { transformAssetUrls },
-    }),
-    vuetify({
-      autoImport: true,
-      styles: {
-        configFile: 'src/styles/settings.scss',
-      },
-    })
+    vue(),
   ],
   build: {
     manifest: false,

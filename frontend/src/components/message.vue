@@ -16,28 +16,24 @@
 <script lang="ts" setup>
 import { Notivue, Notification, NotivueSwipe, outlinedIcons, pastelTheme, darkTheme } from 'notivue'
 import { computed } from 'vue'
-import { useTheme } from 'vuetify'
-import vuetify from '@/plugins/vuetify'
+import AppStore from '@/store/modules/app'
 
-const Theme = useTheme()
+const app = AppStore()
 
-const theme = computed(() =>{
-  let currenTheme = Theme.global.name.value == "light" ? pastelTheme : darkTheme
-  currenTheme = {
-    ...currenTheme,
+const theme = computed(() => {
+  let currentTheme = app.theme === 'light' ? pastelTheme : darkTheme
+  currentTheme = {
+    ...currentTheme,
     '--nv-width': 'auto',
   }
-  return currenTheme
+  return currentTheme
 })
 
-const direction = computed(() => {
-  return vuetify.locale.isRtl ? 'rtl' : 'ltr'
-})
+const direction = computed(() => (app.isRtl ? 'rtl' : 'ltr'))
 </script>
 
 <style>
 :root {
   --nv-z: 10020;
 }
-
 </style>
