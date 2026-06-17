@@ -46,7 +46,7 @@ function statusObj() {
   cpu = Math.max(5, Math.min(95, cpu + rnd(-9, 9)))
   return {
     net: { recv: Math.floor(netRecv), sent: Math.floor(netSent) },
-    sbd: { running: true, stats: { Alloc: Math.floor(rnd(2e7, 6e7)) } },
+    sbd: { running: true, version: 'v1.11.0', stats: { Alloc: Math.floor(rnd(2e7, 6e7)) } },
     cpu: Math.round(cpu),
     mem: { current: Math.floor(rnd(3e9, 6e9)), total: 8e9 },
     dsk: { current: Math.floor(rnd(4e10, 6e10)), total: 1e11 },

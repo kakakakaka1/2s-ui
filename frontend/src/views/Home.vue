@@ -13,36 +13,50 @@
       <TilesMenu :show="tiles" @toggle="toggleTile" @reset="resetTiles" />
     </div>
 
-    <!-- stat cards -->
-    <div v-if="visStats.length > 0" class="stat-grid" :style="{ '--cols': visStats.length }">
-      <StatCard
-        v-if="tiles['stat-clients']"
-        icon="clients" :label="$t('ui.onlineClients')"
-        :value="String(onlineUsers)" :sub="$t('ui.ofTotal', { n: data.clients.length })"
-        accent="var(--emerald)" :trend="$t('ui.live')" :spark="buf.users"
-      />
-      <StatCard
-        v-if="tiles['stat-download']"
-        icon="download" :label="$t('stats.download')"
-        :value="HumanReadable.sizeFormat(totalDown)" :sub="$t('ui.inboundTraffic')"
-        accent="var(--cyan)" :spark="buf.netIn"
-      />
-      <StatCard
-        v-if="tiles['stat-upload']"
-        icon="upload" :label="$t('stats.upload')"
-        :value="HumanReadable.sizeFormat(totalUp)" :sub="$t('ui.outboundTraffic')"
-        accent="var(--violet)" :spark="buf.netOut"
-      />
-      <StatCard
-        v-if="tiles['stat-inbounds']"
-        icon="inbound" :label="$t('ui.activeInbounds')"
-        :value="`${onlineInbounds}/${data.inbounds.length}`" :sub="$t('ui.listenersHealthy')"
-        accent="var(--brand)" :spark="buf.inbounds"
-      />
+    <!-- top overview: resources / server / key metrics -->
+    <div v-if="topCount > 0" class="top-grid" :style="{ '--top-cols': topCount }">
+      <DPanel v-if="tiles.resources" :title="$t('ui.systemResources')" :sub="$t('ui.realtimeUtil')">
+        <div class="res-grid">
+          <ResBar :label="$t('ui.cpu')" :value="gCpu.pct" color="var(--brand)" />
+          <ResBar :label="$t('ui.memory')" :value="gMem.pct" color="var(--cyan)" :sub="gMem.sub" />
+          <ResBar :label="$t('ui.disk')" :value="gDsk.pct" color="var(--violet)" :sub="gDsk.sub" />
+          <ResBar :label="$t('ui.swap')" :value="gSwp.pct" color="var(--emerald)" :sub="gSwp.sub" />
+        </div>
+      </DPanel>
+
+      <DPanel v-if="tiles.server" :title="$t('ui.server')" :sub="sys.hostName ?? ''" :pad="0">
+        <div class="srv-grid">
+          <div><div class="srv-k">IPv4</div><div class="srv-v mono">{{ sys.ipv4?.[0] ?? '—' }}</div></div>
+          <div><div class="srv-k">{{ $t('ui.cpu') }}</div><div class="srv-v" :title="sys.cpuType">{{ (sys.cpuCount ?? '—') + ' cores' }}</div></div>
+          <div><div class="srv-k">{{ $t('ui.processMem') }}</div><div class="srv-v mono">{{ HumanReadable.sizeFormat(sbd.stats?.Alloc ?? 0) }}</div></div>
+          <div><div class="srv-k">{{ $t('ui.uptime') }}</div><div class="srv-v mono">{{ uptime }}</div></div>
+          <div><div class="srv-k">{{ $t('ui.panelLbl') }}</div><div class="srv-v mono" style="color: var(--brand);">{{ 'v' + (sys.appVersion ?? '—') }}</div></div>
+          <div><div class="srv-k">{{ $t('ui.kernel') }}</div><div class="srv-v mono" :title="sbVersion">{{ sbVersion }}</div></div>
+        </div>
+        <div class="srv-status">
+          <Chip v-if="sbd.running" color="emerald" dot>{{ $t('ui.singboxRunning') }}</Chip>
+          <Chip v-else color="rose" dot>sing-box · {{ $t('main.info.running') }}: {{ $t('no') }}</Chip>
+          <Btn variant="subtle" sm style="margin-inline-start: auto;" :loading="restarting" @click="restartSb">
+            <Ico name="refresh" :size="14" /> {{ $t('ui.restart') }}
+          </Btn>
+        </div>
+      </DPanel>
+
+      <DPanel v-if="tiles.keymetrics" :title="$t('ui.keymetrics')" :sub="$t('ui.keymetricsSub')">
+        <template #right>
+          <Chip color="emerald" dot>{{ $t('ui.live') }}</Chip>
+        </template>
+        <div class="km-grid">
+          <MetricItem icon="clients" :label="$t('ui.onlineClients')" :value="String(onlineUsers)" accent="var(--emerald)" />
+          <MetricItem icon="download" :label="$t('stats.download')" :value="HumanReadable.sizeFormat(totalDown)" accent="var(--cyan)" />
+          <MetricItem icon="upload" :label="$t('stats.upload')" :value="HumanReadable.sizeFormat(totalUp)" accent="var(--violet)" />
+          <MetricItem icon="inbound" :label="$t('ui.activeInbounds')" :value="`${onlineInbounds}/${data.inbounds.length}`" accent="var(--brand)" />
+        </div>
+      </DPanel>
     </div>
 
-    <!-- traffic + protocol -->
-    <div v-if="tiles.traffic || tiles.protocol" class="main-grid" :class="{ both: tiles.traffic && tiles.protocol }">
+    <!-- traffic + protocol + network throughput (one row) -->
+    <div v-if="mainCount > 0" class="main-grid" :style="{ '--main-cols': mainCount }">
       <DPanel v-if="tiles.traffic" :title="$t('ui.traffic')" :sub="$t('ui.trafficSub')">
         <template #right>
           <Chip color="emerald" dot>{{ $t('ui.live') }}</Chip>
@@ -76,46 +90,20 @@
           </div>
         </div>
       </DPanel>
-    </div>
-
-    <!-- monitors -->
-    <div v-if="monCount > 0" class="mon-grid" :style="{ '--mon-cols': monCols }">
-      <DPanel v-if="tiles.resources" :title="$t('ui.systemResources')" :sub="$t('ui.realtimeUtil')">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; justify-items: center;">
-          <Gauge :value="gCpu.pct" color="var(--brand)" :label="$t('ui.cpu')" :sub="sys.cpuCount ? sys.cpuCount + ' cores' : ''" :size="120" />
-          <Gauge :value="gMem.pct" color="var(--cyan)" :label="$t('ui.memory')" :sub="gMem.sub" :size="120" />
-          <Gauge :value="gDsk.pct" color="var(--violet)" :label="$t('ui.disk')" :sub="gDsk.sub" :size="120" />
-          <Gauge :value="gSwp.pct" color="var(--emerald)" :label="$t('ui.swap')" :sub="gSwp.sub" :size="120" />
-        </div>
-      </DPanel>
 
       <DPanel v-if="tiles.network" :title="$t('ui.networkThroughput')" :sub="`↓ ${HumanReadable.sizeFormat(netInNow)}/s · ↑ ${HumanReadable.sizeFormat(netOutNow)}/s`">
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3);">
-            <span style="width: 8px; height: 8px; border-radius: 3px; background: var(--cyan);" />{{ $t('ui.inboundLbl') }}
+        <div class="net-grid">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); margin-bottom: 4px;">
+              <span style="width: 8px; height: 8px; border-radius: 3px; background: var(--cyan);" />{{ $t('ui.inboundLbl') }}
+            </div>
+            <AreaChart :data="buf.netIn" color="var(--cyan)" :height="96" :labels="trafficLabels" :value-formatter="netFmt" />
           </div>
-          <AreaChart :data="buf.netIn" color="var(--cyan)" :height="88" :labels="trafficLabels" :value-formatter="netFmt" />
-          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); margin-top: 4px;">
-            <span style="width: 8px; height: 8px; border-radius: 3px; background: var(--violet);" />{{ $t('ui.outboundLbl') }}
-          </div>
-          <AreaChart :data="buf.netOut" color="var(--violet)" :height="88" :labels="trafficLabels" :value-formatter="netFmt" />
-        </div>
-      </DPanel>
-
-      <DPanel v-if="tiles.server" :title="$t('ui.server')" :sub="sys.hostName ?? ''" :pad="0">
-        <div style="display: flex; flex-direction: column;">
-          <InfoRow :k="$t('ui.host')" :v="sys.hostName ?? '—'" />
-          <InfoRow :k="$t('ui.cpu')" :v="(sys.cpuCount ?? '—') + ' cores'" chip :title="sys.cpuType" />
-          <InfoRow k="IPv4" :v="sys.ipv4?.[0] ?? '—'" chip mono />
-          <InfoRow :k="$t('main.info.memory')" :v="HumanReadable.sizeFormat(sbd.stats?.Alloc ?? 0)" mono />
-          <InfoRow :k="$t('ui.panelLbl')" :v="'v' + (sys.appVersion ?? '—')" chip accent />
-          <InfoRow :k="$t('ui.uptime')" :v="uptime" mono />
-          <div style="padding: 13px 20px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line);">
-            <Chip v-if="sbd.running" color="emerald" dot>{{ $t('ui.singboxRunning') }}</Chip>
-            <Chip v-else color="rose" dot>sing-box · {{ $t('main.info.running') }}: {{ $t('no') }}</Chip>
-            <Btn variant="subtle" sm style="margin-inline-start: auto;" :loading="restarting" @click="restartSb">
-              <Ico name="refresh" :size="14" /> {{ $t('ui.restart') }}
-            </Btn>
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); margin-bottom: 4px;">
+              <span style="width: 8px; height: 8px; border-radius: 3px; background: var(--violet);" />{{ $t('ui.outboundLbl') }}
+            </div>
+            <AreaChart :data="buf.netOut" color="var(--violet)" :height="96" :labels="trafficLabels" :value-formatter="netFmt" />
           </div>
         </div>
       </DPanel>
@@ -164,11 +152,10 @@ import DPanel from '@/components/ui/DPanel.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import AreaChart from '@/components/charts/AreaChart.vue'
 import Donut from '@/components/charts/Donut.vue'
-import Gauge from '@/components/charts/Gauge.vue'
-import StatCard from './dashboard/StatCard.vue'
 import TilesMenu from './dashboard/TilesMenu.vue'
-import InfoRow from './dashboard/InfoRow.vue'
 import Legend from './dashboard/Legend.vue'
+import ResBar from './dashboard/ResBar.vue'
+import MetricItem from './dashboard/MetricItem.vue'
 import LogsModal from '@/layouts/drawers/LogsModal.vue'
 import BackupModal from '@/layouts/drawers/BackupModal.vue'
 import UsageStatsModal from '@/layouts/drawers/UsageStatsModal.vue'
@@ -181,9 +168,8 @@ const data = Data()
 const tiles = reactive(loadTiles())
 const toggleTile = (id: string) => { tiles[id] = !tiles[id]; saveTiles(tiles) }
 const resetTiles = () => { Object.assign(tiles, defaultTiles()); saveTiles(tiles) }
-const visStats = computed(() => ['stat-clients', 'stat-download', 'stat-upload', 'stat-inbounds'].filter((i) => tiles[i]))
-const monCount = computed(() => ['resources', 'network', 'server'].filter((i) => tiles[i]).length)
-const monCols = computed(() => (monCount.value === 3 ? '1.1fr 1.1fr 1fr' : Array(monCount.value).fill('1fr').join(' ')))
+const topCount = computed(() => ['resources', 'server', 'keymetrics'].filter((i) => tiles[i]).length)
+const mainCount = computed(() => ['traffic', 'protocol', 'network'].filter((i) => tiles[i]).length)
 const allHidden = computed(() => Object.values(tiles).every((v) => !v))
 
 /* ---------- modals ---------- */
@@ -195,6 +181,7 @@ const usageOpen = ref(false)
 const status = ref<any>({})
 const sys = ref<any>({})
 const sbd = computed(() => status.value.sbd ?? {})
+const sbVersion = computed(() => sbd.value.version || '—')
 const BUF = 40
 const buf = reactive({
   netIn: [] as number[],
@@ -327,20 +314,21 @@ const restartSb = async () => {
 </script>
 
 <style scoped>
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(var(--cols, 4), 1fr);
-  gap: 14px;
-}
-.main-grid { display: grid; grid-template-columns: 1fr; gap: 18px; }
-.main-grid.both { grid-template-columns: 1.55fr 1fr; }
-.mon-grid { display: grid; grid-template-columns: var(--mon-cols, 1fr); gap: 18px; }
+.top-grid { display: grid; grid-template-columns: repeat(var(--top-cols, 3), minmax(0, 1fr)); gap: 14px; }
+.res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+.km-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 14px; }
+.srv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px 14px; padding: 16px 20px; }
+.srv-k { font-size: 10.5px; color: var(--text-3); margin-bottom: 3px; }
+.srv-v { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srv-status { display: flex; align-items: center; gap: 10px; padding: 13px 20px; border-top: 1px solid var(--line); }
+.main-grid { display: grid; grid-template-columns: repeat(var(--main-cols, 3), minmax(0, 1fr)); gap: 18px; }
+.net-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
 @media (max-width: 1180px) {
-  .main-grid.both { grid-template-columns: 1fr; }
-  .mon-grid { grid-template-columns: 1fr 1fr !important; }
+  .top-grid { grid-template-columns: 1fr 1fr !important; }
+  .main-grid { grid-template-columns: 1fr 1fr !important; }
 }
 @media (max-width: 820px) {
-  .stat-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .mon-grid { grid-template-columns: 1fr !important; }
+  .top-grid { grid-template-columns: 1fr !important; }
+  .main-grid { grid-template-columns: 1fr !important; }
 }
 </style>

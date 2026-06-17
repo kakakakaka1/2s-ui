@@ -1,17 +1,14 @@
+// 顺序与首页卡片一致(从上到下、行内从左到右):
+// 顶部概览(系统资源 / 服务器 / 关键指标)→ 图表(流量 / 协议占比 / 网络吞吐)→ 动态
 export const TILES = [
-  { id: 'stat-clients', group: 'grpStats', k: 'onlineClients' },
-  { id: 'stat-download', group: 'grpStats', k: 'download30' },
-  { id: 'stat-upload', group: 'grpStats', k: 'upload30' },
-  { id: 'stat-inbounds', group: 'grpStats', k: 'activeInbounds' },
-  { id: 'traffic', group: 'grpCharts', k: 'traffic' },
-  { id: 'protocol', group: 'grpCharts', k: 'protocolMix' },
-  { id: 'resources', group: 'grpMonitors', k: 'systemResources' },
-  { id: 'network', group: 'grpMonitors', k: 'networkThroughput' },
-  { id: 'server', group: 'grpInfo', k: 'server' },
-  { id: 'activity', group: 'grpInfo', k: 'activity' },
+  { id: 'resources', k: 'systemResources' },
+  { id: 'server', k: 'server' },
+  { id: 'keymetrics', k: 'keymetrics' },
+  { id: 'traffic', k: 'traffic' },
+  { id: 'protocol', k: 'protocolMix' },
+  { id: 'network', k: 'networkThroughput' },
+  { id: 'activity', k: 'activity' },
 ]
-
-export const TILE_GROUPS = ['grpStats', 'grpCharts', 'grpMonitors', 'grpInfo']
 
 export const TILES_KEY = '2sui-tiles'
 
