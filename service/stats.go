@@ -97,6 +97,12 @@ func (s *StatsService) GetStats(resource string, tag string, period string) ([]m
 	case "month":
 		bucketSec = 86400
 		startTime = now - 86400*30
+	case "60day":
+		bucketSec = 86400
+		startTime = now - 86400*60
+	case "90day":
+		bucketSec = 86400
+		startTime = now - 86400*90
 	default: // "hour"
 		bucketSec = 60
 		startTime = now - 3600
