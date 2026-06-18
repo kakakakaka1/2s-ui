@@ -67,6 +67,9 @@
         <Btn variant="subtle" sm :loading="loading" :disabled="!settings.webDomain" @click="issueCert('web')">
           <Ico name="shield" :size="15" /> {{ $t('setting.issueCert') }}
         </Btn>
+        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.webDomain" @click="issueCert('web', true)">
+          <Ico name="refresh" :size="15" /> {{ $t('setting.forceRenew') }}
+        </Btn>
       </div>
       <template v-if="settings.webNginx !== 'true'">
         <SRow :label="$t('setting.sslKey')">
@@ -109,6 +112,9 @@
       <div class="srow-btn sg-span">
         <Btn variant="subtle" sm :loading="loading" :disabled="!settings.subDomain" @click="issueCert('sub')">
           <Ico name="shield" :size="15" /> {{ $t('setting.issueCert') }}
+        </Btn>
+        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.subDomain" @click="issueCert('sub', true)">
+          <Ico name="refresh" :size="15" /> {{ $t('setting.forceRenew') }}
         </Btn>
       </div>
       <SRow :label="$t('setting.sslKey')">
@@ -439,7 +445,8 @@ const detectNginx = async () => {
 }
 
 // 用 acme.sh 申请证书:无 nginx 走 standalone、面板自身加载证书;有 nginx 走 nginx 模式、证书给 nginx
-const issueCert = async (scope: 'web' | 'sub' = 'web') => {
+// force=true 时加 --force 强制续期(域名已有未到期证书时 acme.sh 默认跳过)
+const issueCert = async (scope: 'web' | 'sub' = 'web', force = false) => {
   const isWeb = scope === 'web'
   const domain = isWeb ? settings.value.webDomain : settings.value.subDomain
   if (!domain) return
@@ -449,6 +456,7 @@ const issueCert = async (scope: 'web' | 'sub' = 'web') => {
     email: isWeb ? settings.value.webAcmeEmail : settings.value.subAcmeEmail,
     // 订阅没有 nginx 选项，统一走 standalone 模式
     nginx: isWeb && settings.value.webNginx === 'true' ? 'true' : 'false',
+    force: force ? 'true' : 'false',
   })
   if (r.success && r.obj) {
     if (isWeb) {
@@ -1071,7 +1079,7 @@ const saveClashEditor = (data: string) => {
   .head-actions { margin-inline-start: 0; padding-bottom: 10px; }
 }
 .srow-btn {
-  display: flex; align-items: center;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 13px 0; border-bottom: 1px solid var(--line);
 }
 .sub-label {

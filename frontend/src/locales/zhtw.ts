@@ -187,6 +187,7 @@ export default {
     nginxDetected: "已偵測到 Nginx 正在執行",
     issueCert: "申請憑證 (acme.sh)",
     issueCertOk: "憑證申請成功",
+    forceRenew: "強制續期",
     webUri: "面板 URI",
     sessionAge: "會話最大連接數",
     trafficAge: "流量最大年齡",

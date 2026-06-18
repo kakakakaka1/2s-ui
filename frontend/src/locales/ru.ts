@@ -188,6 +188,7 @@ export default {
     nginxDetected: "Nginx обнаружен и работает",
     issueCert: "Выпустить сертификат (acme.sh)",
     issueCertOk: "Сертификат успешно выпущен",
+    forceRenew: "Принудительное продление",
     webUri: "URI панели",
     sessionAge: "Максимальная длительность сессии",
     trafficAge: "Максимальная длительность трафика",

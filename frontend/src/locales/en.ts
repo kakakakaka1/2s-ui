@@ -187,6 +187,7 @@ export default {
     nginxDetected: "Nginx detected and running",
     issueCert: "Issue Certificate (acme.sh)",
     issueCertOk: "Certificate issued successfully",
+    forceRenew: "Force Renew",
     webUri: "Panel URI",
     sessionAge: "Session Maximum Age",
     trafficAge: "Traffic Maximum Age",

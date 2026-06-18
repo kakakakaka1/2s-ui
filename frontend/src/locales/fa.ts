@@ -187,6 +187,7 @@ export default {
     nginxDetected: "Nginx شناسایی شد و در حال اجراست",
     issueCert: "صدور گواهی (acme.sh)",
     issueCertOk: "گواهی با موفقیت صادر شد",
+    forceRenew: "تمدید اجباری",
     webUri: "آدرس نهایی پنل",
     sessionAge: "بیشینه زمان لاگین ماندن",
     trafficAge: "بیشینه زمان ذخیره ترافیک",

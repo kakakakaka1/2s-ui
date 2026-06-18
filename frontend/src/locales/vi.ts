@@ -187,6 +187,7 @@ export default {
     nginxDetected: "Đã phát hiện Nginx đang chạy",
     issueCert: "Cấp chứng chỉ (acme.sh)",
     issueCertOk: "Cấp chứng chỉ thành công",
+    forceRenew: "Gia hạn bắt buộc",
     webUri: "URI bảng điều khiển",
     sessionAge: "Tuổi tối đa của phiên",
     trafficAge: "Tuổi lưu thông tối đa",
