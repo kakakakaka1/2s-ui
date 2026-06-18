@@ -1,5 +1,5 @@
 <template>
-  <Drawer :open="visible" :width="460" @close="$emit('close')">
+  <Drawer :open="visible" :width="680" @close="$emit('close')">
     <template #title>
       <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
         <Avatar v-if="!isNew" :name="client.name" :size="38" />
@@ -45,15 +45,117 @@
           </div>
           <input class="input" v-model="client.group" />
         </Field>
+      </div>
 
-        <hr class="form-divider" />
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+      <!-- ================= Inbounds + Limits ================= -->
+      <div v-else-if="tab === 'access'" class="access-grid">
+        <!-- Inbounds -->
+        <section style="min-width: 0;">
+          <div class="access-head">
+            <SectionLabel>{{ $t('ui.nav.inbounds') }}</SectionLabel>
+            <div style="flex: 1;" />
+            <Btn sm variant="subtle" @click="setAllInbounds">{{ $t('all') }}</Btn>
+          </div>
+          <div style="font-size: 12.5px; color: var(--text-3); margin-bottom: 11px;">{{ $t('ui.selectInbounds') }}</div>
+          <div class="inb-list hide-scroll">
+            <label
+              v-for="it in inboundItems"
+              :key="it.id"
+              class="inb-item"
+              :class="{ on: client.inbounds.includes(it.id) }"
+              @click.prevent="toggleInbound(it.id)"
+            >
+              <span class="inb-dot" :class="{ online: it.online }" />
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ it.tag }}</div>
+                <div class="mono" style="font-size: 11.5px; color: var(--text-3);">{{ it.type }} · :{{ it.port }}</div>
+              </div>
+              <Check :checked="client.inbounds.includes(it.id)" />
+            </label>
+          </div>
+        </section>
+
+        <!-- Limits -->
+        <section style="min-width: 0;">
+          <div class="access-head">
+            <SectionLabel>{{ $t('ui.limits') }}</SectionLabel>
+          </div>
+
+          <div v-if="!isNew" class="card usage-card">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+              <div style="font-size: 12px; color: var(--text-3); font-weight: 600;">{{ $t('ui.currentUsage') }}</div>
+              <div v-if="percent > 0" class="mono" dir="ltr" style="margin-inline-start: auto; font-size: 12px; color: var(--text-3);">{{ percent }}%</div>
+            </div>
+            <div style="display: flex; gap: 22px; align-items: center;">
+              <div>
+                <div style="font-size: 11px; color: var(--violet); font-weight: 700;">↑ {{ $t('ui.upload') }}</div>
+                <div class="mono" style="font-size: 17px; font-weight: 700;">{{ up }}</div>
+              </div>
+              <div>
+                <div style="font-size: 11px; color: var(--cyan); font-weight: 700;">↓ {{ $t('ui.download') }}</div>
+                <div class="mono" style="font-size: 17px; font-weight: 700;">{{ down }}</div>
+              </div>
+              <Btn sm variant="subtle" style="margin-inline-start: auto;" @click="resetUsage">
+                <Ico name="refresh" :size="14" /> {{ $t('reset') }}
+              </Btn>
+            </div>
+            <div v-if="client.volume > 0" style="margin-top: 12px;">
+              <BarMini :value="percent" :color="percentColor" :height="5" />
+            </div>
+          </div>
+
+          <Field :label="$t('ui.dataLimit')" :hint="$t('ui.unlimitedHint')">
+            <div style="display: flex; gap: 8px;">
+              <input class="input mono" type="number" min="0" v-model.number="volumeGiB" />
+              <div class="input suffix-box">{{ $t('stats.GB') }}</div>
+            </div>
+          </Field>
+
+          <div class="switch-stack">
+            <div :style="client.up + client.down > 0 ? { opacity: 0.5, pointerEvents: 'none' } : undefined">
+              <SwitchLabel v-model="delayStart" :label="$t('client.delayStart')" />
+            </div>
+            <SwitchLabel v-model="autoReset" :label="$t('client.autoReset')" />
+          </div>
+
+          <Field
+            v-if="!(client.delayStart && !client.autoReset)"
+            :label="$t('ui.expiryDate')"
+            :hint="$t('ui.noExpiryHint')"
+          >
+            <DateTimeInput v-model="client.expiry" />
+          </Field>
+
+          <Field v-if="client.autoReset || client.delayStart" :label="$t('client.resetDays')">
+            <input class="input mono" type="number" min="1" v-model.number="resetDays" />
+          </Field>
+
+          <template v-if="!isNew && client.autoReset">
+            <hr class="form-divider" />
+            <div class="grid2">
+              <div>
+                <div style="font-size: 11px; color: var(--text-3); font-weight: 600; margin-bottom: 3px;">{{ $t('client.nextReset') }}</div>
+                <div class="mono" dir="ltr" style="font-size: 13px; font-weight: 600;">{{ nextResetFormatted }}</div>
+              </div>
+              <div>
+                <div style="font-size: 11px; color: var(--text-3); font-weight: 600; margin-bottom: 3px;">{{ $t('main.stats.totalUsage') }}</div>
+                <div class="mono" dir="ltr" style="font-size: 13px; font-weight: 600;">↑ {{ totalUp }} / ↓ {{ totalDown }}</div>
+              </div>
+            </div>
+          </template>
+        </section>
+      </div>
+
+      <!-- ===================== UUID / Password ===================== -->
+      <div v-else-if="tab === 'keys'">
+        <div class="access-head">
           <SectionLabel>{{ $t('ui.uuidPass') }}</SectionLabel>
           <div style="flex: 1;" />
           <Btn sm variant="subtle" @click="shuffle()">
             <Ico name="refresh" :size="14" /> {{ $t('reset') + ' - ' + $t('all') }}
           </Btn>
         </div>
+        <div style="font-size: 12.5px; color: var(--text-3); margin-bottom: 16px;">{{ $t('ui.usedAcross') }}</div>
         <template v-for="key in configKeys" :key="key">
           <Field v-if="clientConfig[key].password !== undefined" :label="key + ' · ' + $t('ui.password')">
             <KeyInput v-model="clientConfig[key].password" @regenerate="shuffle(key)" />
@@ -67,94 +169,6 @@
           <Field v-if="key === 'hysteria'" :label="key + ' · ' + $t('types.hy.auth')">
             <KeyInput v-model="clientConfig[key].auth_str" @regenerate="shuffle(key)" />
           </Field>
-        </template>
-      </div>
-
-      <!-- ===================== Inbounds ===================== -->
-      <div v-else-if="tab === 'inbounds'" style="display: flex; flex-direction: column; gap: 9px;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-          <div style="font-size: 12.5px; color: var(--text-3); flex: 1;">{{ $t('ui.selectInbounds') }}</div>
-          <Btn sm variant="subtle" @click="setAllInbounds">{{ $t('all') }}</Btn>
-        </div>
-        <label
-          v-for="it in inboundItems"
-          :key="it.id"
-          class="inb-item"
-          :class="{ on: client.inbounds.includes(it.id) }"
-          @click.prevent="toggleInbound(it.id)"
-        >
-          <span class="inb-dot" :class="{ online: it.online }" />
-          <div style="flex: 1; min-width: 0;">
-            <div style="font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ it.tag }}</div>
-            <div class="mono" style="font-size: 11.5px; color: var(--text-3);">{{ it.type }} · :{{ it.port }}</div>
-          </div>
-          <Check :checked="client.inbounds.includes(it.id)" />
-        </label>
-      </div>
-
-      <!-- ===================== Limits ===================== -->
-      <div v-else-if="tab === 'limits'">
-        <div v-if="!isNew" class="card usage-card">
-          <div style="display: flex; align-items: center; margin-bottom: 10px;">
-            <div style="font-size: 12px; color: var(--text-3); font-weight: 600;">{{ $t('ui.currentUsage') }}</div>
-            <div v-if="percent > 0" class="mono" dir="ltr" style="margin-inline-start: auto; font-size: 12px; color: var(--text-3);">{{ percent }}%</div>
-          </div>
-          <div style="display: flex; gap: 22px; align-items: center;">
-            <div>
-              <div style="font-size: 11px; color: var(--violet); font-weight: 700;">↑ {{ $t('ui.upload') }}</div>
-              <div class="mono" style="font-size: 17px; font-weight: 700;">{{ up }}</div>
-            </div>
-            <div>
-              <div style="font-size: 11px; color: var(--cyan); font-weight: 700;">↓ {{ $t('ui.download') }}</div>
-              <div class="mono" style="font-size: 17px; font-weight: 700;">{{ down }}</div>
-            </div>
-            <Btn sm variant="subtle" style="margin-inline-start: auto;" @click="resetUsage">
-              <Ico name="refresh" :size="14" /> {{ $t('reset') }}
-            </Btn>
-          </div>
-          <div v-if="client.volume > 0" style="margin-top: 12px;">
-            <BarMini :value="percent" :color="percentColor" :height="5" />
-          </div>
-        </div>
-
-        <Field :label="$t('ui.dataLimit')" :hint="$t('ui.unlimitedHint')">
-          <div style="display: flex; gap: 8px;">
-            <input class="input mono" type="number" min="0" v-model.number="volumeGiB" />
-            <div class="input suffix-box">{{ $t('stats.GB') }}</div>
-          </div>
-        </Field>
-
-        <div class="grid2" style="margin-bottom: 15px;">
-          <div :style="client.up + client.down > 0 ? { opacity: 0.5, pointerEvents: 'none' } : undefined">
-            <SwitchLabel v-model="delayStart" :label="$t('client.delayStart')" />
-          </div>
-          <SwitchLabel v-model="autoReset" :label="$t('client.autoReset')" />
-        </div>
-
-        <Field
-          v-if="!(client.delayStart && !client.autoReset)"
-          :label="$t('ui.expiryDate')"
-          :hint="$t('ui.noExpiryHint')"
-        >
-          <DateTimeInput v-model="client.expiry" />
-        </Field>
-
-        <Field v-if="client.autoReset || client.delayStart" :label="$t('client.resetDays')">
-          <input class="input mono" type="number" min="1" v-model.number="resetDays" />
-        </Field>
-
-        <template v-if="!isNew && client.autoReset">
-          <hr class="form-divider" />
-          <div class="grid2">
-            <div>
-              <div style="font-size: 11px; color: var(--text-3); font-weight: 600; margin-bottom: 3px;">{{ $t('client.nextReset') }}</div>
-              <div class="mono" dir="ltr" style="font-size: 13px; font-weight: 600;">{{ nextResetFormatted }}</div>
-            </div>
-            <div>
-              <div style="font-size: 11px; color: var(--text-3); font-weight: 600; margin-bottom: 3px;">{{ $t('main.stats.totalUsage') }}</div>
-              <div class="mono" dir="ltr" style="font-size: 13px; font-weight: 600;">↑ {{ totalUp }} / ↓ {{ totalDown }}</div>
-            </div>
-          </div>
         </template>
       </div>
 
@@ -257,8 +271,8 @@ const localLinks = computed(() => client.value.links?.filter((l) => l.type == 'l
 
 const tabs = computed((): [string, string][] => [
   ['general', t('ui.general')],
-  ['inbounds', t('ui.nav.inbounds')],
-  ['limits', t('ui.limits')],
+  ['access', t('ui.accessLimits')],
+  ['keys', t('ui.uuidPass')],
   ['links', t('client.links')],
 ])
 
@@ -400,6 +414,9 @@ const updateData = async (id: number) => {
     loading.value = false
   } else {
     client.value = createClient()
+    // 新建默认：开启自动重置，周期 30 天
+    client.value.autoReset = true
+    client.value.resetDays = 30
     clientConfig.value = randomConfigs('client')
   }
   // links are kept untouched and merged back into the payload on save
@@ -433,6 +450,35 @@ watch(() => props.visible, (v) => {
 </script>
 
 <style scoped>
+.access-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: 26px;
+  align-items: start;
+}
+@media (max-width: 700px) {
+  .access-grid { grid-template-columns: 1fr; gap: 26px; }
+}
+.access-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  margin-bottom: 10px;
+}
+.inb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-height: 372px;
+  overflow-y: auto;
+}
+.switch-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  margin: 2px 0 16px;
+}
 .inb-item {
   display: flex;
   align-items: center;
