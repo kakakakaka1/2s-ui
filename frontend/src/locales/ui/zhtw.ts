@@ -238,7 +238,7 @@ export default {
   title: {
     home: "首頁",
     inbounds: "入站",
-    clients: "用戶端",
+    clients: "用戶管理",
     outbounds: "出站",
     endpoints: "端點",
     services: "服務",

@@ -238,7 +238,7 @@ export default {
   title: {
     home: "خانه",
     inbounds: "ورودی‌ها",
-    clients: "کلاینت‌ها",
+    clients: "کاربران",
     outbounds: "خروجی‌ها",
     endpoints: "اندپوینت‌ها",
     services: "سرویس‌ها",

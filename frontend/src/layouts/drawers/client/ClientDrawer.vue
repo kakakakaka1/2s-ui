@@ -1,5 +1,5 @@
 <template>
-  <Drawer :open="visible" :width="520" @close="$emit('close')">
+  <Drawer :open="visible" :width="700" @close="$emit('close')">
     <template #title>
       <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
         <Avatar v-if="!isNew" :name="client.name" :size="38" />
@@ -22,16 +22,19 @@
     <template v-else>
       <Tabs v-model="tab" :tabs="tabs" />
 
-      <!-- ===================== General ===================== -->
+      <!-- =============== General(含入站与限制) =============== -->
       <div v-if="tab === 'general'">
         <MSwitchRow v-model="client.enable" :label="$t('ui.accountEnabled')" :desc="$t('ui.cannotConnect')" />
 
-        <Field :label="$t('client.name')">
-          <input class="input" v-model="client.name" />
-        </Field>
-        <Field :label="$t('client.desc')">
-          <input class="input" v-model="client.desc" />
-        </Field>
+        <!-- 基本信息：名称 | 描述 两列，组(含快选 chips)整行 -->
+        <div class="grid2" style="margin-bottom: 15px;">
+          <Field :label="$t('client.name')" :mb="0">
+            <input class="input" v-model="client.name" />
+          </Field>
+          <Field :label="$t('client.desc')" :mb="0">
+            <input class="input" v-model="client.desc" />
+          </Field>
+        </div>
         <Field :label="$t('client.group')">
           <div v-if="groupItems.length > 0" style="display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 8px;">
             <button
@@ -45,11 +48,10 @@
           </div>
           <input class="input" v-model="client.group" />
         </Field>
-      </div>
 
-      <!-- ================= Inbounds + Limits ================= -->
-      <div v-else-if="tab === 'access'">
-        <!-- Inbounds -->
+        <hr class="form-divider" />
+
+        <!-- 入站 -->
         <div class="access-head">
           <SectionLabel>{{ $t('ui.nav.inbounds') }}</SectionLabel>
         </div>
@@ -59,7 +61,7 @@
 
         <hr class="form-divider" />
 
-        <!-- Limits -->
+        <!-- 限制 -->
         <div class="access-head">
           <SectionLabel>{{ $t('ui.limits') }}</SectionLabel>
         </div>
@@ -87,27 +89,31 @@
           </div>
         </div>
 
-        <Field :label="$t('ui.dataLimit')" :hint="$t('ui.unlimitedHint')">
-          <div style="display: flex; gap: 8px;">
-            <input class="input mono" type="number" min="0" v-model.number="volumeGiB" />
-            <div class="input suffix-box">{{ $t('stats.GB') }}</div>
-          </div>
-        </Field>
+        <!-- 流量限额 | 到期日期 两列 -->
+        <div class="grid2" style="margin-bottom: 15px;">
+          <Field :label="$t('ui.dataLimit')" :hint="$t('ui.unlimitedHint')" :mb="0">
+            <div style="display: flex; gap: 8px;">
+              <input class="input mono" type="number" min="0" v-model.number="volumeGiB" />
+              <div class="input suffix-box">{{ $t('stats.GB') }}</div>
+            </div>
+          </Field>
+          <Field
+            v-if="!(client.delayStart && !client.autoReset)"
+            :label="$t('ui.expiryDate')"
+            :hint="$t('ui.noExpiryHint')"
+            :mb="0"
+          >
+            <DateTimeInput v-model="client.expiry" />
+          </Field>
+        </div>
 
+        <!-- 延迟开始 | 自动重置 两列开关 -->
         <div class="grid2" style="margin-bottom: 15px;">
           <div :style="client.up + client.down > 0 ? { opacity: 0.5, pointerEvents: 'none' } : undefined">
             <SwitchLabel v-model="delayStart" :label="$t('client.delayStart')" />
           </div>
           <SwitchLabel v-model="autoReset" :label="$t('client.autoReset')" />
         </div>
-
-        <Field
-          v-if="!(client.delayStart && !client.autoReset)"
-          :label="$t('ui.expiryDate')"
-          :hint="$t('ui.noExpiryHint')"
-        >
-          <DateTimeInput v-model="client.expiry" />
-        </Field>
 
         <Field v-if="client.autoReset || client.delayStart" :label="$t('client.resetDays')">
           <input class="input mono" type="number" min="1" v-model.number="resetDays" />
@@ -253,7 +259,6 @@ const localLinks = computed(() => client.value.links?.filter((l) => l.type == 'l
 
 const tabs = computed((): [string, string][] => [
   ['general', t('ui.general')],
-  ['access', t('ui.accessLimits')],
   ['keys', t('ui.uuidPass')],
   ['links', t('client.links')],
 ])
