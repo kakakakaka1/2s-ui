@@ -54,19 +54,27 @@ export function useChart(
   const chart = shallowRef<EChart>()
   let ro: ResizeObserver | undefined
   let mo: MutationObserver | undefined
-  let resizeTimer: ReturnType<typeof setTimeout> | undefined
+  let rafId: number | undefined
 
   const render = () => {
     const el = elRef.value
     if (el && chart.value) build(chart.value, el)
   }
 
-  // 把一连串尺寸变化合并到下一个事件循环再 resize：切换卡片时同一行多个图表会同帧改宽，
-  // 裸调 resize 易触发 ResizeObserver loop 丢通知，导致个别图表没跟随容器缩放而溢出卡片；
-  // 延迟一拍后再 resize()，读到的是布局稳定后的最终宽度（resize 内部读 clientWidth 会强制重排）。
+  // 把一连串尺寸变化合并到下一帧再 resize：切换卡片时同一行多个图表会同帧改宽，裸调 resize 易
+  // 触发 ResizeObserver loop 丢通知，导致个别图表没跟随容器缩放而溢出卡片。用 rAF 等浏览器把
+  // 布局算定后再量；并【显式把容器宽高传给 resize】——SVG 渲染器自测尺寸时可能读到被自身 SVG
+  // 撑大的旧宽度而缩不回去（#15 表现为关掉再开回卡片后图表溢出边框），显式传 clientWidth/Height 绕开。
   const scheduleResize = () => {
-    clearTimeout(resizeTimer)
-    resizeTimer = setTimeout(() => chart.value?.resize(), 0)
+    if (rafId !== undefined) cancelAnimationFrame(rafId)
+    rafId = requestAnimationFrame(() => {
+      rafId = undefined
+      const el = elRef.value
+      if (!el || !chart.value) return
+      const w = el.clientWidth
+      const h = el.clientHeight
+      if (w > 0 && h > 0) chart.value.resize({ width: w, height: h })
+    })
   }
 
   onMounted(() => {
@@ -85,7 +93,7 @@ export function useChart(
   })
 
   onBeforeUnmount(() => {
-    clearTimeout(resizeTimer)
+    if (rafId !== undefined) cancelAnimationFrame(rafId)
     window.removeEventListener(RELAYOUT_EVENT, scheduleResize)
     ro?.disconnect()
     mo?.disconnect()

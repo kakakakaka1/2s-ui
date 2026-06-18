@@ -1,5 +1,5 @@
 <template>
-  <div class="card" style="display: flex; flex-direction: column;">
+  <div class="card" style="display: flex; flex-direction: column; overflow: hidden;">
     <div :style="{ display: 'flex', alignItems: 'center', gap: '10px', padding: `16px ${headPad}px`, borderBottom: '1px solid var(--line)' }">
       <div>
         <div style="font-size: 14px; font-weight: 700;">{{ title }}</div>

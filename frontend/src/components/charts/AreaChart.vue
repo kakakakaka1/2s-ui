@@ -1,5 +1,5 @@
 <template>
-  <div ref="el" :style="{ width: '100%', height: height + 'px' }" />
+  <div ref="el" :style="{ width: '100%', minWidth: 0, height: height + 'px' }" />
 </template>
 
 <script lang="ts" setup>
