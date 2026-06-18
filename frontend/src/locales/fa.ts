@@ -426,6 +426,8 @@ export default {
     logical: "منطقی",
     mode: "حالت",
     invert: "برعکس",
+    action: "اقدام",
+    rules: "قوانین",
     ipVer: "نسخه IP",
     domain: "دامنه‌ها",
     domainSufix: "پسوند‌های دامنه",

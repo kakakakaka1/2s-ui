@@ -427,6 +427,8 @@ export default {
     logical: "Логическое",
     mode: "Режим",
     invert: "Инвертировать",
+    action: "Действие",
+    rules: "Правила",
     ipVer: "Версия IP",
     domain: "Домены",
     domainSufix: "Суффиксы доменов",

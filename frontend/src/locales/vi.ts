@@ -426,6 +426,8 @@ export default {
     logical: "Logic",
     mode: "Chế độ",
     invert: "Nghịch đảo",
+    action: "Hành động",
+    rules: "Quy tắc",
     ipVer: "Phiên bản IP",
     domain: "Tên miền",
     domainSufix: "Hậu tố Miền",

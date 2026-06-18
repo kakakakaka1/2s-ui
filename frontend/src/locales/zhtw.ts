@@ -426,6 +426,8 @@ export default {
     logical: "邏輯",
     mode: "模式",
     invert: "反轉",
+    action: "動作",
+    rules: "規則",
     ipVer: "IP 版本",
     domain: "域名",
     domainSufix: "域名後綴",

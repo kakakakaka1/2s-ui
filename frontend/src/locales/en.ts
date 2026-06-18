@@ -426,6 +426,8 @@ export default {
     logical: "Logical",
     mode: "Mode",
     invert: "Invert",
+    action: "Action",
+    rules: "Rules",
     ipVer: "IP Version",
     domain: "Domains",
     domainSufix: "Domain Suffixes",
