@@ -14,6 +14,17 @@
     @close="clashEditor = false"
   />
 
+  <!-- 强制续期确认：--force 会立即重签并占用 Let's Encrypt 限速额度，先确认 -->
+  <Modal :open="forceConfirm.visible" :title="$t('setting.forceRenew')" :width="420" @close="forceConfirm.visible = false">
+    <div style="padding: 18px; font-size: 13.5px; line-height: 1.6;">{{ $t('setting.forceRenewConfirm') }}</div>
+    <template #footer>
+      <Btn @click="forceConfirm.visible = false">{{ $t('no') }}</Btn>
+      <Btn style="color: var(--amber);" :loading="loading" @click="doForceRenew">
+        <Ico name="refresh" :size="15" /> {{ $t('yes') }}
+      </Btn>
+    </template>
+  </Modal>
+
   <div class="page-stack-lg fade-up" style="max-width: 1040px;">
     <!-- page tabs + actions -->
     <div class="head-row">
@@ -67,7 +78,7 @@
         <Btn variant="subtle" sm :loading="loading" :disabled="!settings.webDomain" @click="issueCert('web')">
           <Ico name="shield" :size="15" /> {{ $t('setting.issueCert') }}
         </Btn>
-        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.webDomain" @click="issueCert('web', true)">
+        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.webDomain" @click="askForceRenew('web')">
           <Ico name="refresh" :size="15" /> {{ $t('setting.forceRenew') }}
         </Btn>
       </div>
@@ -113,7 +124,7 @@
         <Btn variant="subtle" sm :loading="loading" :disabled="!settings.subDomain" @click="issueCert('sub')">
           <Ico name="shield" :size="15" /> {{ $t('setting.issueCert') }}
         </Btn>
-        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.subDomain" @click="issueCert('sub', true)">
+        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.subDomain" @click="askForceRenew('sub')">
           <Ico name="refresh" :size="15" /> {{ $t('setting.forceRenew') }}
         </Btn>
       </div>
@@ -298,6 +309,7 @@ import Tabs from '@/components/ui/Tabs.vue'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Pop from '@/components/ui/Pop.vue'
+import Modal from '@/components/ui/Modal.vue'
 import Toggle from '@/components/ui/Toggle.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import Field from '@/components/ui/Field.vue'
@@ -442,6 +454,14 @@ const detectNginx = async () => {
       oldSettings.value = { ...settings.value }
     }
   }
+}
+
+// 强制续期前先确认:--force 会立即重签,反复点会撞 Let's Encrypt「重复证书」限速(约 5 张/周)
+const forceConfirm = ref<{ visible: boolean; scope: 'web' | 'sub' }>({ visible: false, scope: 'web' })
+const askForceRenew = (scope: 'web' | 'sub') => { forceConfirm.value = { visible: true, scope } }
+const doForceRenew = async () => {
+  await issueCert(forceConfirm.value.scope, true)
+  forceConfirm.value.visible = false
 }
 
 // 用 acme.sh 申请证书:无 nginx 走 standalone、面板自身加载证书;有 nginx 走 nginx 模式、证书给 nginx

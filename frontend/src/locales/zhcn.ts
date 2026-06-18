@@ -188,6 +188,7 @@ export default {
     issueCert: "申请证书 (acme.sh)",
     issueCertOk: "证书申请成功",
     forceRenew: "强制续期",
+    forceRenewConfirm: "强制续期会立即重新签发证书，并占用 Let's Encrypt 限速额度（同域名约 5 张/周）。确定继续？",
     webUri: "面板 URI",
     sessionAge: "会话超时时限",
     trafficAge: "流量过期时限",

@@ -188,6 +188,7 @@ export default {
     issueCert: "Cấp chứng chỉ (acme.sh)",
     issueCertOk: "Cấp chứng chỉ thành công",
     forceRenew: "Gia hạn bắt buộc",
+    forceRenewConfirm: "Gia hạn bắt buộc sẽ cấp lại chứng chỉ ngay và tính vào giới hạn của Let's Encrypt (khoảng 5 chứng chỉ trùng mỗi tuần). Tiếp tục?",
     webUri: "URI bảng điều khiển",
     sessionAge: "Tuổi tối đa của phiên",
     trafficAge: "Tuổi lưu thông tối đa",
