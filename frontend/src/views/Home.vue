@@ -140,7 +140,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import HttpUtils from '@/plugins/httputil'
 import { HumanReadable } from '@/plugins/utils'
@@ -151,6 +151,7 @@ import Chip from '@/components/ui/Chip.vue'
 import DPanel from '@/components/ui/DPanel.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import AreaChart from '@/components/charts/AreaChart.vue'
+import { requestChartRelayout } from '@/components/charts/useChart'
 import Donut from '@/components/charts/Donut.vue'
 import TilesMenu from './dashboard/TilesMenu.vue'
 import Legend from './dashboard/Legend.vue'
@@ -171,6 +172,11 @@ const resetTiles = () => { Object.assign(tiles, defaultTiles()); saveTiles(tiles
 const topCount = computed(() => ['resources', 'server', 'keymetrics'].filter((i) => tiles[i]).length)
 const mainCount = computed(() => ['traffic', 'protocol', 'network'].filter((i) => tiles[i]).length)
 const allHidden = computed(() => Object.values(tiles).every((v) => !v))
+
+// 卡片显隐会改变同一行图表所在 grid 列的宽度（如关掉「流量」后「网络吞吐」变宽、再开回又变窄），
+// ECharts 不会自动跟随父级 grid 重排。布局变化后等 DOM 更新完，广播一次重排让所有图表按新列宽重测，
+// 否则放大/缩小后 SVG 不跟随会溢出卡片边框（issue #15）。
+watch([topCount, mainCount], () => { nextTick(requestChartRelayout) })
 
 /* ---------- modals ---------- */
 const logsOpen = ref(false)

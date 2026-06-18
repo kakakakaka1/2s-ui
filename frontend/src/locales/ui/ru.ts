@@ -337,6 +337,7 @@ export default {
   createAccount: "Создать аккаунт клиента",
   general: "Общее",
   limits: "Лимиты",
+  accessLimits: "Входящие и лимиты",
   accountEnabled: "Аккаунт включён",
   cannotConnect: "Отключённые не могут подключаться",
   description: "Описание",

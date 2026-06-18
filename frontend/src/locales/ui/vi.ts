@@ -337,6 +337,7 @@ export default {
   createAccount: "Tạo tài khoản khách",
   general: "Chung",
   limits: "Giới hạn",
+  accessLimits: "Inbound & Giới hạn",
   accountEnabled: "Bật tài khoản",
   cannotConnect: "Khách bị tắt không thể kết nối",
   description: "Mô tả",

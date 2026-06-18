@@ -337,6 +337,7 @@ export default {
   createAccount: "建立一個用戶端帳戶",
   general: "一般",
   limits: "限制",
+  accessLimits: "入站與限制",
   accountEnabled: "啟用帳戶",
   cannotConnect: "停用後用戶端無法連線",
   description: "描述",

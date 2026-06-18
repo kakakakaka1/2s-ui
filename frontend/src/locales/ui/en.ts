@@ -337,6 +337,7 @@ export default {
   createAccount: "Create a client account",
   general: "General",
   limits: "Limits",
+  accessLimits: "Inbounds & Limits",
   accountEnabled: "Account enabled",
   cannotConnect: "Disabled clients cannot connect",
   description: "Description",

@@ -1,5 +1,5 @@
 <template>
-  <Drawer :open="visible" :width="460" @close="$emit('close')">
+  <Drawer :open="visible" :width="520" @close="$emit('close')">
     <template #title>
       <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
         <Avatar v-if="!isNew" :name="client.name" :size="38" />
@@ -45,55 +45,25 @@
           </div>
           <input class="input" v-model="client.group" />
         </Field>
+      </div>
+
+      <!-- ================= Inbounds + Limits ================= -->
+      <div v-else-if="tab === 'access'">
+        <!-- Inbounds -->
+        <div class="access-head">
+          <SectionLabel>{{ $t('ui.nav.inbounds') }}</SectionLabel>
+        </div>
+        <Field :hint="$t('ui.selectInbounds')">
+          <InboundsSelect v-model="client.inbounds" :items="inboundItems" />
+        </Field>
 
         <hr class="form-divider" />
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-          <SectionLabel>{{ $t('ui.uuidPass') }}</SectionLabel>
-          <div style="flex: 1;" />
-          <Btn sm variant="subtle" @click="shuffle()">
-            <Ico name="refresh" :size="14" /> {{ $t('reset') + ' - ' + $t('all') }}
-          </Btn>
-        </div>
-        <template v-for="key in configKeys" :key="key">
-          <Field v-if="clientConfig[key].password !== undefined" :label="key + ' · ' + $t('ui.password')">
-            <KeyInput v-model="clientConfig[key].password" @regenerate="shuffle(key)" />
-          </Field>
-          <Field v-if="clientConfig[key].uuid !== undefined" :label="key + ' · ' + $t('ui.uuid')">
-            <KeyInput v-model="clientConfig[key].uuid" @regenerate="shuffle(key)" />
-          </Field>
-          <Field v-if="key === 'vless'" :label="key + ' · ' + $t('ui.flow')">
-            <input class="input mono" style="font-size: 12.5px;" v-model="clientConfig[key].flow" />
-          </Field>
-          <Field v-if="key === 'hysteria'" :label="key + ' · ' + $t('types.hy.auth')">
-            <KeyInput v-model="clientConfig[key].auth_str" @regenerate="shuffle(key)" />
-          </Field>
-        </template>
-      </div>
 
-      <!-- ===================== Inbounds ===================== -->
-      <div v-else-if="tab === 'inbounds'" style="display: flex; flex-direction: column; gap: 9px;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-          <div style="font-size: 12.5px; color: var(--text-3); flex: 1;">{{ $t('ui.selectInbounds') }}</div>
-          <Btn sm variant="subtle" @click="setAllInbounds">{{ $t('all') }}</Btn>
+        <!-- Limits -->
+        <div class="access-head">
+          <SectionLabel>{{ $t('ui.limits') }}</SectionLabel>
         </div>
-        <label
-          v-for="it in inboundItems"
-          :key="it.id"
-          class="inb-item"
-          :class="{ on: client.inbounds.includes(it.id) }"
-          @click.prevent="toggleInbound(it.id)"
-        >
-          <span class="inb-dot" :class="{ online: it.online }" />
-          <div style="flex: 1; min-width: 0;">
-            <div style="font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ it.tag }}</div>
-            <div class="mono" style="font-size: 11.5px; color: var(--text-3);">{{ it.type }} · :{{ it.port }}</div>
-          </div>
-          <Check :checked="client.inbounds.includes(it.id)" />
-        </label>
-      </div>
 
-      <!-- ===================== Limits ===================== -->
-      <div v-else-if="tab === 'limits'">
         <div v-if="!isNew" class="card usage-card">
           <div style="display: flex; align-items: center; margin-bottom: 10px;">
             <div style="font-size: 12px; color: var(--text-3); font-weight: 600;">{{ $t('ui.currentUsage') }}</div>
@@ -155,6 +125,32 @@
               <div class="mono" dir="ltr" style="font-size: 13px; font-weight: 600;">↑ {{ totalUp }} / ↓ {{ totalDown }}</div>
             </div>
           </div>
+        </template>
+      </div>
+
+      <!-- ===================== UUID / Password ===================== -->
+      <div v-else-if="tab === 'keys'">
+        <div class="access-head">
+          <SectionLabel>{{ $t('ui.uuidPass') }}</SectionLabel>
+          <div style="flex: 1;" />
+          <Btn sm variant="subtle" @click="shuffle()">
+            <Ico name="refresh" :size="14" /> {{ $t('reset') + ' - ' + $t('all') }}
+          </Btn>
+        </div>
+        <div style="font-size: 12.5px; color: var(--text-3); margin-bottom: 16px;">{{ $t('ui.usedAcross') }}</div>
+        <template v-for="key in configKeys" :key="key">
+          <Field v-if="clientConfig[key].password !== undefined" :label="key + ' · ' + $t('ui.password')">
+            <KeyInput v-model="clientConfig[key].password" @regenerate="shuffle(key)" />
+          </Field>
+          <Field v-if="clientConfig[key].uuid !== undefined" :label="key + ' · ' + $t('ui.uuid')">
+            <KeyInput v-model="clientConfig[key].uuid" @regenerate="shuffle(key)" />
+          </Field>
+          <Field v-if="key === 'vless'" :label="key + ' · ' + $t('ui.flow')">
+            <input class="input mono" style="font-size: 12.5px;" v-model="clientConfig[key].flow" />
+          </Field>
+          <Field v-if="key === 'hysteria'" :label="key + ' · ' + $t('types.hy.auth')">
+            <KeyInput v-model="clientConfig[key].auth_str" @regenerate="shuffle(key)" />
+          </Field>
         </template>
       </div>
 
@@ -226,7 +222,7 @@ import Field from '@/components/ui/Field.vue'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Avatar from '@/components/ui/Avatar.vue'
-import Check from '@/components/ui/Check.vue'
+import InboundsSelect from '@/components/ui/InboundsSelect.vue'
 import MSwitchRow from '@/components/ui/MSwitchRow.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
@@ -257,8 +253,8 @@ const localLinks = computed(() => client.value.links?.filter((l) => l.type == 'l
 
 const tabs = computed((): [string, string][] => [
   ['general', t('ui.general')],
-  ['inbounds', t('ui.nav.inbounds')],
-  ['limits', t('ui.limits')],
+  ['access', t('ui.accessLimits')],
+  ['keys', t('ui.uuidPass')],
   ['links', t('client.links')],
 ])
 
@@ -322,13 +318,7 @@ const inboundItems = computed(() => props.inboundTags.map((it) => {
     online: Data().onlines?.inbound ? Data().onlines.inbound.includes(it.title) : false,
   }
 }))
-const toggleInbound = (id: number) => {
-  const list = client.value.inbounds
-  client.value.inbounds = list.includes(id) ? list.filter((i) => i !== id) : [...list, id].sort()
-}
-const setAllInbounds = () => {
-  client.value.inbounds = props.inboundTags.map((i) => i.value).sort()
-}
+// 入站的勾选/全选逻辑已下沉到 InboundsSelect 组件
 
 // ---------- limits ----------
 const volumeGiB = computed({
@@ -400,6 +390,9 @@ const updateData = async (id: number) => {
     loading.value = false
   } else {
     client.value = createClient()
+    // 新建默认：开启自动重置，周期 30 天
+    client.value.autoReset = true
+    client.value.resetDays = 30
     clientConfig.value = randomConfigs('client')
   }
   // links are kept untouched and merged back into the payload on save
@@ -433,20 +426,13 @@ watch(() => props.visible, (v) => {
 </script>
 
 <style scoped>
-.inb-item {
+.access-head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
-  border-radius: 11px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  cursor: pointer;
-  transition: all 0.15s var(--ease);
+  gap: 10px;
+  min-height: 30px;
+  margin-bottom: 10px;
 }
-.inb-item.on { background: var(--brand-soft); }
-.inb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); flex: none; }
-.inb-dot.online { background: var(--emerald); }
 .usage-card {
   padding: 16px;
   margin-bottom: 18px;

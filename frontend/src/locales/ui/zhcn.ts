@@ -337,6 +337,7 @@ export default {
   createAccount: "创建一个客户端账户",
   general: "常规",
   limits: "限制",
+  accessLimits: "入站与限制",
   accountEnabled: "启用账户",
   cannotConnect: "禁用后客户端无法连接",
   description: "描述",

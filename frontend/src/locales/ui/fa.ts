@@ -337,6 +337,7 @@ export default {
   createAccount: "ایجاد حساب کلاینت",
   general: "عمومی",
   limits: "محدودیت‌ها",
+  accessLimits: "ورودی‌ها و محدودیت‌ها",
   accountEnabled: "حساب فعال",
   cannotConnect: "کلاینت‌های غیرفعال نمی‌توانند متصل شوند",
   description: "توضیح",

@@ -16,6 +16,17 @@ export function resolveColor(el: HTMLElement, c: string): string {
   return m ? cssVar(el, m[1]) : c
 }
 
+/**
+ * 仪表盘卡片显隐(v-if)会改变同一行图表所在 grid 列的宽度，但 ECharts 不会自动跟随父级
+ * grid 重排；且多个图表同帧改宽时 ResizeObserver 可能因 "ResizeObserver loop" 丢通知，
+ * 导致个别图表没跟着容器缩放而溢出卡片。由布局发生变化的一方(如 Home 的卡片开关)显式调用
+ * 此函数，广播一次重排事件，通知所有在用图表重新测量尺寸。
+ */
+const RELAYOUT_EVENT = 'sui:chart-relayout'
+export function requestChartRelayout() {
+  window.dispatchEvent(new Event(RELAYOUT_EVENT))
+}
+
 /** 给颜色叠加透明度，支持 #rgb / #rrggbb / rgb() / rgba() */
 export function withAlpha(color: string, alpha: number): string {
   if (color.startsWith('#')) {
@@ -43,10 +54,19 @@ export function useChart(
   const chart = shallowRef<EChart>()
   let ro: ResizeObserver | undefined
   let mo: MutationObserver | undefined
+  let resizeTimer: ReturnType<typeof setTimeout> | undefined
 
   const render = () => {
     const el = elRef.value
     if (el && chart.value) build(chart.value, el)
+  }
+
+  // 把一连串尺寸变化合并到下一个事件循环再 resize：切换卡片时同一行多个图表会同帧改宽，
+  // 裸调 resize 易触发 ResizeObserver loop 丢通知，导致个别图表没跟随容器缩放而溢出卡片；
+  // 延迟一拍后再 resize()，读到的是布局稳定后的最终宽度（resize 内部读 clientWidth 会强制重排）。
+  const scheduleResize = () => {
+    clearTimeout(resizeTimer)
+    resizeTimer = setTimeout(() => chart.value?.resize(), 0)
   }
 
   onMounted(() => {
@@ -55,14 +75,18 @@ export function useChart(
     chart.value = echarts.init(el, undefined, { renderer: 'svg' })
     render()
     // 容器尺寸变化 -> resize（替代原 SVG viewBox 的自动响应）
-    ro = new ResizeObserver(() => chart.value?.resize())
+    ro = new ResizeObserver(scheduleResize)
     ro.observe(el)
+    // 卡片显隐引起的 grid 列宽变化，RO 不一定可靠（多图同帧重排会丢通知），由布局方显式广播兜底
+    window.addEventListener(RELAYOUT_EVENT, scheduleResize)
     // 明暗主题切换（<html data-theme> 变化）-> 重取 CSS 变量并重渲染
     mo = new MutationObserver(render)
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
   })
 
   onBeforeUnmount(() => {
+    clearTimeout(resizeTimer)
+    window.removeEventListener(RELAYOUT_EVENT, scheduleResize)
     ro?.disconnect()
     mo?.disconnect()
     chart.value?.dispose()
