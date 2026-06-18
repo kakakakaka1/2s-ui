@@ -171,7 +171,8 @@ func ensureSocat() {
 // IssueWeb 为面板申请证书并安装到 /root/cert/{域名}/。
 //   - useNginx=false:standalone 模式占用 80 端口申请(需 socat)。
 //   - useNginx=true :nginx 模式申请,不抢 80 端口,证书供 nginx 使用。
-func (a *AcmeService) IssueWeb(domain, email string, useNginx bool) (*IssueResult, error) {
+//   - force=true    :域名已有未到期证书时 acme.sh 默认跳过签发,force 时加 --force 强制续期。
+func (a *AcmeService) IssueWeb(domain, email string, useNginx, force bool) (*IssueResult, error) {
 	if runtime.GOOS == "windows" {
 		return nil, common.NewError("Windows 不支持 acme.sh 申请证书")
 	}
@@ -212,8 +213,17 @@ func (a *AcmeService) IssueWeb(domain, email string, useNginx bool) (*IssueResul
 		ensureSocat()
 		issueArgs = append(issueArgs, "--standalone", "--httpport", "80")
 	}
+	// 域名已有未到期证书时 acme.sh 会跳过("Skipping. Next renewal time is ...")，
+	// --force 强制重新签发以续期。会消耗 Let's Encrypt 限速额度，故由前端「强制续期」显式触发。
+	if force {
+		issueArgs = append(issueArgs, "--force")
+	}
 	if out, err := runCmd(acmeIssueTO, home, bin, issueArgs...); err != nil {
-		return nil, common.NewErrorf("证书申请失败(若域名已有未到期证书可加 --force 强制续期):\n%s", out)
+		hint := "证书申请失败"
+		if !force {
+			hint = "证书申请失败(若域名已有未到期证书,请改用「强制续期」)"
+		}
+		return nil, common.NewErrorf("%s:\n%s", hint, out)
 	}
 
 	// 安装证书到 /root/cert/{域名}/

@@ -416,8 +416,9 @@ func (a *ApiService) IssueCert(c *gin.Context) {
 	domain := c.Request.FormValue("domain")
 	email := c.Request.FormValue("email")
 	useNginx := c.Request.FormValue("nginx") == "true"
+	force := c.Request.FormValue("force") == "true"
 	var acme service.AcmeService
-	res, err := acme.IssueWeb(domain, email, useNginx)
+	res, err := acme.IssueWeb(domain, email, useNginx, force)
 	if err != nil {
 		pureJsonMsg(c, false, err.Error())
 		return
