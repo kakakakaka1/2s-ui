@@ -337,13 +337,14 @@ const restartSb = async () => {
 .srv-v { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .srv-status { display: flex; align-items: center; gap: 10px; padding: 13px 20px; border-top: 1px solid var(--line); }
 .main-grid { display: grid; grid-template-columns: repeat(var(--main-cols, 3), minmax(0, 1fr)); gap: 18px; }
-.net-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+/* minmax(0, 1fr)：裸 1fr 的 min 是 auto，ECharts SVG 的固定宽度会把列撑开导致图表缩不回（#15） */
+.net-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 @media (max-width: 1180px) {
   .top-grid { grid-template-columns: 1fr 1fr !important; }
-  .main-grid { grid-template-columns: 1fr 1fr !important; }
+  .main-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
 @media (max-width: 820px) {
   .top-grid { grid-template-columns: 1fr !important; }
-  .main-grid { grid-template-columns: 1fr !important; }
+  .main-grid { grid-template-columns: minmax(0, 1fr) !important; }
 }
 </style>
