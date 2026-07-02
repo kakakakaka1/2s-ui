@@ -195,13 +195,14 @@ func (s *Server) Start() (err error) {
 			scheme = "https (ACME)"
 		}
 	} else if certFile != "" || keyFile != "" {
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		webDomain, err := s.settingService.GetWebDomain()
+		if err != nil {
+			return err
+		}
+		c, err := network.NewTLSConfig(certFile, keyFile, webDomain)
 		if err != nil {
 			listener.Close()
 			return err
-		}
-		c := &tls.Config{
-			Certificates: []tls.Certificate{cert},
 		}
 		listener = network.NewAutoHttpsListener(listener)
 		listener = tls.NewListener(listener, c)
