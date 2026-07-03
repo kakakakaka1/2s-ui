@@ -57,6 +57,8 @@ func (a *APIv2Handler) postHandler(c *gin.Context) {
 		a.ApiService.TestAcme(c)
 	case "importdb":
 		a.ApiService.ImportDb(c)
+	case "getCertPing":
+		a.ApiService.GetCertPing(c)
 	default:
 		jsonMsg(c, "failed", common.NewError("unknown action: ", action))
 	}

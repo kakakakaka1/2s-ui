@@ -6,8 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
+	"net"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/shenaba/2s-ui/util/common"
+
+	utls "github.com/refraction-networking/utls"
 )
 
 func CertPEMFromTLS(tlsConfig map[string]interface{}) string {
@@ -88,4 +94,50 @@ func CertSha256Hex(pemData string) string {
 	}
 	sum := sha256.Sum256(cert.Raw)
 	return hex.EncodeToString(sum[:])
+}
+
+// GetTlsPing performs a TLS handshake against domain:port (uTLS Chrome hello,
+// no verification -- the point is to fetch whatever certificate is served) and
+// returns the leaf certificate's SPKI SHA256 so the UI can show/pin it.
+func GetTlsPing(domain string, port string) (any, error) {
+	if domain == "" {
+		return "", common.NewError("domain is empty")
+	}
+	if port == "" {
+		port = "443"
+	}
+
+	d := net.Dialer{Timeout: 10 * time.Second}
+	tcpConn, err := d.Dial("tcp", net.JoinHostPort(domain, port))
+	if err != nil {
+		return "", common.NewErrorf("Failed to dial tcp: %s", err)
+	}
+	defer tcpConn.Close()
+	tlsConn := utls.UClient(tcpConn, &utls.Config{
+		InsecureSkipVerify: true,
+		NextProtos:         []string{"h2", "http/1.1"},
+	}, utls.HelloChrome_Auto)
+	if err = tlsConn.Handshake(); err != nil {
+		return "", common.NewErrorf("Failed to handshake: %s", err)
+	}
+	// Prefer the certificate that carries SANs; fall back to the first one so
+	// CN-only (typically self-signed) certificates don't crash the probe.
+	var leaf *x509.Certificate
+	certs := tlsConn.ConnectionState().PeerCertificates
+	for _, cert := range certs {
+		if len(cert.DNSNames) != 0 {
+			leaf = cert
+			break
+		}
+	}
+	if leaf == nil {
+		if len(certs) == 0 {
+			return "", common.NewError("no peer certificate received")
+		}
+		leaf = certs[0]
+	}
+	sum := sha256.Sum256(leaf.RawSubjectPublicKeyInfo)
+	return map[string]string{
+		"leafHash": base64.StdEncoding.EncodeToString(sum[:]),
+	}, nil
 }
