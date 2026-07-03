@@ -275,8 +275,13 @@ func (s *InboundService) fetchUsers(db *gorm.DB, inboundType string, condition s
 	}
 	stripVision := false
 	if inboundType == "vless" {
-		transport, _ := inbound["transport"].(map[string]interface{})
-		stripVision = len(transport) > 0 || inbound["tls"] == nil
+		// flow only applies to raw TCP+TLS: an empty transport type is still
+		// TCP, so keep the flow there (upstream #1156).
+		transportType := ""
+		if tr, ok := inbound["transport"].(map[string]interface{}); ok {
+			transportType, _ = tr["type"].(string)
+		}
+		stripVision = inbound["tls"] == nil || transportType != ""
 	}
 
 	var usersJson []json.RawMessage
