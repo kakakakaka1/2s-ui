@@ -59,8 +59,7 @@ func GetExternalSub(url string) ([]map[string]interface{}, error) {
 		}
 		outbounds, ok := jsonData["outbounds"].([]any)
 		if !ok {
-			logger.Warning("sub: Error getting outbounds:", err)
-			return nil, err
+			return nil, common.NewError("no outbounds in external subscription")
 		}
 		for _, outbound := range outbounds {
 			outboundMap, ok := outbound.(map[string]interface{})
