@@ -74,11 +74,25 @@ func MigrateDb() {
 		}
 	}
 
-	// Before 1.5.1: back-fill self-signed TLS public-key pins and rewrite OutJson
-	if dbVersion < "1.5.1" {
+	// 2s-ui version line: both upstream migrations below first ship with
+	// 2s-ui 1.5.4, and our users' dbVersion follows 2s-ui releases (1.4.2 ..
+	// 1.5.3), NOT upstream's. Gate on 1.5.4, not the upstream version numbers,
+	// or every existing install would skip them. Both are idempotent.
+
+	// Back-fill self-signed TLS public-key pins and rewrite OutJson
+	if dbVersion < "1.5.4" {
 		err = to1_5_1(tx)
 		if err != nil {
 			log.Fatal("Migration to 1.5.1 failed: ", err)
+			return
+		}
+	}
+
+	// Hash any plaintext admin passwords
+	if dbVersion < "1.5.4" {
+		err = to1_5_2(tx)
+		if err != nil {
+			log.Fatal("Migration to 1.5.2 failed: ", err)
 			return
 		}
 	}
