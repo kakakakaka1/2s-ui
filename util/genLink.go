@@ -117,6 +117,12 @@ func prepareTls(t *model.Tls) map[string]interface{} {
 		return nil
 	}
 
+	// Link pin params expect the certificate fingerprint in hex, not the
+	// base64 SPKI hash that sing-box JSON uses in certificate_public_key_sha256.
+	if oTls["certificate_public_key_sha256"] != nil {
+		oTls["pinSHA256"] = CertSha256Hex(CertPEMFromTLS(iTls))
+	}
+
 	for k, v := range iTls {
 		switch k {
 		case "enabled", "server_name", "alpn":
@@ -613,10 +619,10 @@ func getTlsParams(params *[]LinkParam, tls map[string]interface{}, insecureKey s
 		if insecure, ok := tls["insecure"].(bool); ok && insecure {
 			*params = append(*params, LinkParam{insecureKey, "1"})
 		}
-		if pins, ok := tls["certificate_public_key_sha256"].([]interface{}); ok && len(pins) > 0 {
-			if pin, ok := pins[0].(string); ok && pin != "" {
-				*params = append(*params, LinkParam{"pinSHA256", pin})
-			}
+		// Upstream v1.5.2 emits this as "pcs", but clients only recognize
+		// "pinSHA256" (see upstream #1093 follow-up) -- keep the standard name.
+		if pin, ok := tls["pinSHA256"].(string); ok && pin != "" {
+			*params = append(*params, LinkParam{"pinSHA256", pin})
 		}
 		if disableSni, ok := tls["disable_sni"].(bool); ok && disableSni {
 			*params = append(*params, LinkParam{"disable_sni", "1"})
