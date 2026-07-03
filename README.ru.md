@@ -269,4 +269,4 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 </details>
 
 ## Звёзды со временем
-[![Stargazers over time](https://starchart.cc/shenaba/2s-ui.svg)](https://starchart.cc/shenaba/2s-ui)
+[![Star History Chart](https://api.star-history.com/svg?repos=shenaba/2s-ui&type=Date)](https://star-history.com/#shenaba/2s-ui&Date)
