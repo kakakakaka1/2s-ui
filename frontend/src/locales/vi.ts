@@ -208,6 +208,8 @@ export default {
     jsonSubOptions: "Tùy chọn Khác",
     excludePkg: "Loại trừ Gói",
     clashSub: "Clash đăng ký",
+    clashNoDefGrp: "Tắt nhóm mặc định",
+    clashSprtAll: "Hỗ trợ 'all'",
     mixedPort: "Cổng khóa",
     tun: "Tun đăng ký",
   },

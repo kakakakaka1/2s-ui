@@ -209,6 +209,8 @@ export default {
     jsonSubOptions: "Другие параметры",
     excludePkg: "Исключить пакеты",
     clashSub: "Clash подписка",
+    clashNoDefGrp: "Отключить группы по умолчанию",
+    clashSprtAll: "Поддержка 'all'",
     mixedPort: "Смешанный порт",
     tun: "Tun инбоунд",
   },

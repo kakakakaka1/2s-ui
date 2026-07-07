@@ -208,6 +208,8 @@ export default {
     jsonSubOptions: "گزینه‌های دیگر",
     excludePkg: "نرم‌افزارهای استثنا",
     clashSub: "سابسکریپشن CLASH",
+    clashNoDefGrp: "غیرفعال‌سازی گروه‌های پیش‌فرض",
+    clashSprtAll: "پشتیبانی از 'all'",
     mixedPort: "ورودی Mixed",
     tun: "ورودی TUN",
   },

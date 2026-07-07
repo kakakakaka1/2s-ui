@@ -208,6 +208,8 @@ export default {
     jsonSubOptions: "Other Options",
     excludePkg: "Exclude Packages",
     clashSub: "Clash Subscription",
+    clashNoDefGrp: "Disable Default Groups",
+    clashSprtAll: "Support 'all'",
     mixedPort: "Mixed Inbound Port",
     tun: "Tun Inbound",
   },
