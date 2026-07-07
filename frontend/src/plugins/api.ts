@@ -64,9 +64,10 @@ if ((import.meta as any).env?.DEV) {
       return await builtin(config)
     } catch (err) {
       if (axios.isCancel(err)) throw err
-      // 只在网络层失败（拿不到响应，如后端没起）时用 mock 兜底；
-      // HTTP 4xx/5xx 是有响应的真实故障，照常抛出，避免被假数据掩盖
-      if (axios.isAxiosError(err) && err.response) throw err
+      // 只在"后端不在"时用 mock 兜底,真实故障照常抛出,避免被假数据掩盖。
+      // 注意 vite 代理会把 ECONNREFUSED 转成 502 响应(而非网络层失败),
+      // 所以 dev 下 502 网关错误也按"后端没起"处理,否则 mock 永远不触发
+      if (axios.isAxiosError(err) && err.response && err.response.status !== 502) throw err
       const { getMock } = await import('./mock')
       const m = getMock(config.url || '', config.params)
       if (m) return { data: m, status: 200, statusText: 'OK (mock)', headers: {}, config, request: {} } as any
