@@ -64,11 +64,249 @@ t() {
             msg_uninstalled)   echo "卸载成功，如需删除脚本，退出后执行 rm /usr/local/s-ui -f 命令。" ;;
             msg_panel_uri)     echo "可通过以下地址访问面板：" ;;
             msg_lang_select)   echo "选择语言 / Select language:" ;;
-            msg_lang_en)       echo "1. English" ;;
-            msg_lang_zh)       echo "2. 简体中文" ;;
-            msg_lang_saved)    echo "语言已切换为中文。" ;;
+            msg_lang_saved)    echo "语言已切换为简体中文。" ;;
             msg_panel_version) echo "输入面板版本（如 0.0.1）：" ;;
             msg_downloading)   echo "正在下载并安装版本" ;;
+            *) echo "$key" ;;
+        esac
+    elif [[ $LANG_PREF == "zhtw" ]]; then
+        case $key in
+            menu_title)        echo "2S-UI 管理腳本" ;;
+            opt_exit)          echo "退出" ;;
+            opt_install)       echo "安裝" ;;
+            opt_update)        echo "更新" ;;
+            opt_custom_ver)    echo "自訂版本" ;;
+            opt_uninstall)     echo "解除安裝" ;;
+            opt_reset_admin)   echo "重設管理員憑證為預設值" ;;
+            opt_set_admin)     echo "設定管理員憑證" ;;
+            opt_view_admin)    echo "檢視管理員憑證" ;;
+            opt_reset_panel)   echo "重設面板設定" ;;
+            opt_set_panel)     echo "設定面板參數" ;;
+            opt_view_panel)    echo "檢視面板設定" ;;
+            opt_start)         echo "2S-UI 啟動" ;;
+            opt_stop)          echo "2S-UI 停止" ;;
+            opt_restart)       echo "2S-UI 重啟" ;;
+            opt_status)        echo "2S-UI 檢視狀態" ;;
+            opt_log)           echo "2S-UI 檢視日誌" ;;
+            opt_enable)        echo "2S-UI 開啟開機自啟" ;;
+            opt_disable)       echo "2S-UI 關閉開機自啟" ;;
+            opt_bbr)           echo "開啟或關閉 BBR" ;;
+            opt_ssl)           echo "SSL 憑證管理" ;;
+            opt_cf_ssl)        echo "Cloudflare SSL 憑證" ;;
+            opt_lang)          echo "Language / 切換語言" ;;
+            prompt_select)     echo "請輸入選項 [0-21]: " ;;
+            state_running)     echo "運行中" ;;
+            state_stopped)     echo "未運行" ;;
+            state_not_inst)    echo "未安裝" ;;
+            autostart_yes)     echo "是" ;;
+            autostart_no)      echo "否" ;;
+            autostart_label)   echo "開機自啟" ;;
+            err_not_root)      echo "錯誤：請以 root 身分執行此腳本！" ;;
+            err_install_first) echo "請先安裝面板" ;;
+            err_already_inst)  echo "面板已安裝，請勿重複安裝" ;;
+            err_invalid_num)   echo "請輸入正確的選項 [0-21]" ;;
+            msg_press_enter)   echo "按 Enter 返回主選單：" ;;
+            msg_restart_svc)   echo "重啟服務" ;;
+            msg_cancelled)     echo "已取消" ;;
+            confirm_update)    echo "此操作將強制重裝最新版，資料不會遺失，是否繼續？" ;;
+            confirm_uninstall) echo "確定要解除安裝面板嗎？" ;;
+            confirm_reset_admin) echo "確定要將管理員憑證重設為預設值嗎？" ;;
+            confirm_reset_panel) echo "確定要將設定重設為預設值嗎？" ;;
+            warn_reset_admin)  echo "不建議將管理員憑證重設為預設值！" ;;
+            warn_set_admin)    echo "不建議將管理員憑證設定為簡單文字。" ;;
+            prompt_username)   echo "請輸入使用者名稱：" ;;
+            prompt_password)   echo "請輸入密碼：" ;;
+            prompt_panel_port) echo "輸入面板連接埠（留空保留現有/預設值）：" ;;
+            prompt_panel_path) echo "輸入面板路徑（留空保留現有/預設值）：" ;;
+            prompt_sub_port)   echo "輸入訂閱連接埠（留空保留現有/預設值）：" ;;
+            prompt_sub_path)   echo "輸入訂閱路徑（留空保留現有/預設值）：" ;;
+            msg_initializing)  echo "初始化中，請稍候..." ;;
+            msg_uninstalled)   echo "解除安裝成功，如需刪除腳本，離開後執行 rm /usr/local/s-ui -f 指令。" ;;
+            msg_panel_uri)     echo "可透過以下網址存取面板：" ;;
+            msg_lang_select)   echo "選擇語言 / Select language:" ;;
+            msg_lang_saved)    echo "語言已切換為繁體中文。" ;;
+            msg_panel_version) echo "輸入面板版本（如 0.0.1）：" ;;
+            msg_downloading)   echo "正在下載並安裝版本" ;;
+            *) echo "$key" ;;
+        esac
+    elif [[ $LANG_PREF == "ru" ]]; then
+        case $key in
+            menu_title)        echo "Скрипт управления 2S-UI" ;;
+            opt_exit)          echo "Выход" ;;
+            opt_install)       echo "Установить" ;;
+            opt_update)        echo "Обновить" ;;
+            opt_custom_ver)    echo "Выбор версии" ;;
+            opt_uninstall)     echo "Удалить" ;;
+            opt_reset_admin)   echo "Сбросить учётные данные администратора" ;;
+            opt_set_admin)     echo "Задать учётные данные администратора" ;;
+            opt_view_admin)    echo "Показать учётные данные администратора" ;;
+            opt_reset_panel)   echo "Сбросить настройки панели" ;;
+            opt_set_panel)     echo "Настроить параметры панели" ;;
+            opt_view_panel)    echo "Показать настройки панели" ;;
+            opt_start)         echo "Запустить 2S-UI" ;;
+            opt_stop)          echo "Остановить 2S-UI" ;;
+            opt_restart)       echo "Перезапустить 2S-UI" ;;
+            opt_status)        echo "Статус 2S-UI" ;;
+            opt_log)           echo "Логи 2S-UI" ;;
+            opt_enable)        echo "Включить автозапуск 2S-UI" ;;
+            opt_disable)       echo "Отключить автозапуск 2S-UI" ;;
+            opt_bbr)           echo "Включить или отключить BBR" ;;
+            opt_ssl)           echo "Управление SSL-сертификатами" ;;
+            opt_cf_ssl)        echo "SSL-сертификат Cloudflare" ;;
+            opt_lang)          echo "Language / Язык" ;;
+            prompt_select)     echo "Введите номер пункта [0-21]: " ;;
+            state_running)     echo "Работает" ;;
+            state_stopped)     echo "Не запущена" ;;
+            state_not_inst)    echo "Не установлена" ;;
+            autostart_yes)     echo "Да" ;;
+            autostart_no)      echo "Нет" ;;
+            autostart_label)   echo "Автозапуск" ;;
+            err_not_root)      echo "ОШИБКА: запустите скрипт от имени root!" ;;
+            err_install_first) echo "Сначала установите панель" ;;
+            err_already_inst)  echo "Панель уже установлена, не устанавливайте повторно" ;;
+            err_invalid_num)   echo "Введите корректный номер [0-21]" ;;
+            msg_press_enter)   echo "Нажмите Enter для возврата в главное меню: " ;;
+            msg_restart_svc)   echo "Перезапустить службу" ;;
+            msg_cancelled)     echo "Отменено" ;;
+            confirm_update)    echo "Будет принудительно переустановлена последняя версия, данные не будут потеряны. Продолжить?" ;;
+            confirm_uninstall) echo "Вы уверены, что хотите удалить панель?" ;;
+            confirm_reset_admin) echo "Сбросить учётные данные администратора к значениям по умолчанию?" ;;
+            confirm_reset_panel) echo "Сбросить настройки к значениям по умолчанию?" ;;
+            warn_reset_admin)  echo "Не рекомендуется сбрасывать учётные данные администратора к значениям по умолчанию!" ;;
+            warn_set_admin)    echo "Не рекомендуется использовать простой текст в качестве учётных данных администратора." ;;
+            prompt_username)   echo "Введите имя пользователя:" ;;
+            prompt_password)   echo "Введите пароль:" ;;
+            prompt_panel_port) echo "Порт панели (пусто — оставить текущее/по умолчанию):" ;;
+            prompt_panel_path) echo "Путь панели (пусто — оставить текущее/по умолчанию):" ;;
+            prompt_sub_port)   echo "Порт подписки (пусто — оставить текущее/по умолчанию):" ;;
+            prompt_sub_path)   echo "Путь подписки (пусто — оставить текущее/по умолчанию):" ;;
+            msg_initializing)  echo "Инициализация, подождите..." ;;
+            msg_uninstalled)   echo "Удаление выполнено. Чтобы удалить сам скрипт, после выхода выполните rm /usr/local/s-ui -f" ;;
+            msg_panel_uri)     echo "Панель доступна по следующим адресам:" ;;
+            msg_lang_select)   echo "Выберите язык / Select language:" ;;
+            msg_lang_saved)    echo "Язык переключён на русский." ;;
+            msg_panel_version) echo "Введите версию панели (например 0.0.1):" ;;
+            msg_downloading)   echo "Загрузка и установка версии" ;;
+            *) echo "$key" ;;
+        esac
+    elif [[ $LANG_PREF == "fa" ]]; then
+        case $key in
+            menu_title)        echo "اسکریپت مدیریت 2S-UI" ;;
+            opt_exit)          echo "خروج" ;;
+            opt_install)       echo "نصب" ;;
+            opt_update)        echo "به‌روزرسانی" ;;
+            opt_custom_ver)    echo "نسخه دلخواه" ;;
+            opt_uninstall)     echo "حذف نصب" ;;
+            opt_reset_admin)   echo "بازنشانی اطلاعات ورود مدیر به پیش‌فرض" ;;
+            opt_set_admin)     echo "تنظیم اطلاعات ورود مدیر" ;;
+            opt_view_admin)    echo "نمایش اطلاعات ورود مدیر" ;;
+            opt_reset_panel)   echo "بازنشانی تنظیمات پنل" ;;
+            opt_set_panel)     echo "تنظیم پارامترهای پنل" ;;
+            opt_view_panel)    echo "نمایش تنظیمات پنل" ;;
+            opt_start)         echo "راه‌اندازی 2S-UI" ;;
+            opt_stop)          echo "توقف 2S-UI" ;;
+            opt_restart)       echo "راه‌اندازی مجدد 2S-UI" ;;
+            opt_status)        echo "وضعیت 2S-UI" ;;
+            opt_log)           echo "لاگ‌های 2S-UI" ;;
+            opt_enable)        echo "فعال‌سازی اجرای خودکار 2S-UI" ;;
+            opt_disable)       echo "غیرفعال‌سازی اجرای خودکار 2S-UI" ;;
+            opt_bbr)           echo "فعال یا غیرفعال کردن BBR" ;;
+            opt_ssl)           echo "مدیریت گواهی SSL" ;;
+            opt_cf_ssl)        echo "گواهی SSL کلادفلر" ;;
+            opt_lang)          echo "Language / زبان" ;;
+            prompt_select)     echo "شماره گزینه را وارد کنید [0-21]: " ;;
+            state_running)     echo "در حال اجرا" ;;
+            state_stopped)     echo "متوقف" ;;
+            state_not_inst)    echo "نصب نشده" ;;
+            autostart_yes)     echo "بله" ;;
+            autostart_no)      echo "خیر" ;;
+            autostart_label)   echo "اجرای خودکار" ;;
+            err_not_root)      echo "خطا: این اسکریپت باید با دسترسی root اجرا شود!" ;;
+            err_install_first) echo "ابتدا پنل را نصب کنید" ;;
+            err_already_inst)  echo "پنل قبلاً نصب شده است، دوباره نصب نکنید" ;;
+            err_invalid_num)   echo "یک شماره معتبر وارد کنید [0-21]" ;;
+            msg_press_enter)   echo "برای بازگشت به منوی اصلی Enter بزنید: " ;;
+            msg_restart_svc)   echo "راه‌اندازی مجدد سرویس" ;;
+            msg_cancelled)     echo "لغو شد" ;;
+            confirm_update)    echo "آخرین نسخه به‌صورت اجباری دوباره نصب می‌شود و داده‌ها از بین نمی‌روند. ادامه می‌دهید؟" ;;
+            confirm_uninstall) echo "آیا از حذف نصب پنل مطمئن هستید؟" ;;
+            confirm_reset_admin) echo "اطلاعات ورود مدیر به پیش‌فرض بازنشانی شود؟" ;;
+            confirm_reset_panel) echo "تنظیمات به پیش‌فرض بازنشانی شود؟" ;;
+            warn_reset_admin)  echo "بازنشانی اطلاعات ورود مدیر به پیش‌فرض توصیه نمی‌شود!" ;;
+            warn_set_admin)    echo "استفاده از متن ساده برای اطلاعات ورود مدیر توصیه نمی‌شود." ;;
+            prompt_username)   echo "نام کاربری را وارد کنید:" ;;
+            prompt_password)   echo "رمز عبور را وارد کنید:" ;;
+            prompt_panel_port) echo "پورت پنل (برای حفظ مقدار فعلی/پیش‌فرض خالی بگذارید):" ;;
+            prompt_panel_path) echo "مسیر پنل (برای حفظ مقدار فعلی/پیش‌فرض خالی بگذارید):" ;;
+            prompt_sub_port)   echo "پورت اشتراک (برای حفظ مقدار فعلی/پیش‌فرض خالی بگذارید):" ;;
+            prompt_sub_path)   echo "مسیر اشتراک (برای حفظ مقدار فعلی/پیش‌فرض خالی بگذارید):" ;;
+            msg_initializing)  echo "در حال آماده‌سازی، لطفاً صبر کنید..." ;;
+            msg_uninstalled)   echo "حذف نصب با موفقیت انجام شد. برای حذف این اسکریپت پس از خروج دستور rm /usr/local/s-ui -f را اجرا کنید." ;;
+            msg_panel_uri)     echo "پنل از طریق نشانی‌های زیر در دسترس است:" ;;
+            msg_lang_select)   echo "انتخاب زبان / Select language:" ;;
+            msg_lang_saved)    echo "زبان به فارسی تغییر کرد." ;;
+            msg_panel_version) echo "نسخه پنل را وارد کنید (مانند 0.0.1):" ;;
+            msg_downloading)   echo "در حال دانلود و نصب نسخه" ;;
+            *) echo "$key" ;;
+        esac
+    elif [[ $LANG_PREF == "vi" ]]; then
+        case $key in
+            menu_title)        echo "Tập lệnh quản trị 2S-UI" ;;
+            opt_exit)          echo "Thoát" ;;
+            opt_install)       echo "Cài đặt" ;;
+            opt_update)        echo "Cập nhật" ;;
+            opt_custom_ver)    echo "Phiên bản tùy chọn" ;;
+            opt_uninstall)     echo "Gỡ cài đặt" ;;
+            opt_reset_admin)   echo "Đặt lại thông tin đăng nhập quản trị về mặc định" ;;
+            opt_set_admin)     echo "Đặt thông tin đăng nhập quản trị" ;;
+            opt_view_admin)    echo "Xem thông tin đăng nhập quản trị" ;;
+            opt_reset_panel)   echo "Đặt lại cài đặt bảng điều khiển" ;;
+            opt_set_panel)     echo "Thiết lập tham số bảng điều khiển" ;;
+            opt_view_panel)    echo "Xem cài đặt bảng điều khiển" ;;
+            opt_start)         echo "Khởi động 2S-UI" ;;
+            opt_stop)          echo "Dừng 2S-UI" ;;
+            opt_restart)       echo "Khởi động lại 2S-UI" ;;
+            opt_status)        echo "Trạng thái 2S-UI" ;;
+            opt_log)           echo "Nhật ký 2S-UI" ;;
+            opt_enable)        echo "Bật tự khởi động 2S-UI" ;;
+            opt_disable)       echo "Tắt tự khởi động 2S-UI" ;;
+            opt_bbr)           echo "Bật hoặc tắt BBR" ;;
+            opt_ssl)           echo "Quản lý chứng chỉ SSL" ;;
+            opt_cf_ssl)        echo "Chứng chỉ SSL Cloudflare" ;;
+            opt_lang)          echo "Language / Ngôn ngữ" ;;
+            prompt_select)     echo "Nhập lựa chọn [0-21]: " ;;
+            state_running)     echo "Đang chạy" ;;
+            state_stopped)     echo "Không chạy" ;;
+            state_not_inst)    echo "Chưa cài đặt" ;;
+            autostart_yes)     echo "Có" ;;
+            autostart_no)      echo "Không" ;;
+            autostart_label)   echo "Tự khởi động" ;;
+            err_not_root)      echo "LỖI: Bạn phải chạy tập lệnh này với quyền root!" ;;
+            err_install_first) echo "Vui lòng cài đặt bảng điều khiển trước" ;;
+            err_already_inst)  echo "Bảng điều khiển đã được cài đặt, vui lòng không cài lại" ;;
+            err_invalid_num)   echo "Vui lòng nhập số hợp lệ [0-21]" ;;
+            msg_press_enter)   echo "Nhấn Enter để quay lại menu chính: " ;;
+            msg_restart_svc)   echo "Khởi động lại dịch vụ" ;;
+            msg_cancelled)     echo "Đã hủy" ;;
+            confirm_update)    echo "Thao tác này sẽ cài lại phiên bản mới nhất, dữ liệu sẽ không bị mất. Tiếp tục?" ;;
+            confirm_uninstall) echo "Bạn có chắc muốn gỡ cài đặt bảng điều khiển?" ;;
+            confirm_reset_admin) echo "Đặt lại thông tin đăng nhập quản trị về mặc định?" ;;
+            confirm_reset_panel) echo "Đặt lại cài đặt về mặc định?" ;;
+            warn_reset_admin)  echo "Không nên đặt lại thông tin đăng nhập quản trị về mặc định!" ;;
+            warn_set_admin)    echo "Không nên dùng văn bản đơn giản làm thông tin đăng nhập quản trị." ;;
+            prompt_username)   echo "Nhập tên người dùng:" ;;
+            prompt_password)   echo "Nhập mật khẩu:" ;;
+            prompt_panel_port) echo "Nhập cổng bảng điều khiển (để trống giữ giá trị hiện tại/mặc định):" ;;
+            prompt_panel_path) echo "Nhập đường dẫn bảng điều khiển (để trống giữ giá trị hiện tại/mặc định):" ;;
+            prompt_sub_port)   echo "Nhập cổng đăng ký (để trống giữ giá trị hiện tại/mặc định):" ;;
+            prompt_sub_path)   echo "Nhập đường dẫn đăng ký (để trống giữ giá trị hiện tại/mặc định):" ;;
+            msg_initializing)  echo "Đang khởi tạo, vui lòng đợi..." ;;
+            msg_uninstalled)   echo "Gỡ cài đặt thành công. Nếu muốn xóa tập lệnh này, sau khi thoát hãy chạy lệnh rm /usr/local/s-ui -f" ;;
+            msg_panel_uri)     echo "Bạn có thể truy cập bảng điều khiển qua các địa chỉ sau:" ;;
+            msg_lang_select)   echo "Chọn ngôn ngữ / Select language:" ;;
+            msg_lang_saved)    echo "Đã chuyển ngôn ngữ sang tiếng Việt." ;;
+            msg_panel_version) echo "Nhập phiên bản bảng điều khiển (ví dụ 0.0.1):" ;;
+            msg_downloading)   echo "Đang tải xuống và cài đặt phiên bản" ;;
             *) echo "$key" ;;
         esac
     else
@@ -126,8 +364,6 @@ t() {
             msg_uninstalled)   echo "Uninstalled Successfully, If you want to remove this script, then after exiting the script run" ;;
             msg_panel_uri)     echo "You may access the Panel with following URL(s):" ;;
             msg_lang_select)   echo "Select language / 选择语言:" ;;
-            msg_lang_en)       echo "1. English" ;;
-            msg_lang_zh)       echo "2. 简体中文" ;;
             msg_lang_saved)    echo "Language switched to English." ;;
             msg_panel_version) echo "Enter the panel version (like 0.0.1):" ;;
             msg_downloading)   echo "Downloading and installing panel version" ;;
@@ -923,25 +1159,30 @@ show_usage() {
 }
 
 switch_language() {
+    # 语言列表固定用各语言原生名,不随当前语言翻译,谁都能找到自己的语言
     echo -e "$(t msg_lang_select)"
-    echo -e "${green}\t$(t msg_lang_en)${plain}"
-    echo -e "${green}\t$(t msg_lang_zh)${plain}"
-    read -p "Select [1-2]: " lang_choice
+    echo -e "${green}\t1. English${plain}"
+    echo -e "${green}\t2. 简体中文${plain}"
+    echo -e "${green}\t3. 繁體中文${plain}"
+    echo -e "${green}\t4. Русский${plain}"
+    echo -e "${green}\t5. فارسی${plain}"
+    echo -e "${green}\t6. Tiếng Việt${plain}"
+    read -p "Select [1-6]: " lang_choice
     case "$lang_choice" in
-    1)
-        LANG_PREF="en"
-        echo "en" > ~/.s2ui_lang
-        LOGI "$(t msg_lang_saved)"
-        ;;
-    2)
-        LANG_PREF="zh"
-        echo "zh" > ~/.s2ui_lang
-        LOGI "$(t msg_lang_saved)"
-        ;;
+    1) LANG_PREF="en" ;;
+    2) LANG_PREF="zh" ;;
+    3) LANG_PREF="zhtw" ;;
+    4) LANG_PREF="ru" ;;
+    5) LANG_PREF="fa" ;;
+    6) LANG_PREF="vi" ;;
     *)
         echo "Invalid choice"
+        show_menu
+        return
         ;;
     esac
+    echo "$LANG_PREF" > ~/.s2ui_lang
+    LOGI "$(t msg_lang_saved)"
     show_menu
 }
 
