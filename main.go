@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	_ "time/tzdata"
 
 	"github.com/shenaba/2s-ui/app"
 	"github.com/shenaba/2s-ui/cmd"

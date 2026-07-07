@@ -44,7 +44,7 @@ LABEL org.opencontainers.image.source="https://github.com/shenaba/2s-ui"
 ENV TZ=Asia/Tehran
 WORKDIR /app
 RUN set -ex && apk upgrade --no-cache --scripts=no apk-tools && \
-    apk add --no-cache --upgrade bash tzdata ca-certificates nftables
+    apk add --no-cache --upgrade bash ca-certificates nftables
 COPY --from=backend-builder /app/sui /app/libcronet.so /app/
 COPY --chmod=755 entrypoint.sh /app/
 ENTRYPOINT [ "./entrypoint.sh" ]
