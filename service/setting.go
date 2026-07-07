@@ -71,6 +71,8 @@ var defaultValueMap = map[string]string{
 	"subURI":             "",
 	"subJsonExt":         "",
 	"subClashExt":        "",
+	"subClashNoDefGrp":   "false",
+	"subClashSprtAll":    "false",
 	"globalReset":        "",
 	"globalResetLast":    "0",
 	"config":             defaultConfig,
@@ -490,6 +492,20 @@ func (s *SettingService) GetSubJsonExt() (string, error) {
 
 func (s *SettingService) GetSubClashExt() (string, error) {
 	return s.getString("subClashExt")
+}
+
+// GetSubClashNoDefGrp reports whether the default "Proxy"/"Auto" proxy-groups
+// should never be injected into a Clash subscription. When true, the config is
+// left with exactly the groups the user defined.
+func (s *SettingService) GetSubClashNoDefGrp() (bool, error) {
+	return s.getBool("subClashNoDefGrp")
+}
+
+// GetSubClashSprtAll reports whether a case-insensitive "all" entry inside a
+// custom proxy-group's "proxies" list should be expanded into every generated
+// proxy tag.
+func (s *SettingService) GetSubClashSprtAll() (bool, error) {
+	return s.getBool("subClashSprtAll")
 }
 
 func (s *SettingService) fileExists(path string) error {
