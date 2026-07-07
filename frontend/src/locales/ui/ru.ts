@@ -309,6 +309,7 @@ export default {
   coreLbl: "Ядро",
   panelLbl: "Панель",
   kernel: "Ядро",
+  newVersion: "Доступно обновление",
   processMem: "Память",
   keymetrics: "Метрики",
   keymetricsSub: "Обзор в реальном времени",

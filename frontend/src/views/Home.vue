@@ -36,6 +36,9 @@
         <div class="srv-status">
           <Chip v-if="sbd.running" color="emerald" dot>{{ $t('ui.singboxRunning') }}</Chip>
           <Chip v-else color="rose" dot>sing-box · {{ $t('main.info.running') }}: {{ $t('no') }}</Chip>
+          <a v-if="newVersion" :href="RELEASE_URL" target="_blank" rel="noopener" style="text-decoration: none;">
+            <Chip color="amber" dot>{{ $t('ui.newVersion') }} · v{{ newVersion }}</Chip>
+          </a>
           <Btn variant="subtle" sm style="margin-inline-start: auto;" :loading="restarting" @click="restartSb">
             <Ico name="refresh" :size="14" /> {{ $t('ui.restart') }}
           </Btn>
@@ -144,6 +147,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useI18n } from 'vue-i18n'
 import HttpUtils from '@/plugins/httputil'
 import { HumanReadable } from '@/plugins/utils'
+import { latestRelease, isNewerVersion, RELEASE_URL } from '@/plugins/updateCheck'
 import Data from '@/store/modules/data'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
@@ -231,11 +235,21 @@ const loadSys = async () => {
   if (msg.success && msg.obj?.sys) sys.value = msg.obj.sys
 }
 
+/* ---------- update check ---------- */
+const latestTag = ref<string | null>(null)
+const newVersion = computed(() => {
+  const cur = sys.value.appVersion
+  return cur && latestTag.value && isNewerVersion(latestTag.value, cur)
+    ? latestTag.value.replace(/^v/i, '')
+    : null
+})
+
 let pollId: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
   loadSys()
   poll()
   loadChanges()
+  latestRelease().then((tag) => { latestTag.value = tag })
   pollId = setInterval(poll, POLL_MS)
 })
 onBeforeUnmount(() => { if (pollId) clearInterval(pollId) })
