@@ -309,6 +309,7 @@ export default {
   coreLbl: "هسته",
   panelLbl: "پنل",
   kernel: "هسته",
+  newVersion: "به‌روزرسانی موجود است",
   processMem: "حافظه فرآیند",
   keymetrics: "معیارهای کلیدی",
   keymetricsSub: "نمای کلی زنده",

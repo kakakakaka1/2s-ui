@@ -208,6 +208,8 @@ export default {
     jsonSubOptions: "其他选项",
     excludePkg: "排除包",
     clashSub: "Clash 订阅",
+    clashNoDefGrp: "禁用默认分组",
+    clashSprtAll: "支持 'all'",
     mixedPort: "混合入站端口",
     tun: "Tun 入站",
   },

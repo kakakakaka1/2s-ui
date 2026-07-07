@@ -249,6 +249,11 @@
     <SettingsGroup v-else>
       <div style="font-size: 12.5px; color: var(--text-3); padding: 12px 0 14px;">{{ $t('ui.clashExtDesc') }}</div>
 
+      <div style="display: flex; gap: 26px; padding-bottom: 16px; flex-wrap: wrap;">
+        <SwitchLabel v-model="clashNoDefGrp" :label="$t('setting.clashNoDefGrp')" />
+        <SwitchLabel v-model="clashSprtAll" :label="$t('setting.clashSprtAll')" />
+      </div>
+
       <div class="field-grid">
         <template v-if="optionMixed">
           <Field :label="$t('setting.mixedPort')" :mb="0">
@@ -359,6 +364,8 @@ const settings = ref({
   subURI: "",
   subJsonExt: "",
   subClashExt: "",
+  subClashNoDefGrp: "false",
+  subClashSprtAll: "false",
 })
 
 onMounted(async () => {
@@ -920,6 +927,16 @@ const saveJsonEditor = (data: string) => {
 /* ===================================================================
  * Clash subscription extension (逻辑平移自旧 components/SubClashExt.vue)
  * =================================================================== */
+
+const clashNoDefGrp = computed({
+  get: () => { return settings.value.subClashNoDefGrp == "true" },
+  set: (v: boolean) => { settings.value.subClashNoDefGrp = v ? "true" : "false" }
+})
+
+const clashSprtAll = computed({
+  get: () => { return settings.value.subClashSprtAll == "true" },
+  set: (v: boolean) => { settings.value.subClashSprtAll = v ? "true" : "false" }
+})
 
 const defaultConfig: any = {
   "mixed-port": 7890,

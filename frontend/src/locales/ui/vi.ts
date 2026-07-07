@@ -309,6 +309,7 @@ export default {
   coreLbl: "Lõi",
   panelLbl: "Bảng",
   kernel: "Nhân",
+  newVersion: "Có bản cập nhật",
   processMem: "RAM tiến trình",
   keymetrics: "Chỉ số chính",
   keymetricsSub: "Tổng quan trực tiếp",

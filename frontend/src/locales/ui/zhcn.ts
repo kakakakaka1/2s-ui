@@ -309,6 +309,7 @@ export default {
   coreLbl: "核心",
   panelLbl: "面板",
   kernel: "内核",
+  newVersion: "有新版本",
   processMem: "进程内存",
   keymetrics: "关键指标",
   keymetricsSub: "实时业务概览",

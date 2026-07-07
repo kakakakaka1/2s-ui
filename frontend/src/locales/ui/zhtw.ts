@@ -309,6 +309,7 @@ export default {
   coreLbl: "核心",
   panelLbl: "面板",
   kernel: "核心",
+  newVersion: "有新版本",
   processMem: "行程記憶體",
   keymetrics: "關鍵指標",
   keymetricsSub: "即時業務概覽",

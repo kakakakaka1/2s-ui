@@ -309,6 +309,7 @@ export default {
   coreLbl: "Core",
   panelLbl: "Panel",
   kernel: "Kernel",
+  newVersion: "Update available",
   processMem: "Process RAM",
   keymetrics: "Key metrics",
   keymetricsSub: "Live overview",
