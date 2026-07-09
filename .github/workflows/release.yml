@@ -215,3 +215,31 @@ jobs:
           asset_name: s-ui-linux-${{ matrix.platform }}.tar.gz
           prerelease: true
           overwrite: true
+
+  # Publish a single SHA256SUMS covering every release tarball. The panel's
+  # in-place self-update downloads this and verifies the archive against it
+  # before touching the running install, so a tampered download can't run as
+  # root. Must run after every build so the file lists all platforms.
+  checksums:
+    needs: build-linux
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all release tarballs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: s-ui-linux-*
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: sha256sum s-ui-linux-*.tar.gz | tee SHA256SUMS
+
+      - name: Upload SHA256SUMS to Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.event.release.tag_name }}
+          file: SHA256SUMS
+          asset_name: SHA256SUMS
+          prerelease: true
+          overwrite: true

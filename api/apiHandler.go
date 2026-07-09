@@ -46,6 +46,8 @@ func (a *APIHandler) postHandler(c *gin.Context) {
 		a.ApiService.RestartApp(c)
 	case "restartSb":
 		a.ApiService.RestartSb(c)
+	case "updatePanel":
+		a.ApiService.UpdatePanel(c)
 	case "resetTraffic":
 		a.ApiService.ResetTraffic(c)
 	case "linkConvert":
@@ -111,6 +113,10 @@ func (a *APIHandler) getHandler(c *gin.Context) {
 		a.ApiService.GetCheckOutbound(c)
 	case "detectNginx":
 		a.ApiService.DetectNginx(c)
+	case "updateInfo":
+		a.ApiService.UpdateInfo(c)
+	case "updateStatus":
+		a.ApiService.UpdateStatus(c)
 	default:
 		jsonMsg(c, "failed", common.NewError("unknown action: ", action))
 	}

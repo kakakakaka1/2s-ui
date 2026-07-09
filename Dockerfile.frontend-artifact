@@ -37,6 +37,10 @@ RUN if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6"
 FROM alpine
 LABEL org.opencontainers.image.source="https://github.com/shenaba/2s-ui"
 ENV TZ=Asia/Tehran
+# Marks the container so the panel disables in-place self-update: the binary
+# lives in an immutable image and there is no systemd here. Update by pulling a
+# new image instead.
+ENV S_UI_IN_DOCKER=1
 WORKDIR /app
 RUN set -ex && apk upgrade --no-cache --scripts=no apk-tools && \
     apk add --no-cache --upgrade bash ca-certificates nftables
