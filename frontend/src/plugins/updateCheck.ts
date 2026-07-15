@@ -6,13 +6,16 @@ export const RELEASE_URL = 'https://github.com/shenaba/2s-ui/releases/latest'
 const CACHE_KEY = '2sui-latest-release'
 const CACHE_TTL = 24 * 60 * 60 * 1000
 
-export const latestRelease = async (): Promise<string | null> => {
-  try {
-    const cached = JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null')
-    // tag 必须是字符串:缓存可被手动改坏,混入非字符串会让下游 .replace() 抛错
-    if (typeof cached?.tag === 'string' && cached.tag && Date.now() - cached.at < CACHE_TTL) return cached.tag
-  } catch (e) {
-    // 缓存损坏按不存在处理,走网络刷新
+// force=true 跳过读缓存(手动点"刷新"时用),结果仍写回缓存
+export const latestRelease = async (force = false): Promise<string | null> => {
+  if (!force) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null')
+      // tag 必须是字符串:缓存可被手动改坏,混入非字符串会让下游 .replace() 抛错
+      if (typeof cached?.tag === 'string' && cached.tag && Date.now() - cached.at < CACHE_TTL) return cached.tag
+    } catch (e) {
+      // 缓存损坏按不存在处理,走网络刷新
+    }
   }
   try {
     const resp = await fetch(RELEASE_API)

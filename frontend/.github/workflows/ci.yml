@@ -1,0 +1,40 @@
+name: CI
+
+# This repo had no workflows at all, so npm bumps were merged unverified. The
+# panel repo embeds this repo's built dist, and its own CI does not build the
+# frontend -- a broken build here would otherwise surface when a release is cut.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+
+      # Node 25 matches NODE_VERSION in the panel repo's release.yml, which is
+      # what actually builds the dist that ships.
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "25"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `build` is `vue-tsc --noEmit && vite build`, so this gates types and bundle.
+      - name: Type-check and build
+        run: npm run build

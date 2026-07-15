@@ -6,6 +6,10 @@ type Mock = { success: boolean; msg: string; obj: any }
 
 const rnd = (min: number, max: number) => min + Math.random() * (max - min)
 
+// api/status 的 appVersion 与 api/updateInfo 的 current 在后端同源(config.GetVersion()),
+// mock 也保持一处定义,免得改一处漏一处让两边对不上
+const MOCK_VERSION = '1.5.0-alpha.2'
+
 const PROTOS = ['vless', 'vmess', 'trojan', 'shadowsocks', 'hysteria2']
 const inbounds = PROTOS.map((type, i) => ({ id: i + 1, type, tag: `${type}-in`, listen: '::', port: 10000 + i }))
 
@@ -56,7 +60,7 @@ function statusObj() {
       cpuType: 'Mock vCPU @ 3.2GHz',
       hostName: 'mock-edge-01',
       ipv4: ['203.0.113.7'],
-      appVersion: '1.5.0-alpha.2',
+      appVersion: MOCK_VERSION,
       bootTime: Math.floor(Date.now() / 1000) - 86400 * 3 - 3600 * 7,
     },
   }
@@ -101,5 +105,6 @@ export function getMock(url: string, params?: any): Mock | null {
   if (u.includes('api/status')) return { success: true, msg: '', obj: statusObj() }
   if (u.includes('api/changes')) return { success: true, msg: '', obj: changesObj() }
   if (u.includes('api/stats')) return { success: true, msg: '', obj: statsObj(params?.period ?? 'day') }
+  if (u.includes('api/updateInfo')) return { success: true, msg: '', obj: { canSelfUpdate: true, docker: true, current: MOCK_VERSION } }
   return null
 }
