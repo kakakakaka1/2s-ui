@@ -61,6 +61,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # `naive` mirrors what cronet actually ships -- do not flip it to widen
+        # coverage. cronet-go publishes one lib/linux_arm (no v6/v7 split) whose
+        # .ARM.attributes report Tag_CPU_arch=10 / Tag_CPU_name="7-A", i.e. an
+        # ARMv7-A baseline, and no s390x lib at all. Since armv6/armv5 build with
+        # GOARM=5/6 and share `arch: arm` with armv7, a naive build for them would
+        # link ARMv7 cronet objects into an ARMv6 binary: at best a link error, at
+        # worst a tarball that SIGILLs on the ARMv6 hardware it targets -- and CI
+        # cross-compiles, so it would never run the binary to catch it. Enabling it
+        # also skips the Bootlin toolchain below, which is gated on `naive != true`.
         include:
           - { platform: amd64, arch: amd64, bootlin: x86-64, naive: true }
           - { platform: arm64, arch: arm64, bootlin: aarch64, naive: true }
