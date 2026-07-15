@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/shenaba/2s-ui/config"
 	"github.com/shenaba/2s-ui/database"
 	"github.com/shenaba/2s-ui/logger"
 	"github.com/shenaba/2s-ui/service"
@@ -26,6 +27,28 @@ type ApiService struct {
 	service.PanelService
 	service.StatsService
 	service.ServerService
+	service.UpdateService
+}
+
+func (a *ApiService) UpdateInfo(c *gin.Context) {
+	canUpdate, reason := a.UpdateService.CanSelfUpdate()
+	jsonObj(c, map[string]interface{}{
+		"canSelfUpdate": canUpdate,
+		"reason":        reason,
+		"current":       config.GetVersion(),
+		// Docker updates live in the container's writable layer; the UI warns
+		// that recreating the container reverts to the image's version.
+		"docker": a.UpdateService.InDocker(),
+	}, nil)
+}
+
+func (a *ApiService) UpdatePanel(c *gin.Context) {
+	err := a.UpdateService.StartUpdate()
+	jsonMsg(c, "updatePanel", err)
+}
+
+func (a *ApiService) UpdateStatus(c *gin.Context) {
+	jsonObj(c, a.UpdateService.GetStatus(), nil)
 }
 
 func (a *ApiService) LoadData(c *gin.Context) {
