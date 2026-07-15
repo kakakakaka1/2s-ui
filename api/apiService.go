@@ -36,6 +36,9 @@ func (a *ApiService) UpdateInfo(c *gin.Context) {
 		"canSelfUpdate": canUpdate,
 		"reason":        reason,
 		"current":       config.GetVersion(),
+		// Docker updates live in the container's writable layer; the UI warns
+		// that recreating the container reverts to the image's version.
+		"docker": a.UpdateService.InDocker(),
 	}, nil)
 }
 

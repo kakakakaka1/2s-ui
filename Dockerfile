@@ -42,9 +42,10 @@ RUN if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6"
 FROM alpine
 LABEL org.opencontainers.image.source="https://github.com/shenaba/2s-ui"
 ENV TZ=Asia/Tehran
-# Marks the container so the panel disables in-place self-update: the binary
-# lives in an immutable image and there is no systemd here. Update by pulling a
-# new image instead.
+# Marks the container so the panel's self-update takes the Docker path: swap
+# the binary in the writable layer, then re-exec the entrypoint (no systemd
+# here). The update survives `docker restart` but recreating the container
+# reverts to the image's version — pull a new image to stay in sync.
 ENV S_UI_IN_DOCKER=1
 WORKDIR /app
 RUN set -ex && apk upgrade --no-cache --scripts=no apk-tools && \

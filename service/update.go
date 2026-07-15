@@ -23,11 +23,13 @@ import (
 	"github.com/shenaba/2s-ui/logger"
 )
 
-// Self-update is deliberately limited to bare-metal Linux managed by systemd.
-// In Docker the binary lives in an immutable image (an in-place swap is lost on
-// the next container restart) and there is no systemd to restart the unit; on
-// Windows a running .exe cannot be replaced. Those environments are gated off
-// in CanSelfUpdate and the panel keeps the "new version" chip as a plain link.
+// Self-update runs on Linux only. Bare-metal installs restart through a
+// transient systemd unit; Docker containers instead swap the binary in the
+// writable layer and re-exec the entrypoint in place (release binaries are
+// static musl builds, so they run on Alpine). The container-layer update
+// survives `docker restart` but recreating the container reverts to the
+// image's version. On Windows a running .exe cannot be replaced, so the panel
+// keeps the "new version" chip as a plain link there.
 const (
 	releaseAPIURL = "https://api.github.com/repos/shenaba/2s-ui/releases/latest"
 	releaseDLBase = "https://github.com/shenaba/2s-ui/releases/download"
@@ -73,8 +75,12 @@ func (s *UpdateService) CanSelfUpdate() (bool, string) {
 	if runtime.GOOS != "linux" {
 		return false, "self-update is only supported on Linux"
 	}
+	if _, err := archAsset(); err != nil {
+		return false, err.Error()
+	}
+	// Docker restarts by re-execing the entrypoint in place — no systemd needed.
 	if inDocker() {
-		return false, "running in Docker; update the image instead"
+		return true, ""
 	}
 	if _, err := os.Stat("/run/systemd/system"); err != nil {
 		return false, "systemd not detected"
@@ -85,10 +91,42 @@ func (s *UpdateService) CanSelfUpdate() (bool, string) {
 	if _, err := exec.LookPath("systemd-run"); err != nil {
 		return false, "systemd-run not found"
 	}
-	if _, err := archAsset(); err != nil {
-		return false, err.Error()
-	}
 	return true, ""
+}
+
+// InDocker is exposed so the API layer can tell the UI to warn that a
+// container-layer update reverts when the container is recreated.
+func (s *UpdateService) InDocker() bool {
+	return inDocker()
+}
+
+// stopCoreForExec closes sing-box the way main.go's SIGTERM handler does before
+// the exec restart. execve replaces the process image without running any Go
+// cleanup, and the core's kernel-side state is not all reclaimed for us: socket
+// and TUN descriptors close via FD_CLOEXEC, but auto-route nftables rules are
+// not tied to a descriptor and would survive into the new process, which then
+// re-adds them on top. The systemd path gets this for free via SIGTERM.
+func stopCoreForExec() {
+	// corePtr is set by NewConfigService during app.Init; nil only if the update
+	// somehow ran before init, where there is no core to stop anyway.
+	if corePtr == nil {
+		return
+	}
+	if err := (&ConfigService{}).StopCore(); err != nil {
+		logger.Warning("stop core before in-place restart: ", err)
+	}
+}
+
+// startCoreAfterFailedExec restores the core when the exec never happened. We
+// are still the old process, so leaving the core stopped would drop all proxy
+// traffic until someone restarts the container by hand.
+func startCoreAfterFailedExec() {
+	if corePtr == nil {
+		return
+	}
+	if err := (&ConfigService{}).StartCore(); err != nil {
+		logger.Error("restore core after failed in-place restart: ", err)
+	}
 }
 
 func (s *UpdateService) GetStatus() UpdateStatus {
@@ -249,10 +287,23 @@ func (s *UpdateService) run() {
 	// Best-effort refresh of the bundled management script; never fatal.
 	copyIfExists(filepath.Join(stageDir, "s-ui", "s-ui.sh"), filepath.Join(installDir, "s-ui.sh"))
 
-	// 6) Restart the unit from a transient systemd service so the restart
-	// survives this process being killed. If we called `systemctl restart`
-	// directly it would kill our own cgroup mid-restart and leave the unit down.
+	// 6) Restart. In Docker there is no systemd: after a short delay (so the
+	// frontend can observe the "restarting" phase) the process re-execs the
+	// container entrypoint, which runs migrate and starts the new binary as the
+	// same PID — the container itself never restarts. On bare metal a transient
+	// systemd unit restarts the service from outside our own cgroup (calling
+	// `systemctl restart` directly would kill us mid-restart and leave the unit
+	// down).
 	s.setStatus(UpdateRestarting, "restarting service")
+	if inDocker() {
+		time.Sleep(2 * time.Second)
+		stopCoreForExec()
+		if err := execRestart(installDir); err != nil {
+			startCoreAfterFailedExec()
+			s.fail("installed, but in-place restart failed; restart the container", err)
+		}
+		return
+	}
 	if err := detachedRestart(); err != nil {
 		s.fail("installed, but automatic restart failed; run: systemctl restart s-ui", err)
 		return
