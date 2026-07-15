@@ -40,9 +40,9 @@
 
 ## تصاویر
 
-!["Main"](https://github.com/shenaba/2s-ui/raw/main/frontend/media/main.png)
+!["Main"](frontend/media/main.png)
 
-[سایر تصاویر رابط کاربری](https://github.com/shenaba/2s-ui/blob/main/frontend/screenshots.md)
+[سایر تصاویر رابط کاربری](frontend/screenshots.md)
 
 ## مستندات API
 

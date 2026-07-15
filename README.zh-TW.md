@@ -42,9 +42,9 @@
 
 ## 螢幕截圖
 
-!["Main"](https://github.com/shenaba/2s-ui/raw/main/frontend/media/main.png)
+!["Main"](frontend/media/main.png)
 
-[更多 UI 截圖](https://github.com/shenaba/2s-ui/blob/main/frontend/screenshots.md)
+[更多 UI 截圖](frontend/screenshots.md)
 
 ## API 文件
 

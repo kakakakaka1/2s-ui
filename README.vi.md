@@ -39,9 +39,9 @@
 
 ## Ảnh chụp màn hình
 
-!["Main"](https://github.com/shenaba/2s-ui/raw/main/frontend/media/main.png)
+!["Main"](frontend/media/main.png)
 
-[Các ảnh chụp màn hình giao diện khác](https://github.com/shenaba/2s-ui/blob/main/frontend/screenshots.md)
+[Các ảnh chụp màn hình giao diện khác](frontend/screenshots.md)
 
 ## Tài liệu API
 

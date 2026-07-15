@@ -39,9 +39,9 @@
 
 ## Screenshots
 
-!["Main"](https://github.com/shenaba/2s-ui/raw/main/frontend/media/main.png)
+!["Main"](frontend/media/main.png)
 
-[Other UI Screenshots](https://github.com/shenaba/2s-ui/blob/main/frontend/screenshots.md)
+[Other UI Screenshots](frontend/screenshots.md)
 
 ## API Documentation
 
