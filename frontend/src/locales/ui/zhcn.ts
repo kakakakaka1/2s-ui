@@ -310,11 +310,17 @@ export default {
   panelLbl: "面板",
   kernel: "内核",
   newVersion: "有新版本",
+  version: {
+    current: "当前版本",
+    latest: "最新版本",
+    changelog: "查看更新日志",
+  },
   selfUpdate: {
     title: "更新面板",
     now: "立即更新",
     cancel: "取消",
     confirmDesc: "面板将下载新版本并自动重启，仅短暂不可用，数据不会丢失。",
+    dockerNote: "容器内更新：重建容器后会回到镜像自带版本，拉取新镜像可保持同步。",
     reconnecting: "面板正在重启，本页面会自动重新连接。",
     upToDate: "已是最新版本。",
     failed: "更新失败",

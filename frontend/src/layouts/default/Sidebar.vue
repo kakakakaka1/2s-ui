@@ -7,9 +7,7 @@
         <div style="font-weight: 800; font-size: 16px; letter-spacing: -.02em; line-height: 1;">
           2S<span style="color: var(--text-3); font-weight: 700;">-UI</span>
         </div>
-        <div style="font-size: 10.5px; color: var(--text-3); margin-top: 3px; font-weight: 600; letter-spacing: .04em;">
-          {{ $t('ui.controlPanel') }}
-        </div>
+        <VersionMenu />
       </div>
       <Btn v-if="app.sidebarOpen" variant="subtle" icon sm @click="app.sidebarOpen = false">
         <Ico name="close" :size="17" />
@@ -49,17 +47,22 @@
 </template>
 
 <script lang="ts" setup>
+import { onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Logo from '@/components/ui/Logo.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Btn from '@/components/ui/Btn.vue'
+import VersionMenu from './VersionMenu.vue'
 import AppStore from '@/store/modules/app'
 import Data from '@/store/modules/data'
+import VersionStore from '@/store/modules/version'
 
 const app = AppStore()
 const data = Data()
 const route = useRoute()
 const router = useRouter()
+
+onMounted(() => { VersionStore().init() })
 
 type NavItem = { title: string; icon: string; path: string; count?: () => number }
 type NavSep = { sep: string }

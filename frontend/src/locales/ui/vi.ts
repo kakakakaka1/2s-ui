@@ -310,11 +310,17 @@ export default {
   panelLbl: "Bảng",
   kernel: "Nhân",
   newVersion: "Có bản cập nhật",
+  version: {
+    current: "Phiên bản hiện tại",
+    latest: "Phiên bản mới nhất",
+    changelog: "Xem nhật ký thay đổi",
+  },
   selfUpdate: {
     title: "Cập nhật bảng điều khiển",
     now: "Cập nhật ngay",
     cancel: "Hủy",
     confirmDesc: "Bảng điều khiển sẽ tải phiên bản mới và tự khởi động lại. Chỉ gián đoạn trong chốc lát và không mất dữ liệu.",
+    dockerNote: "Cập nhật trong container: tạo lại container sẽ quay về phiên bản của image. Kéo image mới để luôn đồng bộ.",
     reconnecting: "Bảng điều khiển đang khởi động lại. Trang này sẽ tự kết nối lại.",
     upToDate: "Đã là phiên bản mới nhất.",
     failed: "Cập nhật thất bại",

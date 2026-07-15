@@ -2,7 +2,6 @@
   <LogsModal :visible="logsOpen" @close="logsOpen = false" />
   <BackupModal :visible="backupOpen" @close="backupOpen = false" />
   <UsageStatsModal :visible="usageOpen" @close="usageOpen = false" />
-  <UpdateModal :visible="updateOpen" :current="sys.appVersion ?? ''" :target="newVersion ?? ''" @close="updateOpen = false" />
 
   <div class="page-stack-lg fade-up">
     <!-- toolbar -->
@@ -37,12 +36,6 @@
         <div class="srv-status">
           <Chip v-if="sbd.running" color="emerald" dot>{{ $t('ui.singboxRunning') }}</Chip>
           <Chip v-else color="rose" dot>sing-box · {{ $t('main.info.running') }}: {{ $t('no') }}</Chip>
-          <a v-if="newVersion" :href="RELEASE_URL" target="_blank" rel="noopener" style="text-decoration: none;">
-            <Chip color="amber" dot>{{ $t('ui.newVersion') }} · v{{ newVersion }}</Chip>
-          </a>
-          <Btn v-if="newVersion && canSelfUpdate" variant="primary" sm @click="updateOpen = true">
-            <Ico name="download" :size="14" /> {{ $t('ui.selfUpdate.now') }}
-          </Btn>
           <Btn variant="subtle" sm style="margin-inline-start: auto;" :loading="restarting" @click="restartSb">
             <Ico name="refresh" :size="14" /> {{ $t('ui.restart') }}
           </Btn>
@@ -151,7 +144,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useI18n } from 'vue-i18n'
 import HttpUtils from '@/plugins/httputil'
 import { HumanReadable } from '@/plugins/utils'
-import { latestRelease, isNewerVersion, RELEASE_URL } from '@/plugins/updateCheck'
 import Data from '@/store/modules/data'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
@@ -168,7 +160,6 @@ import MetricItem from './dashboard/MetricItem.vue'
 import LogsModal from '@/layouts/drawers/LogsModal.vue'
 import BackupModal from '@/layouts/drawers/BackupModal.vue'
 import UsageStatsModal from '@/layouts/drawers/UsageStatsModal.vue'
-import UpdateModal from '@/layouts/drawers/UpdateModal.vue'
 import { loadTiles, saveTiles, defaultTiles } from './dashboard/tiles'
 
 const { t, te, locale } = useI18n({ useScope: 'global' })
@@ -191,7 +182,6 @@ watch([topCount, mainCount], () => { nextTick(requestChartRelayout) })
 const logsOpen = ref(false)
 const backupOpen = ref(false)
 const usageOpen = ref(false)
-const updateOpen = ref(false)
 
 /* ---------- live status polling (2s, like the old dashboard) ---------- */
 const status = ref<any>({})
@@ -241,30 +231,11 @@ const loadSys = async () => {
   if (msg.success && msg.obj?.sys) sys.value = msg.obj.sys
 }
 
-/* ---------- update check ---------- */
-const latestTag = ref<string | null>(null)
-// Whether an in-panel self-update is possible here (Linux + systemd + not
-// Docker). Reported by the backend; on Docker/Windows the chip stays a link.
-const canSelfUpdate = ref(false)
-const newVersion = computed(() => {
-  const cur = sys.value.appVersion
-  return cur && latestTag.value && isNewerVersion(latestTag.value, cur)
-    ? latestTag.value.replace(/^v/i, '')
-    : null
-})
-
-const loadUpdateInfo = async () => {
-  const msg = await HttpUtils.get('api/updateInfo')
-  if (msg.success && msg.obj) canSelfUpdate.value = !!msg.obj.canSelfUpdate
-}
-
 let pollId: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
   loadSys()
   poll()
   loadChanges()
-  latestRelease().then((tag) => { latestTag.value = tag })
-  loadUpdateInfo()
   pollId = setInterval(poll, POLL_MS)
 })
 onBeforeUnmount(() => { if (pollId) clearInterval(pollId) })

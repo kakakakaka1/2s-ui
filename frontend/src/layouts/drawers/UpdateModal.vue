@@ -11,6 +11,10 @@
         <p style="font-size: 13px; color: var(--text-2); line-height: 1.6; margin-bottom: 20px;">
           {{ $t('ui.selfUpdate.confirmDesc') }}
         </p>
+        <p v-if="ver.isDocker" class="docker-note">
+          <Ico name="bolt" :size="14" style="flex: none; margin-top: 1px;" />
+          {{ $t('ui.selfUpdate.dockerNote') }}
+        </p>
         <div style="display: flex; gap: 10px;">
           <Btn style="flex: 1;" @click="onClose">{{ $t('ui.selfUpdate.cancel') }}</Btn>
           <Btn variant="primary" style="flex: 1;" @click="start"><Ico name="download" :size="15" /> {{ $t('ui.selfUpdate.now') }}</Btn>
@@ -61,7 +65,9 @@ import HttpUtils from '@/plugins/httputil'
 import Modal from '@/components/ui/Modal.vue'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
+import VersionStore from '@/store/modules/version'
 
+const ver = VersionStore()
 const props = defineProps<{ visible: boolean; current: string; target: string }>()
 const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n({ useScope: 'global' })
@@ -166,6 +172,14 @@ const onClose = () => {
 </script>
 
 <style scoped>
+.docker-note {
+  display: flex; gap: 8px;
+  margin: -8px 0 20px; padding: 9px 11px;
+  font-size: 12px; line-height: 1.55; color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 26%, transparent);
+  border-radius: var(--radius-sm);
+}
 .upd-spinner {
   width: 28px; height: 28px;
   border: 3px solid var(--line-2);
