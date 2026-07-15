@@ -3,8 +3,13 @@ name: CI
 # The only gate that runs on a pull request. release.yml and windows.yml do build
 # on push to main -- their path filters do cover **.go, go.mod and go.sum -- but
 # only once the merge has landed, and by way of the full seven-platform release
-# matrix. This runs on the PR instead, in one cheap job. (docker.yml has no push
+# matrix. This runs on the PR instead, in two cheap jobs. (docker.yml has no push
 # trigger at all, so a Dockerfile change stays ungated until a release.)
+#
+# Both jobs run on every PR rather than behind path filters. A Go-only PR pays a
+# vite build and an npm-only PR pays a Go build, which is a minute each and buys
+# the simpler thing: no filter to drift out of sync, and no skipped job to confuse
+# a required status check.
 on:
   pull_request:
   push:
@@ -18,6 +23,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  NODE_VERSION: "25"
+
 jobs:
   backend:
     name: build (linux/amd64)
@@ -28,9 +36,9 @@ jobs:
       # minutes to fetch and adds nothing to a compile gate.
       BUILD_TAGS: with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale
     steps:
-      # No submodules: the frontend is not needed to compile the backend. web/html
-      # is gitignored, and web.go's `//go:embed *` matches web.go itself, so the
-      # embed resolves without a frontend build.
+      # The frontend is not needed to compile the backend, so this job never
+      # builds it: web/html is gitignored, and web.go's `//go:embed *` matches
+      # web.go itself, so the embed resolves without a frontend build.
       - name: Checkout repository
         uses: actions/checkout@v7.0.0
 
@@ -48,3 +56,31 @@ jobs:
       # "invalid reference to crypto/tls.(*Conn).handlePostHandshakeMessage".
       - name: Build
         run: go build -ldflags="-w -s -checklinkname=0" -tags "$BUILD_TAGS" -o /dev/null .
+
+  # Lived in the frontend repo's own ci.yml until that repo was inlined here.
+  # It has to stay a gate: nothing else builds the frontend before a release, so
+  # without it a broken npm bump would surface only when a release is cut, and
+  # only then as a failed release build.
+  frontend:
+    name: build (frontend)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `build` is `vue-tsc --noEmit && vite build`, so this gates types and bundle.
+      - name: Type-check and build
+        run: npm run build

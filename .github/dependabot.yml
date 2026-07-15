@@ -8,3 +8,10 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+  # Carried over from the frontend repo when it was inlined. Without this entry
+  # the frontend's npm deps simply stop being updated -- the gomod entry above
+  # does not cover them, and the frontend repo's own config no longer applies.
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "daily"

@@ -40,9 +40,9 @@
 
 ## Скриншоты
 
-!["Main"](https://github.com/shenaba/2s-ui-frontend/raw/main/media/main.png)
+!["Main"](frontend/media/main.png)
 
-[Другие скриншоты интерфейса](https://github.com/shenaba/2s-ui-frontend/blob/main/screenshots.md)
+[Другие скриншоты интерфейса](frontend/screenshots.md)
 
 ## Документация API
 
@@ -148,7 +148,6 @@ docker run -itd \
 
 ```shell
 git clone https://github.com/shenaba/2s-ui
-git submodule update --init --recursive
 docker build -t 2s-ui .
 ```
 
@@ -168,14 +167,12 @@ docker build -t 2s-ui .
 ```shell
 # клонировать репозиторий
 git clone https://github.com/shenaba/2s-ui
-# клонировать подмодули
-git submodule update --init --recursive
 ```
 
 
 ### - Фронтенд
 
-Код фронтенда находится в [2s-ui-frontend](https://github.com/shenaba/2s-ui-frontend)
+Код фронтенда находится в каталоге [`frontend/`](frontend) этого репозитория.
 
 ### - Бэкенд
 > Пожалуйста, сначала один раз соберите фронтенд!
