@@ -18,15 +18,20 @@ Please be respectful and constructive. This project is for personal learning and
 
 ## Getting Started
 
-1. **Fork** the repository on GitHub.
-2. **Clone** your fork locally:
+The frontend is not a repository of its own — it lives in the `frontend/` directory
+of the [2s-ui](https://github.com/shenaba/2s-ui) panel repo, which is also where its
+issues and pull requests go. See that repo's [CONTRIBUTING.md](../CONTRIBUTING.md)
+for backend and full-stack setup; this file covers frontend work specifically.
+
+1. **Fork** [shenaba/2s-ui](https://github.com/shenaba/2s-ui) on GitHub.
+2. **Clone** your fork and enter the frontend directory:
    ```bash
-   git clone https://github.com/shenjar/2s-ui-frontend.git
-   cd 2s-ui-frontend
+   git clone https://github.com/<your-username>/2s-ui.git
+   cd 2s-ui/frontend
    ```
 3. Add the upstream remote (optional, for syncing):
    ```bash
-   git remote add origin https://github.com/shenjar/2s-ui-frontend.git
+   git remote add upstream https://github.com/shenaba/2s-ui.git
    ```
 
 ## Development Setup
