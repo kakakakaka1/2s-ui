@@ -70,10 +70,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/main/install.sh)
 
 ## Установка устаревшей версии
 
-**Шаг 1:** Чтобы установить нужную устаревшую версию, добавьте версию в конец команды установки. Например, версия `1.0.0`:
+**Шаг 1:** Чтобы установить нужную устаревшую версию, добавьте версию в конец команды установки. Например, версия `v1.5.5`:
 
 ```sh
-VERSION=1.0.0 && bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/$VERSION/install.sh) $VERSION
+VERSION=v1.5.5 && bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/$VERSION/install.sh) $VERSION
 ```
 
 ## Ручная установка

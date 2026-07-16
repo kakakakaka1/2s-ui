@@ -69,10 +69,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/main/install.sh)
 
 ## 安装历史版本
 
-**步骤 1：** 如果要安装指定历史版本，请在安装命令末尾添加版本号。例如版本 `1.0.0`：
+**步骤 1：** 如果要安装指定历史版本，请在安装命令末尾添加版本号。例如版本 `v1.5.5`：
 
 ```sh
-VERSION=1.0.0 && bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/$VERSION/install.sh) $VERSION
+VERSION=v1.5.5 && bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/$VERSION/install.sh) $VERSION
 ```
 
 ## 手动安装
