@@ -81,6 +81,12 @@ const errorMessage = ref('')
 
 let timer: ReturnType<typeof setTimeout> | null = null
 let sawDown = false
+let downSince = 0
+
+// 面板掉线后等它回来的上限。正常重启只要几秒,超过这个还连不上基本就是起不来了,
+// 不能让"会自动重新连接"的承诺无限转圈下去。只从第一次不可达起算,所以下载慢
+// 不会被误判成超时。
+const RECONNECT_TIMEOUT = 120_000
 
 const stopPoll = () => { if (timer) { clearTimeout(timer); timer = null } }
 
@@ -93,6 +99,7 @@ watch(() => props.visible, (v) => {
     doneMessage.value = ''
     errorMessage.value = ''
     sawDown = false
+    downSince = 0
   } else {
     stopPoll()
   }
@@ -117,9 +124,8 @@ const start = async () => {
   poll()
 }
 
-// Poll updateStatus with raw fetch (not HttpUtils) so the expected failures
-// while the panel restarts don't spam error toasts. A successful request after
-// the panel has been down means the new version is up — reload into it.
+// 用裸 fetch 而不是 HttpUtils 轮询 updateStatus:面板重启期间请求必然失败,
+// 走 HttpUtils 会刷一屏错误 toast。
 const poll = () => {
   timer = setTimeout(async () => {
     try {
@@ -129,14 +135,21 @@ const poll = () => {
       })
       if (!resp.ok) throw new Error('bad status')
       const body = await resp.json()
+      const obj = body?.obj ?? {}
 
-      if (sawDown) {
-        // panel answered again after going down => restarted on the new build
+      // 判定"新进程已经接管",命中任一即可,然后载入新版面板:
+      //  - sawDown:面板不可达过,现在又能应答了。
+      //  - phase 回到 idle:更新状态机是后端的包级变量,StartUpdate 一进来就把它推到
+      //    checking 且只进不退,同一个进程绝不可能再答出 idle —— 能答出 idle 的只会是
+      //    重启后全新的进程。
+      // 只认 sawDown 会漏:重启的不可达窗口往往短于 1.5s 轮询间隔,错过一次 sawDown
+      // 就永远是 false,而 idle 既不是 done 也不是 failed,轮询于是无限空转 —— 更新
+      // 其实早就成功了,界面却一直转圈,只有手动刷新才能看到新版本。
+      if (sawDown || obj.phase === 'idle') {
         location.reload()
         return
       }
 
-      const obj = body?.obj ?? {}
       phase.value = obj.phase || phase.value
       if (obj.phase === 'restarting') reconnecting.value = true
 
@@ -156,10 +169,18 @@ const poll = () => {
       }
       poll()
     } catch {
-      // request failed: the panel is restarting. Mark it down and keep pinging;
-      // the next success triggers the reload above.
-      sawDown = true
+      // 请求失败:面板正在重启。标记掉线后继续 ping,下一次成功就会触发上面的 reload。
+      if (!sawDown) {
+        sawDown = true
+        downSince = Date.now()
+      }
       reconnecting.value = true
+      if (Date.now() - downSince > RECONNECT_TIMEOUT) {
+        errorMessage.value = t('ui.selfUpdate.timeout')
+        state.value = 'failed'
+        stopPoll()
+        return
+      }
       poll()
     }
   }, 1500)

@@ -324,6 +324,7 @@ export default {
     reconnecting: "The panel is restarting. This page reconnects automatically.",
     upToDate: "Already on the latest version.",
     failed: "Update failed",
+    timeout: "The panel did not come back in time. Refresh to check the version, or inspect the service.",
     phase: {
       checking: "Checking latest release…",
       downloading: "Downloading…",
