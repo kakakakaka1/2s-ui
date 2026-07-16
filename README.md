@@ -69,10 +69,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/main/install.sh)
 
 ## Install legacy Version
 
-**Step 1:** To install your desired legacy version, add the version to the end of the installation command. e.g., ver `1.0.0`:
+**Step 1:** To install your desired legacy version, add the version to the end of the installation command. e.g., ver `v1.5.5`:
 
 ```sh
-VERSION=1.0.0 && bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/$VERSION/install.sh) $VERSION
+VERSION=v1.5.5 && bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/$VERSION/install.sh) $VERSION
 ```
 
 ## Manual installation

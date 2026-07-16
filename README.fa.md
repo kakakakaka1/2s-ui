@@ -70,10 +70,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/main/install.sh)
 
 ## نصب نسخه قدیمی
 
-**گام ۱:** برای نصب نسخه قدیمی موردنظرتان، نسخه را به انتهای دستور نصب اضافه کنید. برای مثال نسخه `1.0.0`:
+**گام ۱:** برای نصب نسخه قدیمی موردنظرتان، نسخه را به انتهای دستور نصب اضافه کنید. برای مثال نسخه `v1.5.5`:
 
 ```sh
-VERSION=1.0.0 && bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/$VERSION/install.sh) $VERSION
+VERSION=v1.5.5 && bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/$VERSION/install.sh) $VERSION
 ```
 
 ## نصب دستی

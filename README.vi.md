@@ -69,10 +69,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/main/install.sh)
 
 ## Cài đặt phiên bản cũ
 
-**Bước 1:** Để cài đặt phiên bản cũ mà bạn mong muốn, thêm số phiên bản vào cuối lệnh cài đặt. Ví dụ, phiên bản `1.0.0`:
+**Bước 1:** Để cài đặt phiên bản cũ mà bạn mong muốn, thêm số phiên bản vào cuối lệnh cài đặt. Ví dụ, phiên bản `v1.5.5`:
 
 ```sh
-VERSION=1.0.0 && bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/$VERSION/install.sh) $VERSION
+VERSION=v1.5.5 && bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/$VERSION/install.sh) $VERSION
 ```
 
 ## Cài đặt thủ công
