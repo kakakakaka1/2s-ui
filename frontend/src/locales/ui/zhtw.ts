@@ -324,6 +324,7 @@ export default {
     reconnecting: "面板正在重啟，本頁面會自動重新連線。",
     upToDate: "已是最新版本。",
     failed: "更新失敗",
+    timeout: "面板長時間未恢復回應。請重新整理頁面確認版本，或檢查服務狀態。",
     phase: {
       checking: "正在檢查最新版本…",
       downloading: "正在下載…",

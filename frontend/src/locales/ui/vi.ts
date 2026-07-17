@@ -324,6 +324,7 @@ export default {
     reconnecting: "Bảng điều khiển đang khởi động lại. Trang này sẽ tự kết nối lại.",
     upToDate: "Đã là phiên bản mới nhất.",
     failed: "Cập nhật thất bại",
+    timeout: "Bảng điều khiển không phản hồi trở lại kịp thời. Hãy tải lại trang để kiểm tra phiên bản, hoặc kiểm tra trạng thái dịch vụ.",
     phase: {
       checking: "Đang kiểm tra phiên bản mới nhất…",
       downloading: "Đang tải xuống…",

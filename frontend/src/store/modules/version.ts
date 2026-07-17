@@ -41,17 +41,17 @@ const VersionStore = defineStore('Version', {
       this.canSelfUpdate = !!msg.obj.canSelfUpdate
       this.isDocker = !!msg.obj.docker
     },
-    async loadLatest(force = false) {
-      const tag = await latestRelease(force)
+    async loadLatest() {
+      const tag = await latestRelease()
       if (tag) this.latestTag = tag
     },
-    // 弹层里的手动刷新:绕过 24h 缓存直查 GitHub,顺带补回首次没拉到的面板信息
+    // 弹层里的手动刷新:再查一次 GitHub,顺带补回首次没拉到的面板信息
     async recheck() {
       if (this.checking) return
       this.checking = true
       try {
         await Promise.all([
-          this.loadLatest(true),
+          this.loadLatest(),
           this.appVersion ? Promise.resolve() : this.loadPanel(),
         ])
       } finally {
