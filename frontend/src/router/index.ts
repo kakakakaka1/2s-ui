@@ -65,6 +65,11 @@ const routes = [
         component: () => import('@/views/Dns.vue'),
       },
       {
+        path: '/nodes',
+        name: 'pages.nodes',
+        component: () => import('@/views/Nodes.vue'),
+      },
+      {
         path: '/admins',
         name: 'pages.admins',
         component: () => import('@/views/Admins.vue'),

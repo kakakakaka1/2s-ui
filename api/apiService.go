@@ -28,6 +28,7 @@ type ApiService struct {
 	service.StatsService
 	service.ServerService
 	service.UpdateService
+	service.NodeService
 }
 
 func (a *ApiService) UpdateInfo(c *gin.Context) {
@@ -117,6 +118,10 @@ func (a *ApiService) getData(c *gin.Context) (interface{}, error) {
 		if err != nil {
 			return "", err
 		}
+		nodes, err := a.NodeService.GetAll()
+		if err != nil {
+			return "", err
+		}
 		data["config"] = json.RawMessage(config)
 		data["clients"] = clients
 		data["tls"] = tlsConfigs
@@ -124,11 +129,20 @@ func (a *ApiService) getData(c *gin.Context) (interface{}, error) {
 		data["outbounds"] = outbounds
 		data["endpoints"] = endpoints
 		data["services"] = services
+		data["nodes"] = nodes
 		data["subURI"] = subURI
 		data["enableTraffic"] = trafficAge > 0
 		data["onlines"] = onlines
 	} else {
 		data["onlines"] = onlines
+	}
+
+	// Live node status rides along unconditionally (like onlines): it changes
+	// every heartbeat, so it must not hide behind the lu gate. Omitted when
+	// empty so zero-node setups pay nothing.
+	nodesStatus := a.NodeService.GetStatuses()
+	if len(nodesStatus) > 0 {
+		data["nodesStatus"] = nodesStatus
 	}
 
 	return data, nil
@@ -188,6 +202,12 @@ func (a *ApiService) LoadPartialData(c *gin.Context, objs []string) error {
 				return err
 			}
 			data[obj] = settings
+		case "nodes":
+			nodes, err := a.NodeService.GetAll()
+			if err != nil {
+				return err
+			}
+			data[obj] = nodes
 		}
 	}
 
@@ -470,4 +490,10 @@ func (a *ApiService) GetCertPing(c *gin.Context) {
 	port := c.PostForm("port")
 	tlsPing, err := util.GetTlsPing(domain, port)
 	jsonObj(c, tlsPing, err)
+}
+
+func (a *ApiService) TestNode(c *gin.Context) {
+	data := c.PostForm("data")
+	status, err := a.NodeService.TestNode(json.RawMessage(data))
+	jsonObj(c, status, err)
 }

@@ -24,6 +24,22 @@ const clients = Array.from({ length: 48 }, (_, i) => ({
 
 const onlineUsers = clients.filter((c) => c.enable).slice(0, 27).map((c) => c.name)
 
+// 三台节点覆盖三种状态:在线 / 核心已停 / 离线
+const nodes = [
+  { id: 1, enable: true, name: 'jp-tokyo-1', baseUrl: 'https://203.0.113.10:2095', webPath: '/app/', insecure: false, certPin: '', desc: '', lastSeen: 0, tokenSet: true },
+  { id: 2, enable: true, name: 'us-la-1', baseUrl: 'https://203.0.113.20:2095', webPath: '/app/', insecure: true, certPin: '', desc: '', lastSeen: 0, tokenSet: true },
+  { id: 3, enable: true, name: 'de-fra-1', baseUrl: 'http://203.0.113.30:2095', webPath: '/app/', insecure: false, certPin: '', desc: '', lastSeen: Math.floor(Date.now() / 1000) - 540, tokenSet: true },
+]
+
+function nodesStatusObj() {
+  const now = Math.floor(Date.now() / 1000)
+  return {
+    1: { state: 'online', latency: Math.floor(rnd(30, 80)), cpu: Math.round(rnd(10, 60)), mem: { current: Math.floor(rnd(1e9, 3e9)), total: 4e9 }, appVersion: MOCK_VERSION, coreVersion: 'v1.11.0', checkedAt: now, lastOnline: now },
+    2: { state: 'core-stopped', latency: Math.floor(rnd(120, 200)), cpu: Math.round(rnd(3, 15)), mem: { current: Math.floor(rnd(5e8, 1e9)), total: 2e9 }, appVersion: MOCK_VERSION, coreVersion: 'v1.11.0', checkedAt: now, lastOnline: now },
+    3: { state: 'offline', latency: 0, cpu: 0, mem: { current: 0, total: 0 }, appVersion: '', coreVersion: '', error: 'connection timed out', checkedAt: now, lastOnline: now - 540 },
+  }
+}
+
 // 单调递增的网络累计字节（前端 poll 会算相邻两次的差值作为实时速率）
 let netRecv = 8e9
 let netSent = 3e9
@@ -39,6 +55,8 @@ function loadObj() {
     services: [],
     endpoints: [],
     tls: [],
+    nodes,
+    nodesStatus: nodesStatusObj(),
     subURI: '',
     enableTraffic: true,
   }

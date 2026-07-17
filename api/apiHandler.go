@@ -68,6 +68,8 @@ func (a *APIHandler) postHandler(c *gin.Context) {
 		a.apiv2.ReloadTokens()
 	case "getCertPing":
 		a.ApiService.GetCertPing(c)
+	case "testNode":
+		a.ApiService.TestNode(c)
 	default:
 		jsonMsg(c, "failed", common.NewError("unknown action: ", action))
 	}
@@ -81,7 +83,7 @@ func (a *APIHandler) getHandler(c *gin.Context) {
 		a.ApiService.Logout(c)
 	case "load":
 		a.ApiService.LoadData(c)
-	case "inbounds", "outbounds", "endpoints", "services", "tls", "clients", "config":
+	case "inbounds", "outbounds", "endpoints", "services", "tls", "clients", "config", "nodes":
 		err := a.ApiService.LoadPartialData(c, []string{action})
 		if err != nil {
 			jsonMsg(c, action, err)
