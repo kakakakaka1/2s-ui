@@ -65,10 +65,11 @@
       <SRow :label="$t('setting.domain')">
         <input class="input mono" v-model="settings.webDomain" placeholder="panel.example.com" />
       </SRow>
-      <SRow :label="$t('setting.deployNginx')" :hint="webNginxHint">
-        <Select v-model="settings.webNginx">
-          <option value="false">{{ $t('no') }}</option>
-          <option value="true">{{ $t('yes') }}</option>
+      <SRow :label="$t('setting.acmeMethod')" :hint="acmeMethodHint">
+        <Select v-model="settings.webAcmeMethod">
+          <option value="auto">{{ $t('setting.acmeMethodAuto') }}</option>
+          <option value="standalone">{{ $t('setting.acmeMethodStandalone') }}</option>
+          <option value="nginx">{{ $t('setting.acmeMethodNginx') }}</option>
         </Select>
       </SRow>
       <SRow :label="$t('setting.acmeEmail')" :hint="$t('setting.acmeHint')">
@@ -82,6 +83,7 @@
           <Ico name="refresh" :size="15" /> {{ $t('setting.forceRenew') }}
         </Btn>
       </div>
+      <ToggleRow v-model="webBehindProxy" :label="$t('setting.behindProxy')" :desc="$t('setting.behindProxyHint')" />
       <template v-if="settings.webNginx !== 'true'">
         <SRow :label="$t('setting.sslKey')">
           <input class="input mono" v-model="settings.webKeyFile" placeholder="/path/key.pem" />
@@ -344,6 +346,7 @@ const settings = ref({
   webKeyFile: "",
   webCertMode: "",
   webNginx: "",
+  webAcmeMethod: "auto",
   webAcmeEmail: "",
   webPath: "/app/",
   webURI: "",
@@ -443,25 +446,28 @@ const buildURL = (host: string, port: string, isTLS: boolean, path: string) => {
   return `${protocol}//${host}${port}${path}settings`
 }
 
-const detectedNginx = ref({ installed: false, active: false })
+const detectedNginx = ref({ installed: false, active: false, port80Busy: false })
 
-const webNginxHint = computed(() => {
-  return detectedNginx.value.installed
-    ? i18n.global.t('setting.nginxDetected')
-    : i18n.global.t('setting.deployNginxHint')
+// 「自动」将走哪条路的实时提示:nginx 在跑→借用 nginx;80 空闲→standalone;否则预警
+const acmeMethodHint = computed(() => {
+  if (detectedNginx.value.active) return i18n.global.t('setting.acmeHintNginx')
+  if (!detectedNginx.value.port80Busy) return i18n.global.t('setting.acmeHintFree')
+  return i18n.global.t('setting.acmeHint80Busy')
 })
 
-// 页面加载时检测 nginx;仅当 webNginx 尚未设置过(空)时用检测结果作默认值
+// 页面加载时检测环境,只用于展示;不再像旧版那样把检测结果写回 webNginx
 const detectNginx = async () => {
   const r = await HttpUtils.get('api/detectNginx')
   if (r.success && r.obj) {
     detectedNginx.value = r.obj
-    if (!settings.value.webNginx) {
-      settings.value.webNginx = r.obj.installed ? 'true' : 'false'
-      oldSettings.value = { ...settings.value }
-    }
   }
 }
+
+// 高级选项:由反向代理终结 TLS(面板保持 HTTP)。沿用 webNginx 键,web.go 对它的语义不变
+const webBehindProxy = computed({
+  get: () => { return settings.value.webNginx == "true" },
+  set: (v: boolean) => { settings.value.webNginx = v ? "true" : "false" }
+})
 
 // 强制续期前先确认:--force 会立即重签,反复点会撞 Let's Encrypt「重复证书」限速(约 5 张/周)
 const forceConfirm = ref<{ visible: boolean; scope: 'web' | 'sub' }>({ visible: false, scope: 'web' })
@@ -471,8 +477,9 @@ const doForceRenew = async () => {
   forceConfirm.value.visible = false
 }
 
-// 用 acme.sh 申请证书:无 nginx 走 standalone、面板自身加载证书;有 nginx 走 nginx 模式、证书给 nginx
+// 用 acme.sh 申请证书:验证方式由后端解析(auto:80 空闲→standalone;被占且 nginx 在跑→借用 nginx)
 // force=true 时加 --force 强制续期(域名已有未到期证书时 acme.sh 默认跳过)
+// 成功后(非反代模式)自动回填证书路径→保存→重启面板→跳转 https,全程无需手动操作
 const issueCert = async (scope: 'web' | 'sub' = 'web', force = false) => {
   const isWeb = scope === 'web'
   const domain = isWeb ? settings.value.webDomain : settings.value.subDomain
@@ -481,29 +488,80 @@ const issueCert = async (scope: 'web' | 'sub' = 'web', force = false) => {
   const r = await HttpUtils.post('api/issueCert', {
     domain,
     email: isWeb ? settings.value.webAcmeEmail : settings.value.subAcmeEmail,
-    // 订阅没有 nginx 选项，统一走 standalone 模式
-    nginx: isWeb && settings.value.webNginx === 'true' ? 'true' : 'false',
+    // 订阅侧无验证方式下拉,恒为自动
+    method: isWeb ? settings.value.webAcmeMethod : 'auto',
     force: force ? 'true' : 'false',
   })
-  if (r.success && r.obj) {
-    if (isWeb) {
-      if (settings.value.webNginx !== 'true') {
-        settings.value.webCertFile = r.obj.certFile
-        settings.value.webKeyFile = r.obj.keyFile
-        settings.value.webCertMode = ''
-      }
-    } else {
-      settings.value.subCertFile = r.obj.certFile
-      settings.value.subKeyFile = r.obj.keyFile
-      settings.value.subCertMode = ''
-    }
+  if (!r.success || !r.obj) {
+    loading.value = false
+    return
+  }
+  const via = i18n.global.t('setting.issuedVia', { method: r.obj.method })
+  if (isWeb && settings.value.webNginx === 'true') {
+    // 反代模式:证书供反向代理使用,面板不回填、保持 HTTP
+    push.success({
+      title: i18n.global.t('success'),
+      duration: 8000,
+      message: via + ' ' + i18n.global.t('setting.certForProxy', { path: r.obj.certFile }),
+    })
+    loading.value = false
+    return
+  }
+  if (isWeb) {
+    settings.value.webCertFile = r.obj.certFile
+    settings.value.webKeyFile = r.obj.keyFile
+    settings.value.webCertMode = ''
+  } else {
+    settings.value.subCertFile = r.obj.certFile
+    settings.value.subKeyFile = r.obj.keyFile
+    settings.value.subCertMode = ''
+  }
+  if (FindDiff.deepCompare(settings.value, oldSettings.value)) {
+    // 设置无变化(典型:强制续期,路径早已配好):证书由热加载生效,无需保存或重启
     push.success({
       title: i18n.global.t('success'),
       duration: 5000,
-      message: i18n.global.t('setting.issueCertOk'),
+      message: via + ' ' + i18n.global.t('setting.issueCertOk'),
     })
+    loading.value = false
+    return
   }
+  push.success({
+    title: i18n.global.t('success'),
+    duration: 8000,
+    message: via + ' ' + i18n.global.t('setting.issueCertRestarting'),
+  })
+  await saveAndRestart(isWeb)
   loading.value = false
+}
+
+// 申请成功后的自动收尾:保存设置→重启面板→探活→跳转(web 切 https 地址,sub 留在原页)
+const saveAndRestart = async (isWeb: boolean) => {
+  const saveMsg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(settings.value) })
+  if (!saveMsg.success) return
+  oldSettings.value = { ...settings.value }
+  const restartMsg = await HttpUtils.post('api/restartApp', {})
+  if (!restartMsg.success) return
+  const target = isWeb
+    ? buildURL(settings.value.webDomain, settings.value.webPort.toString(), true, settings.value.webPath)
+    : window.location.href
+  await sleep(3000)
+  await waitReachable(target)
+  window.location.replace(target)
+}
+
+// 用 no-cors 裸 fetch 探活目标地址:重启期间请求必然失败,走 HttpUtils 会刷错误 toast;
+// 跳 https 时与当前页跨协议,CORS 下也读不了响应——opaque 响应能 resolve 就说明面板已就绪。
+// 探活超时也照样跳转,由浏览器给出最终错误。
+const waitReachable = async (url: string) => {
+  for (let i = 0; i < 20; i++) {
+    try {
+      await fetch(url, { mode: 'no-cors', cache: 'no-store' })
+      return
+    } catch {
+      await sleep(800)
+    }
+  }
 }
 
 // 证书统一走「手动文件 / acme.sh 申请」，不再提供面板内置自动 ACME 开关

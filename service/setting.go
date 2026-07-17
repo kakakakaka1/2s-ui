@@ -50,6 +50,7 @@ var defaultValueMap = map[string]string{
 	"webKeyFile":         "",
 	"webCertMode":        "",
 	"webNginx":           "",
+	"webAcmeMethod":      "auto",
 	"webAcmeEmail":       "",
 	"webPath":            "/app/",
 	"webURI":             "",
