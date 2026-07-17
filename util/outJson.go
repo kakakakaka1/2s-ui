@@ -74,6 +74,26 @@ func FillOutJson(i *model.Inbound, hostname string) error {
 	return nil
 }
 
+// serverOnlyTlsFields are inbound-side TLS fields that must never reach a
+// client: certificate_path/key_path point at files on the panel host, key is
+// the server private key and acme is the panel's issuance config. A leaked
+// certificate_path makes sing-box clients fail outright on a missing file
+// (issue #51).
+var serverOnlyTlsFields = []string{"certificate_path", "key", "key_path", "acme"}
+
+// StripServerTlsFields removes server-only TLS fields from a client-facing
+// TLS object in place and reports whether anything was removed.
+func StripServerTlsFields(tls map[string]interface{}) bool {
+	changed := false
+	for _, field := range serverOnlyTlsFields {
+		if _, ok := tls[field]; ok {
+			delete(tls, field)
+			changed = true
+		}
+	}
+	return changed
+}
+
 // addTls function
 func addTls(out *map[string]interface{}, tls *model.Tls) {
 	var tlsServer, tlsConfig map[string]interface{}
@@ -124,6 +144,10 @@ func addTls(out *map[string]interface{}, tls *model.Tls) {
 		echConfig["dynamic_record_sizing_disabled"] = ech["dynamic_record_sizing_disabled"]
 		tlsConfig["ech"] = echConfig
 	}
+
+	// The client config is stored alongside the server config and may carry
+	// server-only fields (legacy rows, upstream imports) — never ship them.
+	StripServerTlsFields(tlsConfig)
 
 	(*out)["tls"] = tlsConfig
 }

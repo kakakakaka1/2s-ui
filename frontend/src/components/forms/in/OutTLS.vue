@@ -27,16 +27,9 @@
         </Pop>
       </div>
       <template v-if="optionCert">
-        <Segmented
-          v-model="usePath"
-          :options="[[0, $t('tls.usePath')], [1, $t('tls.useText')]]"
-          style="margin-bottom: 12px;"
-          @update:model-value="onCertMode"
-        />
-        <Field v-if="usePath == 0" :label="$t('tls.certPath')">
-          <input class="input mono" v-model="tls.certificate_path" />
-        </Field>
-        <Field v-else :label="$t('tls.cert')">
+        <!-- Path mode was removed: a path is only meaningful on the panel
+             host and leaks into subscriptions as a broken client config. -->
+        <Field :label="$t('tls.cert')">
           <textarea class="input mono" rows="4" v-model="tls.certificate"></textarea>
         </Field>
       </template>
@@ -125,7 +118,6 @@ import Ico from '@/components/ui/Ico.vue'
 
 const props = defineProps<{ outbound: any }>()
 
-const usePath = ref<string | number>(props.outbound?.tls?.certificate ? 1 : 0)
 const useEchPath = ref<string | number>(props.outbound?.tls?.ech?.config ? 1 : 0)
 
 const tlsVersions = ['1.0', '1.1', '1.2', '1.3']
@@ -189,16 +181,6 @@ const echConfigText = computed({
   set: (v: string) => { if (tls.value.ech) tls.value.ech.config = v.split('\n') },
 })
 
-const onCertMode = (v: string | number) => {
-  if (v == 0) {
-    tls.value.certificate = undefined
-    tls.value.certificate_path = ''
-  } else {
-    tls.value.certificate_path = undefined
-    tls.value.certificate = ''
-  }
-}
-
 const onEchMode = (v: string | number) => {
   if (v == 0) {
     delete tls.value.ech?.config
@@ -210,11 +192,11 @@ const onEchMode = (v: string | number) => {
 const optionCert = computed({
   get: (): boolean => tls.value.certificate != undefined || tls.value.certificate_path != undefined,
   set: (v: boolean) => {
-    usePath.value = 0
+    // Legacy rows may still carry a server-side path — drop it either way.
+    delete props.outbound.tls.certificate_path
     if (v) {
-      props.outbound.tls.certificate_path = ''
+      props.outbound.tls.certificate = ''
     } else {
-      delete props.outbound.tls.certificate_path
       delete props.outbound.tls.certificate
     }
   },

@@ -124,6 +124,10 @@ func (j *JsonService) getOutbounds(clientConfig json.RawMessage, inbounds []*mod
 		if err != nil {
 			return nil, nil, err
 		}
+		// Stored out_json may predate the server-only-field filter (#51).
+		if outTlsBase, ok := outbound["tls"].(map[string]interface{}); ok {
+			util.StripServerTlsFields(outTlsBase)
+		}
 		protocol, _ := outbound["type"].(string)
 
 		// Shadowsocks
@@ -189,6 +193,15 @@ func (j *JsonService) getOutbounds(clientConfig json.RawMessage, inbounds []*mod
 				for key, value := range outbound {
 					newOut[key] = value
 				}
+				// Clone the TLS map so one address's override can't leak into
+				// the next — the shallow copy above shares it across addrs.
+				if baseTls, ok := outbound["tls"].(map[string]interface{}); ok {
+					tlsCopy := make(map[string]interface{}, len(baseTls))
+					for k, v := range baseTls {
+						tlsCopy[k] = v
+					}
+					newOut["tls"] = tlsCopy
+				}
 				// Change and push copied config
 				newOut["server"], _ = addr["server"].(string)
 				port, _ := addr["server_port"].(float64)
@@ -203,6 +216,8 @@ func (j *JsonService) getOutbounds(clientConfig json.RawMessage, inbounds []*mod
 					for key, value := range addrTls {
 						outTls[key] = value
 					}
+					// Per-address overrides are free-form maps — filter them too (#51).
+					util.StripServerTlsFields(outTls)
 					newOut["tls"] = outTls
 				}
 

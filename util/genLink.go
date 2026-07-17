@@ -137,6 +137,7 @@ func prepareTls(t *model.Tls) map[string]interface{} {
 			oTls["reality"] = clientReality
 		}
 	}
+	StripServerTlsFields(oTls)
 	return oTls
 }
 
