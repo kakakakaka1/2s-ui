@@ -13,6 +13,7 @@ import (
 	"github.com/shenaba/2s-ui/database"
 	"github.com/shenaba/2s-ui/database/model"
 	"github.com/shenaba/2s-ui/logger"
+	"github.com/shenaba/2s-ui/util"
 	"github.com/shenaba/2s-ui/util/common"
 
 	"gorm.io/gorm"
@@ -43,6 +44,14 @@ var (
 	reconcileBusy = map[uint]bool{}
 	reconcileLast = map[uint]time.Time{}
 )
+
+// refreshLinksMu serializes the read-modify-write of client.Links across nodes.
+// ReconcileDirtyOnline fans out one goroutine per dirty node and any client/inbound
+// save marks every node dirty, so two nodes' refreshNodeLinks can hit the SAME
+// client concurrently — each folding in its own "[node] " links. Without this the
+// later writer clobbers the earlier node's links (last-write-wins). It guards only
+// the local link merge, never the per-node HTTP push.
+var refreshLinksMu sync.Mutex
 
 // ---------- remote calls ----------
 
@@ -172,19 +181,50 @@ func (s *NodeSyncService) AdoptInbounds(nodeId uint, tags []string, actor string
 		return err
 	}
 	client := nodePushClient(node)
-	obj, err := s.nodeGet(node, client, "inbounds", nil)
+
+	wanted := map[string]bool{}
+	for _, t := range tags {
+		wanted[t] = true
+	}
+
+	// The inbounds LIST projection (InboundService.GetAll) drops out_json/addrs,
+	// so a plain "inbounds" GET can't seed the replica's node-side link snapshot
+	// (subscription aggregation later reads out_json). Resolve the wanted tags to
+	// node inbound ids from the list, then re-fetch those by id — getById returns
+	// the MarshalFull shape, which carries out_json and addrs. Both endpoints are
+	// stock apiv2, so the node needs no change.
+	listObj, err := s.nodeGet(node, client, "inbounds", nil)
+	if err != nil {
+		return err
+	}
+	var list struct {
+		Inbounds []struct {
+			Id  uint   `json:"id"`
+			Tag string `json:"tag"`
+		} `json:"inbounds"`
+	}
+	if err := json.Unmarshal(listObj, &list); err != nil {
+		return common.NewError("unexpected inbounds payload from node")
+	}
+	var ids []string
+	for _, ib := range list.Inbounds {
+		if wanted[ib.Tag] {
+			ids = append(ids, strconv.FormatUint(uint64(ib.Id), 10))
+		}
+	}
+	if len(ids) == 0 {
+		return common.NewError("no matching inbounds found on the node")
+	}
+
+	fullObj, err := s.nodeGet(node, client, "inbounds", url.Values{"id": {strings.Join(ids, ",")}})
 	if err != nil {
 		return err
 	}
 	var payload struct {
 		Inbounds []json.RawMessage `json:"inbounds"`
 	}
-	if err := json.Unmarshal(obj, &payload); err != nil {
+	if err := json.Unmarshal(fullObj, &payload); err != nil {
 		return common.NewError("unexpected inbounds payload from node")
-	}
-	wanted := map[string]bool{}
-	for _, t := range tags {
-		wanted[t] = true
 	}
 
 	db := database.GetDB()
@@ -310,29 +350,20 @@ func (s *NodeSyncService) Reconcile(nodeId uint) error {
 		return err
 	}
 
-	changed := false
-	linkUpdates := map[string]json.RawMessage{} // master client name -> node links
-
 	// new / edit
 	for name, want := range expected {
 		cur, exists := actual[name]
 		if !exists {
-			obj, err := s.pushClient(node, client, "new", want)
-			if err != nil {
+			if _, err := s.pushClient(node, client, "new", want); err != nil {
 				logger.Warning("reconcile: push new ", name, " to node ", node.Name, ": ", err)
 				return err
 			}
-			s.collectNodeLinks(obj, name, linkUpdates)
-			changed = true
 		} else if clientDiffers(want, cur) {
 			want["id"] = cur.Id // node-local id for the edit
-			obj, err := s.pushClient(node, client, "edit", want)
-			if err != nil {
+			if _, err := s.pushClient(node, client, "edit", want); err != nil {
 				logger.Warning("reconcile: push edit ", name, " to node ", node.Name, ": ", err)
 				return err
 			}
-			s.collectNodeLinks(obj, name, linkUpdates)
-			changed = true
 		}
 	}
 	// del: on the node, in @cluster, but no longer expected
@@ -342,14 +373,13 @@ func (s *NodeSyncService) Reconcile(nodeId uint) error {
 				logger.Warning("reconcile: push del ", name, " to node ", node.Name, ": ", err)
 				return err
 			}
-			changed = true
 		}
 	}
 
-	if len(linkUpdates) > 0 {
-		s.mergeNodeLinks(node, linkUpdates)
-	}
-	_ = changed
+	// Fold this node's routes into the master subscription. The node never hands
+	// its own links back (its apiv2 clients projection omits the column), so we
+	// regenerate them locally from each replica inbound's out_json snapshot.
+	s.refreshNodeLinks(node)
 
 	now := time.Now().Unix()
 	return database.GetDB().Model(model.Node{}).Where("id = ?", nodeId).
@@ -479,88 +509,168 @@ func clientDiffers(want map[string]interface{}, cur nodeClientState) bool {
 	return false
 }
 
-// collectNodeLinks extracts the node-generated "local" links from a save
-// response and stashes them under the master client name.
+// genNodeReplicaLinks builds the share links for one client on one replica
+// inbound entirely from local state — no round-trip to the node. The replica's
+// out_json (the node-side server/port/TLS snapshot captured at adoption) supplies
+// the transport, and the client's config supplies the per-user credentials.
 //
-// KNOWN LIMITATION (subscription aggregation): a node's save response comes
-// from LoadPartialData -> ClientService.Get, whose column projection omits the
-// links field, so this currently collects nothing and node routes do not merge
-// into the master subscription. The clients themselves are pushed and usable on
-// the node; only the aggregated master subscription is incomplete. Fixing it
-// without touching the node side means generating the external link locally from
-// the replica inbound's stored out_json (the node-side address snapshot) plus
-// the client config, rather than relying on the node to hand its links back.
-func (s *NodeSyncService) collectNodeLinks(obj json.RawMessage, name string, out map[string]json.RawMessage) {
-	if obj == nil {
-		return
+// It mirrors util.LinkGenerator but feeds the TLS snapshot in as a per-address
+// block instead of resolving a local Tls record: the replica carries no tls_id
+// (TLS terminates on the node, so adoption drops it), and with tls_id==0
+// LinkGenerator passes addr["tls"] straight through to the per-protocol builders
+// — reproducing exactly the reality/tls params the node itself would emit.
+func genNodeReplicaLinks(replica *model.Inbound, c *model.Client) []string {
+	if len(replica.OutJson) == 0 {
+		return nil
 	}
-	var payload struct {
-		Clients []struct {
-			Name  string          `json:"name"`
-			Links json.RawMessage `json:"links"`
-		} `json:"clients"`
+	var out map[string]interface{}
+	if err := json.Unmarshal(replica.OutJson, &out); err != nil || out == nil {
+		return nil
 	}
-	if err := json.Unmarshal(obj, &payload); err != nil {
-		return
+	server, _ := out["server"].(string)
+	if server == "" {
+		return nil
 	}
-	for _, c := range payload.Clients {
-		if c.Name == name && c.Links != nil {
-			out[name] = c.Links
+
+	base := map[string]interface{}{
+		"server":      server,
+		"server_port": out["server_port"],
+	}
+	// enabled must be a real bool: the per-protocol builders do tls["enabled"].(bool)
+	// unguarded, which would panic on a missing/!bool value.
+	if tls, ok := out["tls"].(map[string]interface{}); ok {
+		if _, isBool := tls["enabled"].(bool); isBool {
+			base["tls"] = tls
 		}
 	}
+
+	// Honour the replica's address book when the node has one, backfilling the
+	// snapshot's server/port/tls onto entries that don't override them.
+	var book []map[string]interface{}
+	if len(replica.Addrs) > 0 {
+		_ = json.Unmarshal(replica.Addrs, &book)
+	}
+	var addrs []map[string]interface{}
+	for _, a := range book {
+		if _, ok := a["server"]; !ok {
+			a["server"] = base["server"]
+		}
+		if _, ok := a["server_port"]; !ok {
+			a["server_port"] = base["server_port"]
+		}
+		if _, ok := a["tls"]; !ok {
+			if tls, ok := base["tls"]; ok {
+				a["tls"] = tls
+			}
+		}
+		addrs = append(addrs, a)
+	}
+	if len(addrs) == 0 {
+		addrs = []map[string]interface{}{base}
+	}
+
+	synthetic := *replica
+	synthetic.TlsId = 0
+	synthetic.Tls = nil
+	synthetic.Addrs, _ = json.Marshal(addrs)
+
+	return util.LinkGenerator(c.Config, &synthetic, server, c.Remark)
 }
 
-// mergeNodeLinks folds a node's freshly generated links into the master
-// clients' Links as type:"external" entries prefixed "[node] ", replacing any
-// previous entries with the same prefix (idempotent). Existing subscription
-// output then serves them with zero extra work.
-func (s *NodeSyncService) mergeNodeLinks(node *model.Node, updates map[string]json.RawMessage) {
-	prefix := "[" + node.Name + "] "
-	db := database.GetDB()
-	for name, nodeLinksRaw := range updates {
-		var nodeLinks []map[string]string
-		if err := json.Unmarshal(nodeLinksRaw, &nodeLinks); err != nil {
-			continue
-		}
-		var client model.Client
-		if err := db.Model(model.Client{}).Where("name = ?", name).First(&client).Error; err != nil {
-			continue
-		}
-		var existing []map[string]string
-		json.Unmarshal(client.Links, &existing)
+// refreshNodeLinks re-derives the "[node] " external links for every master
+// client from this node's replica inbounds and folds them into client.Links,
+// replacing any previous entries under the same "[node] " prefix (idempotent).
+// A client that no longer references the node has its stale prefix links stripped.
+// Writes (and the resulting Changes row / LastUpdate bump) happen only when a
+// client's links actually change, so the heartbeat/hourly reconcile doesn't churn.
+// The existing subscription output then serves the external entries with no extra work.
+func (s *NodeSyncService) refreshNodeLinks(node *model.Node) {
+	refreshLinksMu.Lock()
+	defer refreshLinksMu.Unlock()
 
-		merged := make([]map[string]string, 0, len(existing))
-		for _, l := range existing {
-			if !strings.HasPrefix(l["remark"], prefix) {
-				merged = append(merged, l)
-			}
-		}
-		for _, l := range nodeLinks {
-			if l["type"] != "local" {
+	db := database.GetDB()
+
+	var replicas []model.Inbound
+	if err := db.Model(model.Inbound{}).Where("node_id = ?", node.Id).Find(&replicas).Error; err != nil {
+		logger.Warning("reconcile: load replicas for link refresh: ", err)
+		return
+	}
+	replicaById := make(map[uint]*model.Inbound, len(replicas))
+	for i := range replicas {
+		replicaById[replicas[i].Id] = &replicas[i]
+	}
+
+	var clients []model.Client
+	if err := db.Model(model.Client{}).Find(&clients).Error; err != nil {
+		logger.Warning("reconcile: load clients for link refresh: ", err)
+		return
+	}
+
+	prefix := "[" + node.Name + "] "
+	touched := false
+
+	for i := range clients {
+		c := &clients[i]
+
+		var ids []uint
+		_ = json.Unmarshal(c.Inbounds, &ids)
+		var desired []map[string]string
+		for _, id := range ids {
+			rep, ok := replicaById[id]
+			if !ok {
 				continue
 			}
-			merged = append(merged, map[string]string{
-				"remark": prefix + l["remark"],
-				"type":   "external",
-				"uri":    l["uri"],
-			})
+			for _, uri := range genNodeReplicaLinks(rep, c) {
+				desired = append(desired, map[string]string{
+					"remark": prefix + rep.Tag,
+					"type":   "external",
+					"uri":    uri,
+				})
+			}
 		}
-		links, err := json.MarshalIndent(merged, "", "  ")
+
+		var existing []map[string]string
+		_ = json.Unmarshal(c.Links, &existing)
+		hadPrefix := false
+		kept := make([]map[string]string, 0, len(existing))
+		for _, l := range existing {
+			if strings.HasPrefix(l["remark"], prefix) {
+				hadPrefix = true
+				continue
+			}
+			kept = append(kept, l)
+		}
+		// Nothing to add and nothing to strip: leave clients unrelated to this
+		// node untouched (and don't rewrite a null Links into "[]").
+		if len(desired) == 0 && !hadPrefix {
+			continue
+		}
+
+		merged := append(kept, desired...)
+		newLinks, err := json.MarshalIndent(merged, "", "  ")
 		if err != nil {
 			continue
 		}
+		if jsonEqual(c.Links, newLinks) {
+			continue // node links unchanged
+		}
+
 		if err := db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Model(model.Client{}).Where("id = ?", client.Id).Update("links", links).Error; err != nil {
+			if err := tx.Model(model.Client{}).Where("id = ?", c.Id).Update("links", newLinks).Error; err != nil {
 				return err
 			}
 			return tx.Create(&model.Changes{
 				DateTime: time.Now().Unix(), Actor: "NodeSync", Key: "clients", Action: "edit",
-				Obj: json.RawMessage(mustJSON(map[string]interface{}{"name": name, "node": node.Name})),
+				Obj: json.RawMessage(mustJSON(map[string]interface{}{"name": c.Name, "node": node.Name})),
 			}).Error
 		}); err != nil {
-			logger.Warning("reconcile: merge links for ", name, ": ", err)
+			logger.Warning("reconcile: refresh links for ", c.Name, ": ", err)
 			continue
 		}
+		touched = true
+	}
+
+	if touched {
 		LastUpdate = time.Now().Unix()
 	}
 }
