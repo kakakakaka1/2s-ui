@@ -113,6 +113,11 @@ func prepareTls(t *model.Tls) map[string]interface{} {
 	if err := json.Unmarshal(t.Client, &oTls); err != nil {
 		return nil
 	}
+	if oTls == nil {
+		// A literal "null" client column unmarshals to a nil map and the
+		// assignments below would panic on it.
+		oTls = map[string]interface{}{}
+	}
 	if err := json.Unmarshal(t.Server, &iTls); err != nil {
 		return nil
 	}

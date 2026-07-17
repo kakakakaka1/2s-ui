@@ -81,6 +81,10 @@ func FillOutJson(i *model.Inbound, hostname string) error {
 // (issue #51).
 var serverOnlyTlsFields = []string{"certificate_path", "key", "key_path", "acme"}
 
+// serverOnlyEchFields hold the server's ECH private key inside the nested
+// ech object; the client-side ech fields (config, config_path, ...) stay.
+var serverOnlyEchFields = []string{"key", "key_path"}
+
 // StripServerTlsFields removes server-only TLS fields from a client-facing
 // TLS object in place and reports whether anything was removed.
 func StripServerTlsFields(tls map[string]interface{}) bool {
@@ -89,6 +93,14 @@ func StripServerTlsFields(tls map[string]interface{}) bool {
 		if _, ok := tls[field]; ok {
 			delete(tls, field)
 			changed = true
+		}
+	}
+	if ech, ok := tls["ech"].(map[string]interface{}); ok {
+		for _, field := range serverOnlyEchFields {
+			if _, ok := ech[field]; ok {
+				delete(ech, field)
+				changed = true
+			}
 		}
 	}
 	return changed
@@ -104,6 +116,11 @@ func addTls(out *map[string]interface{}, tls *model.Tls) {
 	err = json.Unmarshal(tls.Client, &tlsConfig)
 	if err != nil {
 		return
+	}
+	if tlsConfig == nil {
+		// A literal "null" client column unmarshals to a nil map and the
+		// assignments below would panic on it.
+		tlsConfig = map[string]interface{}{}
 	}
 
 	if enabled, ok := tlsServer["enabled"]; ok {
