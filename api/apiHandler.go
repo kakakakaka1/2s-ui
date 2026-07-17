@@ -41,7 +41,11 @@ func (a *APIHandler) postHandler(c *gin.Context) {
 	case "changePass":
 		a.ApiService.ChangePass(c)
 	case "save":
-		a.ApiService.Save(c, loginUser)
+		a.ApiService.Save(c, loginUser, true)
+	case "adoptInbounds":
+		a.ApiService.AdoptInbounds(c, loginUser)
+	case "reconcileNode":
+		a.ApiService.ReconcileNode(c)
 	case "restartApp":
 		a.ApiService.RestartApp(c)
 	case "restartSb":
@@ -113,6 +117,8 @@ func (a *APIHandler) getHandler(c *gin.Context) {
 		a.ApiService.GetSingboxConfig(c)
 	case "checkOutbound":
 		a.ApiService.GetCheckOutbound(c)
+	case "nodeInbounds":
+		a.ApiService.GetNodeInbounds(c)
 	case "detectNginx":
 		a.ApiService.DetectNginx(c)
 	case "updateInfo":

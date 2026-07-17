@@ -42,7 +42,9 @@ func (a *APIv2Handler) postHandler(c *gin.Context) {
 
 	switch action {
 	case "save":
-		a.ApiService.Save(c, username)
+		// fanout=false: a client pushed here by a master must not be bounced
+		// back out to this panel's own nodes (mutual-master ping-pong).
+		a.ApiService.Save(c, username, false)
 	case "restartApp":
 		a.ApiService.RestartApp(c)
 	case "restartSb":

@@ -348,6 +348,8 @@ export default {
   nodeSub: "Connect another 2S-UI panel",
   nodesTile: "Nodes",
   nodesTileSub: "Managed panels at a glance",
+  view: "View",
+  nodeImportTitle: "Import node inbounds",
   viewAll: "View all",
   viewLog: "View log",
   searchClient: "Search name or device…",

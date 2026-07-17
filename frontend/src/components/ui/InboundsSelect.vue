@@ -32,6 +32,7 @@
           <div class="ib-tag">{{ it.tag }}</div>
           <div class="mono ib-meta">{{ it.type }} · :{{ it.port }}</div>
         </div>
+        <span v-if="it.node" class="ib-node">{{ it.node }}</span>
         <Check :checked="isSel(it.id)" />
       </label>
       <div v-if="items.length === 0" class="ib-empty">{{ $t('ui.selectHint') }}</div>
@@ -46,7 +47,7 @@ import Pop from './Pop.vue'
 import Ico from './Ico.vue'
 import Check from './Check.vue'
 
-type Item = { id: number; tag: string; type: string; port: string | number; online: boolean }
+type Item = { id: number; tag: string; type: string; port: string | number; online: boolean; node?: string }
 
 const props = defineProps<{
   modelValue: number[]
@@ -151,5 +152,10 @@ const summary = computed(() => {
 .inb-dot.online { background: var(--emerald); }
 .ib-tag { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ib-meta { font-size: 11.5px; color: var(--text-3); }
+.ib-node {
+  flex: none; font-size: 11px; font-weight: 600;
+  color: var(--brand); background: var(--brand-soft);
+  padding: 2px 7px; border-radius: 6px; white-space: nowrap;
+}
 .ib-empty { padding: 16px; text-align: center; color: var(--text-3); font-size: 12.5px; }
 </style>

@@ -10,6 +10,7 @@ import (
 	"github.com/shenaba/2s-ui/logger"
 	"github.com/shenaba/2s-ui/service"
 	"github.com/shenaba/2s-ui/util"
+	"github.com/shenaba/2s-ui/util/common"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,6 +30,7 @@ type ApiService struct {
 	service.ServerService
 	service.UpdateService
 	service.NodeService
+	service.NodeSyncService
 }
 
 func (a *ApiService) UpdateInfo(c *gin.Context) {
@@ -340,7 +342,11 @@ func (a *ApiService) ChangePass(c *gin.Context) {
 	}
 }
 
-func (a *ApiService) Save(c *gin.Context, loginUser string) {
+// Save handles POST api/save. fanout controls whether a successful client /
+// inbound change is propagated to managed nodes. v1 (the SPA) passes true; v2
+// passes false so a node that has this panel as a master does not bounce the
+// pushed change back out (ping-pong between mutual masters).
+func (a *ApiService) Save(c *gin.Context, loginUser string, fanout bool) {
 	hostname := getHostname(c)
 	obj := c.Request.FormValue("object")
 	act := c.Request.FormValue("action")
@@ -350,6 +356,12 @@ func (a *ApiService) Save(c *gin.Context, loginUser string) {
 	if err != nil {
 		jsonMsg(c, "save", err)
 		return
+	}
+	if fanout && (obj == "clients" || obj == "inbounds") {
+		// Fire-and-forget: network IO must not block the save's DB txn (already
+		// committed) or the HTTP response. Unrelated nodes are a cheap no-op diff.
+		a.NodeSyncService.MarkAllDirty()
+		go a.NodeSyncService.ReconcileDirtyOnline()
 	}
 	err = a.LoadPartialData(c, objs)
 	if err != nil {
@@ -496,4 +508,48 @@ func (a *ApiService) TestNode(c *gin.Context) {
 	data := c.PostForm("data")
 	status, err := a.NodeService.TestNode(json.RawMessage(data))
 	jsonObj(c, status, err)
+}
+
+func (a *ApiService) GetNodeInbounds(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Query("id"), 10, 64)
+	if err != nil {
+		jsonMsg(c, "nodeInbounds", common.NewError("invalid node id"))
+		return
+	}
+	inbounds, err := a.NodeSyncService.FetchNodeInbounds(uint(id))
+	jsonObj(c, inbounds, err)
+}
+
+func (a *ApiService) AdoptInbounds(c *gin.Context, loginUser string) {
+	id, err := strconv.ParseUint(c.PostForm("id"), 10, 64)
+	if err != nil {
+		jsonMsg(c, "adoptInbounds", common.NewError("invalid node id"))
+		return
+	}
+	var tags []string
+	if err := json.Unmarshal([]byte(c.PostForm("tags")), &tags); err != nil {
+		jsonMsg(c, "adoptInbounds", common.NewError("invalid tags"))
+		return
+	}
+	if err := a.NodeSyncService.AdoptInbounds(uint(id), tags, loginUser); err != nil {
+		jsonMsg(c, "adoptInbounds", err)
+		return
+	}
+	// Push the master's clients onto the freshly adopted inbounds right away.
+	go func() {
+		if err := a.NodeSyncService.Reconcile(uint(id)); err != nil {
+			logger.Warning("adopt: initial reconcile failed: ", err)
+		}
+	}()
+	jsonMsg(c, "adoptInbounds", nil)
+}
+
+func (a *ApiService) ReconcileNode(c *gin.Context) {
+	id, err := strconv.ParseUint(c.PostForm("id"), 10, 64)
+	if err != nil {
+		jsonMsg(c, "reconcileNode", common.NewError("invalid node id"))
+		return
+	}
+	err = a.NodeSyncService.Reconcile(uint(id))
+	jsonMsg(c, "reconcileNode", err)
 }

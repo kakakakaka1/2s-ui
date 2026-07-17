@@ -8,6 +8,7 @@ import (
 
 type NodesJob struct {
 	service.NodeService
+	service.NodeSyncService
 	running sync.Mutex
 }
 
@@ -23,4 +24,7 @@ func (s *NodesJob) Run() {
 	}
 	defer s.running.Unlock()
 	s.NodeService.RefreshAll()
+	// Offline-period edits converge here: any node that is now online and still
+	// dirty gets reconciled (own single-flight + backoff inside).
+	s.NodeSyncService.ReconcileDirtyOnline()
 }

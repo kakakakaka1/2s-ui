@@ -5,6 +5,12 @@
     :data="drawer.data"
     @close="drawer.visible = false"
   />
+  <NodeImportModal
+    :visible="importModal.visible"
+    :node-id="importModal.nodeId"
+    :node-name="importModal.nodeName"
+    @close="importModal.visible = false"
+  />
 
   <!-- delete confirmation -->
   <Modal :open="del.visible" :title="$t('actions.del')" :width="380" @close="del.visible = false">
@@ -37,6 +43,7 @@
         :rows="cardRows(item)"
       >
         <template #chip>
+          <Chip v-if="item.dirty" color="amber" :title="$t('node.syncDirty')">{{ $t('node.syncDirty') }}</Chip>
           <Chip v-if="stateOf(item) === 'online'" color="emerald" dot>{{ $t('node.status.online') }}</Chip>
           <Chip v-else-if="stateOf(item) === 'core-stopped'" color="amber">{{ $t('node.status.coreStopped') }}</Chip>
           <Chip v-else-if="stateOf(item) === 'offline'" color="rose">{{ $t('node.status.offline') }}</Chip>
@@ -45,6 +52,14 @@
         </template>
         <template #actions>
           <CardBtn icon="edit" :title="$t('actions.edit')" @click="openDrawer(item.id)" />
+          <CardBtn icon="download" border :title="$t('node.import')" @click="openImport(item)" />
+          <CardBtn
+            icon="refresh"
+            border
+            :title="$t('node.reconcile')"
+            :disabled="reconciling === item.id"
+            @click="reconcile(item)"
+          />
           <CardBtn icon="trash" border danger :title="$t('actions.del')" @click="askDelete(item.id)" />
         </template>
       </EntityCard>
@@ -66,6 +81,9 @@ import CardBtn from '@/components/ui/CardBtn.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import EntityCard, { EntityRow } from '@/components/ui/EntityCard.vue'
 import NodeDrawer from '@/layouts/drawers/node/NodeDrawer.vue'
+import NodeImportModal from '@/layouts/drawers/node/NodeImportModal.vue'
+import HttpUtils from '@/plugins/httputil'
+import { push } from 'notivue'
 
 const { t } = useI18n({ useScope: 'global' })
 const dataStore = Data()
@@ -148,6 +166,24 @@ const openDrawer = (id: number) => {
   drawer.value.id = id
   drawer.value.data = id == 0 ? '{}' : JSON.stringify(nodes.value.findLast((n) => n.id == id))
   drawer.value.visible = true
+}
+
+// ---------------- import inbounds ----------------
+const importModal = ref({ visible: false, nodeId: 0, nodeName: '' })
+const openImport = (n: Node) => {
+  importModal.value = { visible: true, nodeId: n.id, nodeName: n.name }
+}
+
+// ---------------- reconcile ----------------
+const reconciling = ref(0)
+const reconcile = async (n: Node) => {
+  reconciling.value = n.id
+  const msg = await HttpUtils.post('api/reconcileNode', { id: n.id })
+  reconciling.value = 0
+  if (msg.success) {
+    push.success({ message: t('node.syncOk') })
+    dataStore.loadData()
+  }
 }
 
 // ---------------- delete (with confirm) ----------------

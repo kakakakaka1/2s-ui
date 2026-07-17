@@ -93,4 +93,13 @@ type Node struct {
 	// Unix seconds of the last time the node was seen online; written only on
 	// online -> offline/core-stopped transitions, not every heartbeat.
 	LastSeen int64 `json:"lastSeen" form:"lastSeen" gorm:"default:0;not null"`
+
+	// Dirty marks pending master-side edits that have not converged onto the
+	// node yet; the heartbeat retriggers Reconcile while it is set.
+	Dirty    bool  `json:"dirty" gorm:"default:false;not null"`
+	LastSync int64 `json:"lastSync" gorm:"default:0;not null"`
+	// Baselines holds the per-client traffic counters seen on the node at the
+	// last collection: map[clientName]{up,down}. Single writer (traffic job),
+	// one row UPDATE per node per cycle.
+	Baselines json.RawMessage `json:"-"`
 }

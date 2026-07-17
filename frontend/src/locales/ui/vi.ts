@@ -348,6 +348,8 @@ export default {
   nodeSub: "Kết nối bảng 2S-UI khác",
   nodesTile: "Node",
   nodesTileSub: "Tổng quan các bảng được quản lý",
+  view: "Xem",
+  nodeImportTitle: "Nhập inbound của node",
   viewAll: "Xem tất cả",
   viewLog: "Xem log",
   searchClient: "Tìm tên hoặc thiết bị…",

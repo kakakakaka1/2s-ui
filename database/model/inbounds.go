@@ -13,6 +13,11 @@ type Inbound struct {
 	TlsId uint `json:"tls_id" form:"tls_id"`
 	Tls   *Tls `json:"tls" form:"tls" gorm:"foreignKey:TlsId;references:Id"`
 
+	// NULL = this inbound runs on the local core; set = it is a replica of an
+	// inbound living on that managed node and must NEVER reach the local core
+	// (see the node_id IS NULL guards in service/inbounds.go).
+	NodeId *uint `json:"node_id,omitempty" form:"node_id" gorm:"index"`
+
 	Addrs   json.RawMessage `json:"addrs" form:"addrs"`
 	OutJson json.RawMessage `json:"out_json" form:"out_json"`
 	Options json.RawMessage `json:"-" form:"-"`
@@ -42,6 +47,14 @@ func (i *Inbound) UnmarshalJSON(data []byte) error {
 	delete(raw, "tls_id")
 	delete(raw, "tls")
 	delete(raw, "users")
+
+	// NodeId — must be pulled out of raw or it would land in Options and be
+	// fed to sing-box, which rejects unknown fields.
+	if val, exists := raw["node_id"].(float64); exists && val > 0 {
+		nodeId := uint(val)
+		i.NodeId = &nodeId
+	}
+	delete(raw, "node_id")
 
 	// Addrs
 	i.Addrs, _ = json.MarshalIndent(raw["addrs"], "", "  ")
@@ -88,6 +101,10 @@ func (i Inbound) MarshalFull() (*map[string]interface{}, error) {
 	combined["tls_id"] = i.TlsId
 	combined["addrs"] = i.Addrs
 	combined["out_json"] = i.OutJson
+	// Panel shape only — MarshalJSON (sing-box shape) must never carry this.
+	if i.NodeId != nil {
+		combined["node_id"] = *i.NodeId
+	}
 
 	if i.Options != nil {
 		var restFields map[string]interface{}

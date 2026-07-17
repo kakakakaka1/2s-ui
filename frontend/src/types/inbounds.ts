@@ -52,6 +52,8 @@ interface InboundBasics extends Listen {
   type: InType
   tag: string
   tls_id: number
+  // Set when this inbound is a read-only replica of one living on a node.
+  node_id?: number
   addrs?: Addr[]
   out_json?: any
 }

@@ -315,12 +315,14 @@ const shuffle = (k?: string) => {
 // ---------- inbounds ----------
 const inboundItems = computed(() => props.inboundTags.map((it) => {
   const inb = Data().inbounds?.find((i: any) => i.id == it.value)
+  const node = inb?.node_id ? Data().nodes?.find((n: any) => n.id == inb.node_id)?.name : undefined
   return {
     id: it.value,
     tag: it.title,
     type: inb?.type ?? '',
     port: inb?.listen_port ?? '',
     online: Data().onlines?.inbound ? Data().onlines.inbound.includes(it.title) : false,
+    node,
   }
 }))
 // 入站的勾选/全选逻辑已下沉到 InboundsSelect 组件

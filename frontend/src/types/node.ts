@@ -15,6 +15,9 @@ export interface Node {
   desc?: string
   lastSeen: number
   tokenSet?: boolean
+  // Phase 2 sync state
+  dirty?: boolean
+  lastSync?: number
 }
 
 export type NodeState = 'online' | 'offline' | 'core-stopped'

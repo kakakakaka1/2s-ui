@@ -49,6 +49,10 @@ func (c *CronJob) Start(loc *time.Location, trafficAge int, statsBucketSeconds i
 		c.cron.AddJob("@every 5s", NewCheckCoreJob())
 		// Probe managed nodes (in-memory snapshot; no-op with zero nodes)
 		c.cron.AddJob("@every 5s", NewNodesJob())
+		// Pull + merge node traffic into the master's per-client totals
+		c.cron.AddJob("@every 1m", NewNodeTrafficJob())
+		// Safety net: reconcile every online node to repair silent node-side drift
+		c.cron.AddJob("@every 1h", NewNodeReconcileJob())
 		// database WAL checkpoint
 		c.cron.AddJob("@every 10m", NewWALCheckpointJob())
 	}()

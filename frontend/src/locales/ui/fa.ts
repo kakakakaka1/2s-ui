@@ -348,6 +348,8 @@ export default {
   nodeSub: "اتصال یک پنل 2S-UI دیگر",
   nodesTile: "نودها",
   nodesTileSub: "نمای کلی پنل‌های مدیریت‌شده",
+  view: "نمایش",
+  nodeImportTitle: "ورود درون‌آیی‌های نود",
   viewAll: "مشاهده همه",
   viewLog: "مشاهدهٔ لاگ",
   searchClient: "جستجوی نام یا دستگاه…",

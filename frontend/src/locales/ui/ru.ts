@@ -348,6 +348,8 @@ export default {
   nodeSub: "Подключите другую панель 2S-UI",
   nodesTile: "Узлы",
   nodesTileSub: "Обзор управляемых панелей",
+  view: "Просмотр",
+  nodeImportTitle: "Импорт входящих узла",
   viewAll: "Показать все",
   viewLog: "Журнал",
   searchClient: "Имя или устройство…",

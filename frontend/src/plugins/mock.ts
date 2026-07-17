@@ -11,7 +11,9 @@ const rnd = (min: number, max: number) => min + Math.random() * (max - min)
 const MOCK_VERSION = '1.5.0-alpha.2'
 
 const PROTOS = ['vless', 'vmess', 'trojan', 'shadowsocks', 'hysteria2']
-const inbounds = PROTOS.map((type, i) => ({ id: i + 1, type, tag: `${type}-in`, listen: '::', port: 10000 + i }))
+const inbounds: any[] = PROTOS.map((type, i) => ({ id: i + 1, type, tag: `${type}-in`, listen: '::', listen_port: 10000 + i }))
+// a replica inbound adopted from node 1 (jp-tokyo-1)
+inbounds.push({ id: 6, type: 'vless', tag: 'vless-jp', listen: '::', listen_port: 443, node_id: 1 })
 
 const clients = Array.from({ length: 48 }, (_, i) => ({
   id: i + 1,
@@ -26,7 +28,7 @@ const onlineUsers = clients.filter((c) => c.enable).slice(0, 27).map((c) => c.na
 
 // 三台节点覆盖三种状态:在线 / 核心已停 / 离线
 const nodes = [
-  { id: 1, enable: true, name: 'jp-tokyo-1', baseUrl: 'https://203.0.113.10:2095', webPath: '/app/', insecure: false, certPin: '', desc: '', lastSeen: 0, tokenSet: true },
+  { id: 1, enable: true, name: 'jp-tokyo-1', baseUrl: 'https://203.0.113.10:2095', webPath: '/app/', insecure: false, certPin: '', desc: '', lastSeen: 0, tokenSet: true, dirty: true },
   { id: 2, enable: true, name: 'us-la-1', baseUrl: 'https://203.0.113.20:2095', webPath: '/app/', insecure: true, certPin: '', desc: '', lastSeen: 0, tokenSet: true },
   { id: 3, enable: true, name: 'de-fra-1', baseUrl: 'http://203.0.113.30:2095', webPath: '/app/', insecure: false, certPin: '', desc: '', lastSeen: Math.floor(Date.now() / 1000) - 540, tokenSet: true },
 ]

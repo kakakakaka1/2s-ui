@@ -348,6 +348,8 @@ export default {
   nodeSub: "接入另一台 2S-UI 面板",
   nodesTile: "节点",
   nodesTileSub: "托管面板一览",
+  view: "查看",
+  nodeImportTitle: "导入节点入站",
   viewAll: "查看全部",
   viewLog: "查看日志",
   searchClient: "搜索名称或设备…",

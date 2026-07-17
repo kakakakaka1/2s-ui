@@ -43,7 +43,8 @@
             <div class="inb-tag">{{ item.tag }}</div>
             <div class="inb-type" :style="{ color: protoColor(item.type) }">{{ item.type }}</div>
           </div>
-          <Chip v-if="isOnline(item.tag)" color="emerald" dot>{{ $t('ui.live') }}</Chip>
+          <Chip v-if="nodeNameOf(item)" color="brand">{{ nodeNameOf(item) }}</Chip>
+          <Chip v-else-if="isOnline(item.tag)" color="emerald" dot>{{ $t('ui.live') }}</Chip>
           <Chip v-else>{{ $t('ui.idle') }}</Chip>
         </div>
         <div class="inb-meta">
@@ -66,8 +67,15 @@
           </div>
         </div>
         <div class="inb-actions">
-          <CardBtn icon="edit" :label="$t('ui.edit')" :title="$t('actions.edit')" @click="openDrawer(item.id)" />
-          <CardBtn icon="clone" :label="$t('ui.clone')" border :title="$t('actions.clone')" @click="clone(item.id)" />
+          <CardBtn
+            v-if="nodeNameOf(item)"
+            icon="eye"
+            :label="$t('ui.view')"
+            :title="$t('node.manageOnNode')"
+            disabled
+          />
+          <CardBtn v-else icon="edit" :label="$t('ui.edit')" :title="$t('actions.edit')" @click="openDrawer(item.id)" />
+          <CardBtn v-if="!nodeNameOf(item)" icon="clone" :label="$t('ui.clone')" border :title="$t('actions.clone')" @click="clone(item.id)" />
           <CardBtn
             v-if="dataStore.enableTraffic"
             icon="chart"
@@ -76,7 +84,7 @@
             :title="$t('stats.graphTitle')"
             @click="showStats(item.tag)"
           />
-          <CardBtn icon="trash" border danger :title="$t('actions.del')" @click="askDelete(item.tag)" />
+          <CardBtn icon="trash" border danger :title="nodeNameOf(item) ? $t('node.deAdopt') : $t('actions.del')" @click="askDelete(item.tag)" />
         </div>
       </div>
     </div>
@@ -113,17 +121,34 @@ const inTags = computed((): string[] => [
 const onlines = computed((): string[] => dataStore.onlines.inbound ?? [])
 const isOnline = (tag: string): boolean => onlines.value.includes(tag)
 
+// ---------------- node attribution ----------------
+const nodeById = computed((): Record<number, string> =>
+  Object.fromEntries((dataStore.nodes ?? []).map((n: any) => [n.id, n.name])),
+)
+const nodeNameOf = (item: any): string => (item.node_id ? nodeById.value[item.node_id] ?? '' : '')
+
 // ---------------- filter ----------------
 const filter = ref<string | number>('all')
-const filterOptions = computed((): [string | number, string][] => [
-  ['all', t('ui.any')],
-  ['tls', t('ui.tlsOnly')],
-  ['online', t('ui.online')],
-])
+const filterOptions = computed((): [string | number, string][] => {
+  const base: [string | number, string][] = [
+    ['all', t('ui.any')],
+    ['local', t('node.local')],
+    ['tls', t('ui.tlsOnly')],
+    ['online', t('ui.online')],
+  ]
+  // one entry per node that actually owns a replica inbound
+  const nodeIds = [...new Set(inbounds.value.filter((i: any) => i.node_id).map((i: any) => i.node_id))]
+  for (const id of nodeIds) base.push([`node:${id}`, nodeById.value[id] ?? `#${id}`])
+  return base
+})
 const rows = computed((): any[] =>
   inbounds.value.filter((i: any) => {
+    if (filter.value === 'local') return !i.node_id
     if (filter.value === 'tls') return i.tls_id > 0
     if (filter.value === 'online') return isOnline(i.tag)
+    if (typeof filter.value === 'string' && filter.value.startsWith('node:')) {
+      return String(i.node_id) === filter.value.slice(5)
+    }
     return true
   }),
 )
