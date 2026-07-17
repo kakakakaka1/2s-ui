@@ -4,12 +4,40 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/shenaba/2s-ui/config"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+// versionBefore reports whether dot-separated numeric version a sorts before
+// b. The gates below used plain string compares, which break once a segment
+// reaches two digits ("1.5.10" < "1.5.7" lexically). Missing or non-numeric
+// segments count as 0, so "1.5" == "1.5.0" and "" sorts first.
+func versionBefore(a, b string) bool {
+	as := strings.Split(a, ".")
+	bs := strings.Split(b, ".")
+	n := len(as)
+	if len(bs) > n {
+		n = len(bs)
+	}
+	for i := 0; i < n; i++ {
+		av, bv := 0, 0
+		if i < len(as) {
+			av, _ = strconv.Atoi(as[i])
+		}
+		if i < len(bs) {
+			bv, _ = strconv.Atoi(bs[i])
+		}
+		if av != bv {
+			return av < bv
+		}
+	}
+	return false
+}
 
 func MigrateDb() {
 	// void running on first install
@@ -80,7 +108,7 @@ func MigrateDb() {
 	// or every existing install would skip them. Both are idempotent.
 
 	// Back-fill self-signed TLS public-key pins and rewrite OutJson
-	if dbVersion < "1.5.4" {
+	if versionBefore(dbVersion, "1.5.4") {
 		err = to1_5_1(tx)
 		if err != nil {
 			log.Fatal("Migration to 1.5.1 failed: ", err)
@@ -89,10 +117,19 @@ func MigrateDb() {
 	}
 
 	// Hash any plaintext admin passwords
-	if dbVersion < "1.5.4" {
+	if versionBefore(dbVersion, "1.5.4") {
 		err = to1_5_2(tx)
 		if err != nil {
 			log.Fatal("Migration to 1.5.2 failed: ", err)
+			return
+		}
+	}
+
+	// Strip server-only TLS fields leaked into client-facing JSON (#51)
+	if versionBefore(dbVersion, "1.5.7") {
+		err = to1_5_7(tx)
+		if err != nil {
+			log.Fatal("Migration to 1.5.7 failed: ", err)
 			return
 		}
 	}

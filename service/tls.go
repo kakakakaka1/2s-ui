@@ -136,10 +136,13 @@ func setCertFingerprint(t *model.Tls) {
 	if pin != "" {
 		client["certificate_public_key_sha256"] = []string{pin}
 		delete(client, "certificate")
-		delete(client, "certificate_path")
 	} else {
 		delete(client, "certificate_public_key_sha256")
 	}
+
+	// Server-only fields must never sit in the client config regardless of
+	// how they got there (#51).
+	util.StripServerTlsFields(client)
 
 	if newClient, err := json.MarshalIndent(client, "", "  "); err == nil {
 		t.Client = newClient
