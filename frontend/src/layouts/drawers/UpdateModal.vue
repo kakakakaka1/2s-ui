@@ -137,15 +137,18 @@ const poll = () => {
       const body = await resp.json()
       const obj = body?.obj ?? {}
 
-      // 判定"新进程已经接管",命中任一即可,然后载入新版面板:
-      //  - sawDown:面板不可达过,现在又能应答了。
-      //  - phase 回到 idle:更新状态机是后端的包级变量,StartUpdate 一进来就把它推到
-      //    checking 且只进不退,同一个进程绝不可能再答出 idle —— 能答出 idle 的只会是
-      //    重启后全新的进程。
-      // 只认 sawDown 会漏:重启的不可达窗口往往短于 1.5s 轮询间隔,错过一次 sawDown
-      // 就永远是 false,而 idle 既不是 done 也不是 failed,轮询于是无限空转 —— 更新
-      // 其实早就成功了,界面却一直转圈,只有手动刷新才能看到新版本。
-      if (sawDown || obj.phase === 'idle') {
+      // 判定"该载入新版面板了":后端答出的已经不是本次更新的进行态。
+      //  - phase === 'idle':更新状态机是后端包级变量,StartUpdate 一进来就推到
+      //    checking 且只进不退,同一进程绝不可能再答出 idle —— 能答出 idle 的只会是
+      //    重启后的全新进程。这修的正是主 bug:重启不可达窗口常短于 1.5s 轮询间隔,
+      //    错过掉线后下一拍就撞上新进程的 idle,原来只当它"既非 done 也非 failed"
+      //    继续空转,更新其实早成了界面却一直转圈。
+      //  - 没有 phase:正常响应必带 phase(至少是 idle);缺了只可能是 session 中途
+      //    失效后 checkLogin 返回的 {success:false}(HTTP 200、无 obj)—— 本会话再也
+      //    拿不到状态,reload 让它落到登录页,不至于无限空转。
+      // 不再用 sawDown 判定:它只表示"掉线过",下载期一次网络抖动就会误置,恢复后
+      // phase 明明还在 downloading 却被当成"已重启"而误 reload。看后端上报的 phase 更准。
+      if (obj.phase === 'idle' || !obj.phase) {
         location.reload()
         return
       }
@@ -169,7 +172,8 @@ const poll = () => {
       }
       poll()
     } catch {
-      // 请求失败:面板正在重启。标记掉线后继续 ping,下一次成功就会触发上面的 reload。
+      // 请求失败:面板正在重启。记下第一次掉线的时间用于超时计时,继续 ping;
+      // 面板起回来后会在上面按 phase 判定 reload。
       if (!sawDown) {
         sawDown = true
         downSince = Date.now()
