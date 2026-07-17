@@ -574,7 +574,23 @@ func genNodeReplicaLinks(replica *model.Inbound, c *model.Client) []string {
 	synthetic.Tls = nil
 	synthetic.Addrs, _ = json.Marshal(addrs)
 
-	return util.LinkGenerator(c.Config, &synthetic, server, c.Remark)
+	return safeLinkGenerator(c.Config, &synthetic, server, c.Remark)
+}
+
+// safeLinkGenerator wraps util.LinkGenerator, which has unguarded type
+// assertions over the inbound/tls maps. Here the data originates from the node
+// (its out_json snapshot), so a malformed snapshot — a compromised or
+// version-skewed node — could panic. This runs inside a background reconcile
+// goroutine with no recover of its own, so a panic would take the whole process
+// down and then crash-loop. Contain it: a bad snapshot yields no link.
+func safeLinkGenerator(config json.RawMessage, i *model.Inbound, server, remark string) (links []string) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Warning("reconcile: link generation panicked for ", i.Tag, ": ", r)
+			links = nil
+		}
+	}()
+	return util.LinkGenerator(config, i, server, remark)
 }
 
 // refreshNodeLinks re-derives the "[node] " external links for every master

@@ -375,6 +375,7 @@ func (s *NodeService) Save(tx *gorm.DB, act string, data json.RawMessage) error 
 		}
 		node.WebPath = normalizeWebPath(node.WebPath)
 		node.CertPin = normalizeCertPin(node.CertPin)
+		var oldName string
 		if act == "edit" {
 			if node.Id == 0 {
 				return common.NewError("node id is required")
@@ -390,12 +391,16 @@ func (s *NodeService) Save(tx *gorm.DB, act string, data json.RawMessage) error 
 				node.Token = oldToken
 			}
 			// last_seen is heartbeat-owned; don't let a stale form value clobber it.
-			var oldLastSeen int64
-			err = tx.Model(model.Node{}).Select("last_seen").Where("id = ?", node.Id).Find(&oldLastSeen).Error
+			var oldNode struct {
+				Name     string
+				LastSeen int64
+			}
+			err = tx.Model(model.Node{}).Select("name", "last_seen").Where("id = ?", node.Id).Find(&oldNode).Error
 			if err != nil {
 				return err
 			}
-			node.LastSeen = oldLastSeen
+			oldName = oldNode.Name
+			node.LastSeen = oldNode.LastSeen
 		}
 		if node.Token == "" {
 			return common.NewError("node API token is required")
@@ -403,6 +408,13 @@ func (s *NodeService) Save(tx *gorm.DB, act string, data json.RawMessage) error 
 		err = tx.Save(&node).Error
 		if err != nil {
 			return err
+		}
+		// A rename would orphan the "[old] " aggregated links (refreshNodeLinks
+		// keys the prefix on the current name); carry them over in place.
+		if oldName != "" && oldName != node.Name {
+			if err = renameNodeLinkPrefix(tx, oldName, node.Name); err != nil {
+				return err
+			}
 		}
 		invalidateNodeClient(node.Id)
 	case "del":
@@ -421,6 +433,43 @@ func (s *NodeService) Save(tx *gorm.DB, act string, data json.RawMessage) error 
 		nodeStatusMu.Unlock()
 	default:
 		return common.NewErrorf("unknown action: %s", act)
+	}
+	return nil
+}
+
+// renameNodeLinkPrefix rewrites the "[old] " prefix on aggregated node links to
+// "[new] " across every client, so renaming a node doesn't orphan the external
+// links refreshNodeLinks emits under the node name. Runs in the node-save tx.
+func renameNodeLinkPrefix(tx *gorm.DB, oldName, newName string) error {
+	oldPrefix := "[" + oldName + "] "
+	newPrefix := "[" + newName + "] "
+	var clients []model.Client
+	if err := tx.Model(model.Client{}).Find(&clients).Error; err != nil {
+		return err
+	}
+	for i := range clients {
+		c := &clients[i]
+		var links []map[string]string
+		if err := json.Unmarshal(c.Links, &links); err != nil {
+			continue
+		}
+		changed := false
+		for _, l := range links {
+			if strings.HasPrefix(l["remark"], oldPrefix) {
+				l["remark"] = newPrefix + strings.TrimPrefix(l["remark"], oldPrefix)
+				changed = true
+			}
+		}
+		if !changed {
+			continue
+		}
+		newLinks, err := json.MarshalIndent(links, "", "  ")
+		if err != nil {
+			continue
+		}
+		if err := tx.Model(model.Client{}).Where("id = ?", c.Id).Update("links", newLinks).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }
