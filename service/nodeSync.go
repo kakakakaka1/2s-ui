@@ -43,6 +43,11 @@ var (
 	reconcileMu   sync.Mutex
 	reconcileBusy = map[uint]bool{}
 	reconcileLast = map[uint]time.Time{}
+	// dirtyGen increments on every dirty-mark, BEFORE the DB write. A finished
+	// reconcile clears the dirty flag only if the generation it claimed is
+	// still current, so an edit landing mid-run keeps its flag and the next
+	// heartbeat reruns the (by then cheap) diff instead of losing the edit.
+	dirtyGen uint64
 )
 
 // refreshLinksMu serializes the read-modify-write of client.Links across nodes.
@@ -267,6 +272,12 @@ func (s *NodeSyncService) AdoptInbounds(nodeId uint, tags []string, actor string
 		}).Error; err != nil {
 			return err
 		}
+		// Mark for sync inside the tx: if the caller's immediate push is
+		// skipped (busy) or fails, the heartbeat converges the node anyway.
+		bumpDirtyGen()
+		if err := tx.Model(model.Node{}).Where("id = ?", nodeId).Update("dirty", true).Error; err != nil {
+			return err
+		}
 		LastUpdate = time.Now().Unix()
 		return nil
 	})
@@ -318,20 +329,43 @@ type nodeClientState struct {
 }
 
 // Reconcile makes a node's @cluster clients match the master's expectation:
-// clients that reference any of this node's replica inbounds. It is the ONLY
-// path that writes clients to a node.
+// clients that reference any of this node's replica inbounds. Together with
+// ReconcileNow it is the ONLY path that writes clients to a node.
+//
+// This is the background entry: single-flight per node plus a 30s backoff so
+// heartbeat/fanout triggers don't stampede. A skip returns nil — the dirty
+// flag stays set and the next heartbeat retries.
 func (s *NodeSyncService) Reconcile(nodeId uint) error {
-	if !s.claimReconcile(nodeId) {
+	gen, ok := s.claimReconcile(nodeId, false)
+	if !ok {
 		return nil
 	}
 	defer s.releaseReconcile(nodeId)
+	return s.runReconcile(nodeId, gen)
+}
 
+// ReconcileNow is the interactive entry (manual sync button, post-adoption
+// push): it skips the backoff — the user asked, so sync — and reports a busy
+// overlap as an error instead of silently doing nothing, so the UI never
+// toasts success for a no-op.
+func (s *NodeSyncService) ReconcileNow(nodeId uint) error {
+	gen, ok := s.claimReconcile(nodeId, true)
+	if !ok {
+		return common.NewError("a sync for this node is already running — try again shortly")
+	}
+	defer s.releaseReconcile(nodeId)
+	return s.runReconcile(nodeId, gen)
+}
+
+func (s *NodeSyncService) runReconcile(nodeId uint, startGen uint64) error {
 	node, err := s.getNodeById(nodeId)
 	if err != nil {
 		return err
 	}
+	// Background callers pre-filter on enable=true in SQL; only the manual
+	// button / post-adoption push can land here disabled — tell them.
 	if !node.Enable {
-		return nil
+		return common.NewError("node is disabled — enable it before syncing")
 	}
 	client := nodePushClient(node)
 
@@ -382,8 +416,25 @@ func (s *NodeSyncService) Reconcile(nodeId uint) error {
 	s.refreshNodeLinks(node)
 
 	now := time.Now().Unix()
-	return database.GetDB().Model(model.Node{}).Where("id = ?", nodeId).
-		Updates(map[string]interface{}{"dirty": false, "last_sync": now}).Error
+	db := database.GetDB()
+	// An edit that landed while this run was reading state bumped the
+	// generation: leave dirty set (the heartbeat reruns the diff) instead of
+	// wiping a mark whose change we never pushed.
+	if !s.dirtyUnchangedSince(startGen) {
+		return db.Model(model.Node{}).Where("id = ?", nodeId).Update("last_sync", now).Error
+	}
+	res := db.Model(model.Node{}).Where("id = ? AND dirty = ?", nodeId, true).
+		Updates(map[string]interface{}{"dirty": false, "last_sync": now})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected > 0 {
+		// The nodes list hides behind the lu gate; without this bump a cleared
+		// badge lingers in every open UI until some unrelated change.
+		LastUpdate = now
+		return nil
+	}
+	return db.Model(model.Node{}).Where("id = ?", nodeId).Update("last_sync", now).Error
 }
 
 // expectedClients builds the desired @cluster client set for a node: every
@@ -694,12 +745,14 @@ func (s *NodeSyncService) refreshNodeLinks(node *model.Node) {
 // ---------- dirty tracking / triggers ----------
 
 func (s *NodeSyncService) MarkAllDirty() {
+	bumpDirtyGen()
 	if err := database.GetDB().Model(model.Node{}).Where("enable = ?", true).Update("dirty", true).Error; err != nil {
 		logger.Warning("nodes: mark all dirty: ", err)
 	}
 }
 
 func (s *NodeSyncService) MarkDirty(nodeId uint) {
+	bumpDirtyGen()
 	database.GetDB().Model(model.Node{}).Where("id = ?", nodeId).Update("dirty", true)
 }
 
@@ -852,17 +905,37 @@ func (s *NodeSyncService) getNodeById(id uint) (*model.Node, error) {
 	return &node, nil
 }
 
-func (s *NodeSyncService) claimReconcile(nodeId uint) bool {
+// claimReconcile takes the per-node single-flight slot and snapshots the dirty
+// generation the run reconciles against. force (interactive callers) skips the
+// backoff but never the busy check.
+func (s *NodeSyncService) claimReconcile(nodeId uint, force bool) (uint64, bool) {
 	reconcileMu.Lock()
 	defer reconcileMu.Unlock()
 	if reconcileBusy[nodeId] {
-		return false
+		return 0, false
 	}
-	if last, ok := reconcileLast[nodeId]; ok && time.Since(last) < reconcileBackoff {
-		return false
+	if !force {
+		if last, ok := reconcileLast[nodeId]; ok && time.Since(last) < reconcileBackoff {
+			return 0, false
+		}
 	}
 	reconcileBusy[nodeId] = true
-	return true
+	return dirtyGen, true
+}
+
+// bumpDirtyGen must run BEFORE the corresponding dirty=true DB write: a
+// reconcile that claimed earlier then sees a newer generation and refuses to
+// clear a flag whose change it never read.
+func bumpDirtyGen() {
+	reconcileMu.Lock()
+	dirtyGen++
+	reconcileMu.Unlock()
+}
+
+func (s *NodeSyncService) dirtyUnchangedSince(gen uint64) bool {
+	reconcileMu.Lock()
+	defer reconcileMu.Unlock()
+	return dirtyGen == gen
 }
 
 func (s *NodeSyncService) releaseReconcile(nodeId uint) {

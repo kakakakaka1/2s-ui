@@ -536,8 +536,10 @@ func (a *ApiService) AdoptInbounds(c *gin.Context, loginUser string) {
 		return
 	}
 	// Push the master's clients onto the freshly adopted inbounds right away.
+	// ReconcileNow skips the backoff; if it still loses to an in-flight run,
+	// the dirty flag set by AdoptInbounds lets the heartbeat converge instead.
 	go func() {
-		if err := a.NodeSyncService.Reconcile(uint(id)); err != nil {
+		if err := a.NodeSyncService.ReconcileNow(uint(id)); err != nil {
 			logger.Warning("adopt: initial reconcile failed: ", err)
 		}
 	}()
@@ -550,6 +552,6 @@ func (a *ApiService) ReconcileNode(c *gin.Context) {
 		jsonMsg(c, "reconcileNode", common.NewError("invalid node id"))
 		return
 	}
-	err = a.NodeSyncService.Reconcile(uint(id))
+	err = a.NodeSyncService.ReconcileNow(uint(id))
 	jsonMsg(c, "reconcileNode", err)
 }

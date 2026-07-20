@@ -333,6 +333,8 @@ func (s *NodeService) GetAll() ([]map[string]interface{}, error) {
 			"desc":     n.Desc,
 			"lastSeen": n.LastSeen,
 			"tokenSet": n.Token != "",
+			"dirty":    n.Dirty,
+			"lastSync": n.LastSync,
 		})
 	}
 	return out, nil
@@ -422,6 +424,18 @@ func (s *NodeService) Save(tx *gorm.DB, act string, data json.RawMessage) error 
 		err = json.Unmarshal(data, &id)
 		if err != nil {
 			return err
+		}
+		// Refuse while replicas exist: deleting the node would strand them as
+		// uneditable orphan rows and leave their "[name] " links in every
+		// client forever (refreshNodeLinks never runs for a vanished node).
+		// Same loud-failure stance as the adoption tag-collision check.
+		var replicas int64
+		err = tx.Model(model.Inbound{}).Where("node_id = ?", id).Count(&replicas).Error
+		if err != nil {
+			return err
+		}
+		if replicas > 0 {
+			return common.NewErrorf("node still has %d adopted inbound(s) — remove them on the Inbounds page first", replicas)
 		}
 		err = tx.Where("id = ?", id).Delete(model.Node{}).Error
 		if err != nil {
