@@ -153,6 +153,28 @@ func ipv6Available() bool {
 	return true
 }
 
+// hasGlobalIPv4 判断主机是否拥有全局 IPv4 地址(含 NAT 后的私网地址,与 ip -4 addr
+// show scope global 语义一致,只排除回环与链路本地)。
+// 用途:acme.sh 的 standalone 服务器默认只绑 IPv4,而 --listen-v6 是【排他】的
+// (v6-only),双栈主机加上它反而会让 A 记录指向的 v4 验证失败——故仅在纯 IPv6 主机
+// 上才加该标志。探测失败按「有 v4」处理:宁可维持默认,也不要把好用的双栈主机弄挂。
+func hasGlobalIPv4() bool {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return true
+	}
+	for _, a := range addrs {
+		ipn, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		if ipn.IP.To4() != nil && !ipn.IP.IsLoopback() && !ipn.IP.IsLinkLocalUnicast() {
+			return true
+		}
+	}
+	return false
+}
+
 // validDomain 只放行主机名合法字符:域名会拼进文件路径与外部命令参数,严格校验兜底。
 func validDomain(d string) bool {
 	if len(d) == 0 || len(d) > 253 || d[0] == '-' || d[0] == '.' {
@@ -372,6 +394,11 @@ func (a *AcmeService) IssueWeb(domain, email, method string, force, behindProxy 
 	} else {
 		ensureSocat()
 		issueArgs = append(issueArgs, "--standalone", "--httpport", "80")
+		// 纯 IPv6 主机必须显式切到 v6 监听,否则 acme.sh 只绑 v4、LE 的请求根本进不来。
+		// 判据是「有没有全局 v4」而非「内核支不支持 v6」——该标志是排他的,见 hasGlobalIPv4。
+		if !hasGlobalIPv4() {
+			issueArgs = append(issueArgs, "--listen-v6")
+		}
 	}
 	// 域名已有未到期证书时 acme.sh 会跳过("Skipping. Next renewal time is ...")，
 	// --force 强制重新签发以续期。会消耗 Let's Encrypt 限速额度，故由前端「强制续期」显式触发。
