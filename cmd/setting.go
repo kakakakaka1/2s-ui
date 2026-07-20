@@ -167,6 +167,19 @@ func getPanelURI() {
 		return
 	}
 	settingService := service.SettingService{}
+	// 手工设置的对外地址优先,不再推断:反代终结 TLS 时面板自身的协议/端口跟对外
+	// 地址无关,推断必然是错的。与前端 restartApp 的取值顺序一致。
+	if uri, _ := settingService.GetWebURI(); uri != "" {
+		fmt.Println(uri)
+		return
+	}
+	// 反代模式下没设对外地址,下面推断出来的是面板自身的内网地址,不是用户该访问的
+	if nginx, _ := settingService.GetWebNginx(); nginx {
+		fmt.Println("Note: TLS is terminated by a reverse proxy, so the address below is")
+		fmt.Println("      the panel's own, not the public one. Set \"Panel URI\" in the")
+		fmt.Println("      panel settings to have this command report the public address.")
+		fmt.Println()
+	}
 	Port, _ := settingService.GetPort()
 	BasePath, _ := settingService.GetWebPath()
 	Listen, _ := settingService.GetListen()

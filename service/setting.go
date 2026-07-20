@@ -229,6 +229,12 @@ func (s *SettingService) GetWebAcmeEmail() (string, error) {
 	return s.getString("webAcmeEmail")
 }
 
+// GetWebURI 返回面板对外地址的手工覆盖值(空表示未设置,由调用方自行推断)。
+// 反代场景下面板推断不出对外地址,只能靠它,参见 sui uri 与前端 restartApp。
+func (s *SettingService) GetWebURI() (string, error) {
+	return s.getString("webURI")
+}
+
 func (s *SettingService) GetWebPath() (string, error) {
 	webPath, err := s.getString("webPath")
 	if err != nil {
