@@ -413,9 +413,14 @@ func (s *SettingService) GetFinalSubURI(host string) (string, error) {
 	if (*allSetting)["subDomain"] != "" {
 		host = (*allSetting)["subDomain"]
 	}
-	port := ":" + (*allSetting)["subPort"]
-	if (port == "80" && protocol == "http") || (port == "443" && protocol == "https") {
+	// 协议默认端口不写进 URL。注意必须【先比较后拼冒号】:早先写成 ":"+port 再跟
+	// "80"/"443" 比,永远不相等,省略逻辑是死代码,链接一直带着 :80 / :443。
+	// 判定顺序与前端 buildURL 保持一致。
+	port := (*allSetting)["subPort"]
+	if port == "" || (protocol == "http" && port == "80") || (protocol == "https" && port == "443") {
 		port = ""
+	} else {
+		port = ":" + port
 	}
 	return protocol + "://" + host + port + (*allSetting)["subPath"], nil
 }
