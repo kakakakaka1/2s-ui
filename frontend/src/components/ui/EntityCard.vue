@@ -10,7 +10,8 @@
       ><Ico :name="icon" :size="18" /></div>
       <div style="flex: 1; min-width: 0;">
         <div style="font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ title }}</div>
-        <div :style="{ fontSize: '11.5px', color, fontWeight: 600 }">{{ type }}</div>
+        <!-- dir=auto:type 可能是 LTR 内容(如节点 URL),RTL 语言下按首强字符定向,免得冒号/端口被双向算法重排 -->
+        <div dir="auto" :style="{ fontSize: '11.5px', color, fontWeight: 600 }">{{ type }}</div>
       </div>
       <slot name="chip" />
     </div>

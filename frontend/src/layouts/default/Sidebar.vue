@@ -80,6 +80,7 @@ const nav: (NavItem | NavSep)[] = [
   { title: 'ui.nav.rules', icon: 'rules', path: '/rules' },
   { title: 'ui.nav.dns', icon: 'dns', path: '/dns' },
   { sep: 'ui.sec.administration' },
+  { title: 'ui.nav.nodes', icon: 'server', path: '/nodes', count: () => data.nodes.length },
   { title: 'ui.nav.admins', icon: 'admins', path: '/admins' },
   { title: 'ui.nav.settings', icon: 'settings', path: '/settings' },
 ]

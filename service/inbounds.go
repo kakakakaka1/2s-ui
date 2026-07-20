@@ -60,6 +60,9 @@ func (s *InboundService) GetAll() (*[]map[string]interface{}, error) {
 			"tag":    inbound.Tag,
 			"tls_id": inbound.TlsId,
 		}
+		if inbound.NodeId != nil {
+			inbData["node_id"] = *inbound.NodeId
+		}
 		if inbound.Options != nil {
 			var restFields map[string]json.RawMessage
 			if err := json.Unmarshal(inbound.Options, &restFields); err != nil {
@@ -110,6 +113,13 @@ func (s *InboundService) Save(tx *gorm.DB, act string, data json.RawMessage, ini
 		if err != nil {
 			return err
 		}
+		// Node replicas are read-only on this panel (edit them on their node;
+		// reconciliation refreshes the copy). Rejecting here also prevents an
+		// edit without node_id from silently flipping a replica into a local
+		// inbound, which would feed a foreign port to the local core.
+		if inbound.NodeId != nil {
+			return common.NewError("inbound belongs to a node: manage it on the node panel")
+		}
 		if inbound.TlsId > 0 {
 			err = tx.Model(model.Tls{}).Where("id = ?", inbound.TlsId).Find(&inbound.Tls).Error
 			if err != nil {
@@ -118,13 +128,21 @@ func (s *InboundService) Save(tx *gorm.DB, act string, data json.RawMessage, ini
 		}
 		var oldTag string
 		if act == "edit" {
-			err = tx.Model(model.Inbound{}).Select("tag").Where("id = ?", inbound.Id).Find(&oldTag).Error
+			var old model.Inbound
+			err = tx.Model(model.Inbound{}).Select("tag", "node_id").Where("id = ?", inbound.Id).Find(&old).Error
 			if err != nil {
 				return err
 			}
+			if old.NodeId != nil {
+				return common.NewError("inbound belongs to a node: manage it on the node panel")
+			}
+			oldTag = old.Tag
 		}
 
-		if corePtr.IsRunning() {
+		// Node replicas only ever touch the DB: never the local core (their
+		// ports live on the node) and never FillOutJson (their OutJson is the
+		// node-side link snapshot, host = the node).
+		if inbound.NodeId == nil && corePtr.IsRunning() {
 			if act == "edit" {
 				err = corePtr.RemoveInbound(oldTag)
 				if err != nil && err != os.ErrInvalid {
@@ -152,9 +170,11 @@ func (s *InboundService) Save(tx *gorm.DB, act string, data json.RawMessage, ini
 			}
 		}
 
-		err = util.FillOutJson(&inbound, hostname)
-		if err != nil {
-			return err
+		if inbound.NodeId == nil {
+			err = util.FillOutJson(&inbound, hostname)
+			if err != nil {
+				return err
+			}
 		}
 
 		err = tx.Save(&inbound).Error
@@ -176,17 +196,20 @@ func (s *InboundService) Save(tx *gorm.DB, act string, data json.RawMessage, ini
 		if err != nil {
 			return err
 		}
-		if corePtr.IsRunning() {
+		var old model.Inbound
+		err = tx.Model(model.Inbound{}).Select("id", "node_id").Where("tag = ?", tag).Scan(&old).Error
+		if err != nil {
+			return err
+		}
+		// Deleting a replica (de-adopt) is DB-only; the inbound keeps running
+		// on its node and reconciliation strips the pushed users afterwards.
+		if old.NodeId == nil && corePtr.IsRunning() {
 			err = corePtr.RemoveInbound(tag)
 			if err != nil && err != os.ErrInvalid {
 				return err
 			}
 		}
-		var id uint
-		err = tx.Model(model.Inbound{}).Select("id").Where("tag = ?", tag).Scan(&id).Error
-		if err != nil {
-			return err
-		}
+		id := old.Id
 		err = s.ClientService.UpdateClientsOnInboundDelete(tx, id, tag)
 		if err != nil {
 			return err
@@ -203,7 +226,9 @@ func (s *InboundService) Save(tx *gorm.DB, act string, data json.RawMessage, ini
 
 func (s *InboundService) UpdateOutJsons(tx *gorm.DB, inboundIds []uint, hostname string) error {
 	var inbounds []model.Inbound
-	err := tx.Model(model.Inbound{}).Preload("Tls").Where("id in ?", inboundIds).Find(&inbounds).Error
+	// A replica's OutJson is the node-side link snapshot (host = the node);
+	// rewriting it with this panel's hostname would point subscriptions here.
+	err := tx.Model(model.Inbound{}).Preload("Tls").Where("id in ?", inboundIds).Where("node_id IS NULL").Find(&inbounds).Error
 	if err != nil {
 		return err
 	}
@@ -224,7 +249,10 @@ func (s *InboundService) UpdateOutJsons(tx *gorm.DB, inboundIds []uint, hostname
 func (s *InboundService) GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	var inboundsJson []json.RawMessage
 	var inbounds []*model.Inbound
-	err := db.Model(model.Inbound{}).Preload("Tls").Find(&inbounds).Error
+	// node_id IS NULL: replicas of remote inbounds must never reach the local
+	// core — their ports live on other machines and binding them here would
+	// wedge the core in its 15s restart loop.
+	err := db.Model(model.Inbound{}).Preload("Tls").Where("node_id IS NULL").Find(&inbounds).Error
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +372,9 @@ func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {
 		return nil
 	}
 	var inbounds []*model.Inbound
-	err := tx.Model(model.Inbound{}).Preload("Tls").Where("id in ?", ids).Find(&inbounds).Error
+	// Client edits pass in the union of their inbound ids, which may include
+	// node replicas — those must not be hot-plugged into the local core.
+	err := tx.Model(model.Inbound{}).Preload("Tls").Where("id in ?", ids).Where("node_id IS NULL").Find(&inbounds).Error
 	if err != nil {
 		return err
 	}

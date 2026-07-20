@@ -109,6 +109,25 @@
       </DPanel>
     </div>
 
+    <!-- managed nodes (hidden entirely until at least one node exists) -->
+    <DPanel v-if="tiles.nodes && data.nodes.length" :title="$t('ui.nodesTile')" :sub="$t('ui.nodesTileSub')" :pad="0">
+      <template #right>
+        <Btn variant="subtle" sm @click="$router.push('/nodes')">{{ $t('ui.viewAll') }} <Ico name="chevron" :size="14" /></Btn>
+      </template>
+      <div>
+        <div
+          v-for="(n, i) in data.nodes"
+          :key="n.id"
+          :style="{ display: 'flex', alignItems: 'center', gap: '11px', padding: '11px 20px', borderTop: i ? '1px solid var(--line)' : 'none' }"
+        >
+          <span :style="{ width: '8px', height: '8px', borderRadius: '50%', background: nodeDotColor(n), flex: 'none', boxShadow: `0 0 0 4px color-mix(in srgb, ${nodeDotColor(n)} 18%, transparent)` }" />
+          <span style="font-weight: 700; font-size: 13px;">{{ n.name }}</span>
+          <span dir="ltr" style="font-size: 11.5px; color: var(--text-3); min-width: 0; overflow: hidden; text-overflow: ellipsis;">{{ String(n.baseUrl).replace(/^https?:\/\//, '') }}</span>
+          <span class="mono" dir="ltr" style="margin-inline-start: auto; font-size: 11.5px;" :style="{ color: nodeRightColor(n) }">{{ nodeRightLabel(n) }}</span>
+        </div>
+      </div>
+    </DPanel>
+
     <!-- activity -->
     <DPanel v-if="tiles.activity" :title="$t('ui.activity')" :sub="$t('ui.activitySub')" :pad="0">
       <template #right>
@@ -177,6 +196,31 @@ const allHidden = computed(() => Object.values(tiles).every((v) => !v))
 // ECharts 不会自动跟随父级 grid 重排。布局变化后等 DOM 更新完，广播一次重排让所有图表按新列宽重测，
 // 否则放大/缩小后 SVG 不跟随会溢出卡片边框（issue #15）。
 watch([topCount, mainCount], () => { nextTick(requestChartRelayout) })
+
+/* ---------- nodes tile ---------- */
+const nodeStateOf = (n: any): string => {
+  if (!n.enable) return 'disabled'
+  return data.nodesStatus[n.id]?.state ?? 'pending'
+}
+const nodeDotColor = (n: any): string => {
+  switch (nodeStateOf(n)) {
+    case 'online': return 'var(--emerald)'
+    case 'core-stopped': return 'var(--amber)'
+    case 'offline': return 'var(--rose)'
+    default: return 'var(--text-3)'
+  }
+}
+const nodeRightLabel = (n: any): string => {
+  switch (nodeStateOf(n)) {
+    case 'online': return (data.nodesStatus[n.id]?.latency ?? 0) + ' ' + t('date.ms')
+    case 'core-stopped': return t('node.status.coreStopped')
+    case 'offline': return t('node.status.offline')
+    case 'disabled': return t('disable')
+    default: return t('node.status.pending')
+  }
+}
+const nodeRightColor = (n: any): string =>
+  nodeStateOf(n) === 'online' ? 'var(--text-2)' : nodeDotColor(n)
 
 /* ---------- modals ---------- */
 const logsOpen = ref(false)

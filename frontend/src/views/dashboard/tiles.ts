@@ -7,6 +7,7 @@ export const TILES = [
   { id: 'traffic', k: 'traffic' },
   { id: 'protocol', k: 'protocolMix' },
   { id: 'network', k: 'networkThroughput' },
+  { id: 'nodes', k: 'nodesTile' },
   { id: 'activity', k: 'activity' },
 ]
 

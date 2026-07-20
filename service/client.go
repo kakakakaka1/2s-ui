@@ -210,10 +210,13 @@ func (s *ClientService) updateLinksWithFixedInbounds(tx *gorm.DB, clients []*mod
 		allIds = common.UnionUintArray(allIds, ids)
 	}
 
-	// Zero inbounds means removing local links only
+	// Zero inbounds means removing local links only.
+	// node_id IS NULL: local links for node replicas would carry THIS panel's
+	// hostname — their real links come back from the node via reconciliation
+	// as type "external" (which the non-local pass below preserves).
 	var inbounds []model.Inbound
 	if len(allIds) > 0 {
-		err := tx.Model(model.Inbound{}).Preload("Tls").Where("id in ? and type in ?", allIds, util.InboundTypeWithLink).Find(&inbounds).Error
+		err := tx.Model(model.Inbound{}).Preload("Tls").Where("id in ? and type in ? and node_id IS NULL", allIds, util.InboundTypeWithLink).Find(&inbounds).Error
 		if err != nil {
 			return err
 		}
@@ -404,7 +407,11 @@ func (s *ClientService) UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]mode
 	return nil
 }
 
-func (s *ClientService) DepleteClients() ([]uint, error) {
+// DepleteClients disables clients over quota or past expiry and returns both
+// the affected local inbound ids (to hot-restart) and the disabled client names
+// (so the caller can fan the disable out to nodes). With cluster totals folded
+// into up/down, the quota check is already a whole-cluster judgement.
+func (s *ClientService) DepleteClients() ([]uint, []string, error) {
 	var err error
 	var clients []model.Client
 	var changes []model.Changes
@@ -429,13 +436,13 @@ func (s *ClientService) DepleteClients() ([]uint, error) {
 	// Reset clients
 	inboundIds, err = s.ResetClients(tx, dt)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Deplete clients
 	err = tx.Model(model.Client{}).Where("enable = true AND ((volume >0 AND up+down > volume) OR (expiry > 0 AND expiry < ?))", dt).Scan(&clients).Error
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, client := range clients {
@@ -458,16 +465,16 @@ func (s *ClientService) DepleteClients() ([]uint, error) {
 	if len(changes) > 0 {
 		err = tx.Model(model.Client{}).Where("enable = true AND ((volume >0 AND up+down > volume) OR (expiry > 0 AND expiry < ?))", dt).Update("enable", false).Error
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		err = tx.Model(model.Changes{}).Create(&changes).Error
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		LastUpdate = dt
 	}
 
-	return inboundIds, nil
+	return inboundIds, users, nil
 }
 
 func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {

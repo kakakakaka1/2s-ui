@@ -32,6 +32,7 @@ type ConfigService struct {
 	OutboundService
 	ServicesService
 	EndpointService
+	NodeService
 }
 
 type SingBoxConfig struct {
@@ -250,6 +251,13 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 		go func() { _ = s.restartCoreWithConfig(configData) }()
 	case "settings":
 		err = s.SettingService.Save(tx, data)
+	case "nodes":
+		// Nodes are a panel-local concept: no corePtr involvement, so saving
+		// one never disturbs the running sing-box.
+		err = s.NodeService.Save(tx, act, data)
+		if err == nil {
+			data = redactNodeToken(data)
+		}
 	default:
 		return nil, common.NewError("unknown object: ", obj)
 	}

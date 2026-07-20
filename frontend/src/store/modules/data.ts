@@ -4,6 +4,7 @@ import { push } from 'notivue'
 import { i18n } from '@/locales'
 import { Inbound } from '@/types/inbounds'
 import { Client } from '@/types/clients'
+import { NodeStatus } from '@/types/node'
 
 const Data = defineStore('Data', {
   state: () => ({ 
@@ -19,12 +20,17 @@ const Data = defineStore('Data', {
     endpoints: <any[]>[],
     clients: <any>[],
     tlsConfigs: <any[]>[],
+    nodes: <any[]>[],
+    nodesStatus: <Record<number, NodeStatus>>{},
   }),
   actions: {
     async loadData() {
       const msg = await HttpUtils.get('api/load', this.lastLoad >0 ? {lu: this.lastLoad} : {} )
       if(msg.success) {
         this.onlines = msg.obj.onlines
+        // Live node status rides outside the lu gate (like onlines); the
+        // backend omits the key entirely when there are no nodes.
+        this.nodesStatus = msg.obj.nodesStatus ?? {}
         if (msg.obj.lastLog) {
           push.error({
             title: i18n.global.t('error.core'),
@@ -49,6 +55,7 @@ const Data = defineStore('Data', {
       if (Object.hasOwn(data, 'services')) this.services = data.services ?? []
       if (Object.hasOwn(data, 'endpoints')) this.endpoints = data.endpoints ?? []
       if (Object.hasOwn(data, 'tls')) this.tlsConfigs = data.tls ?? []
+      if (Object.hasOwn(data, 'nodes')) this.nodes = data.nodes ?? []
     },
     async loadInbounds(ids: number[]): Promise<Inbound[]> {
       const options = ids.length > 0 ? {id: ids.join(",")} : {}

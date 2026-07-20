@@ -76,3 +76,30 @@ type Tokens struct {
 	UserId uint   `json:"userId" form:"userId"`
 	User   *User  `json:"user" gorm:"foreignKey:UserId;references:Id"`
 }
+
+// Node is another 2s-ui panel managed by this one over its apiv2 (Token
+// header). Only connection config and the last observed transition live in
+// the DB — live status is kept in an in-memory snapshot (service/node.go).
+type Node struct {
+	Id       uint   `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
+	Enable   bool   `json:"enable" form:"enable" gorm:"default:true;not null"`
+	Name     string `json:"name" form:"name" gorm:"unique"`
+	BaseUrl  string `json:"baseUrl" form:"baseUrl"` // scheme://host[:port], no path
+	WebPath  string `json:"webPath" form:"webPath"` // remote panel web path, default "/app/"
+	Token    string `json:"token,omitempty" form:"token"`
+	Insecure bool   `json:"insecure" form:"insecure" gorm:"default:false;not null"`
+	CertPin  string `json:"certPin" form:"certPin"` // leaf cert SHA-256, overrides Insecure
+	Desc     string `json:"desc" form:"desc"`
+	// Unix seconds of the last time the node was seen online; written only on
+	// online -> offline/core-stopped transitions, not every heartbeat.
+	LastSeen int64 `json:"lastSeen" form:"lastSeen" gorm:"default:0;not null"`
+
+	// Dirty marks pending master-side edits that have not converged onto the
+	// node yet; the heartbeat retriggers Reconcile while it is set.
+	Dirty    bool  `json:"dirty" gorm:"default:false;not null"`
+	LastSync int64 `json:"lastSync" gorm:"default:0;not null"`
+	// Baselines holds the per-client traffic counters seen on the node at the
+	// last collection: map[clientName]{up,down}. Single writer (traffic job),
+	// one row UPDATE per node per cycle.
+	Baselines json.RawMessage `json:"-"`
+}
