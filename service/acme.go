@@ -77,13 +77,30 @@ func withHome(home string) []string {
 	return out
 }
 
+// resolveBin 定位外部命令:先按进程自身 PATH 找(exec 定位二进制用的是进程 PATH,
+// withHome 注入的兜底 PATH 只对子进程内部生效,如 acme.sh 再调 socat),找不到再扫
+// fallbackPath,保证极简 PATH 的服务环境下也能找到 nginx/systemctl/apt 等。
+func resolveBin(name string) (string, bool) {
+	if p, err := exec.LookPath(name); err == nil {
+		return p, true
+	}
+	for _, dir := range strings.Split(fallbackPath, ":") {
+		p := filepath.Join(dir, name)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() && st.Mode()&0111 != 0 {
+			return p, true
+		}
+	}
+	return name, false // 原样返回,让 exec 报标准的 not found 错误
+}
+
 // runCmd 执行外部命令(HOME 固定为 home),合并 stdout/stderr,超时或非零退出码
 // 都包成 error,并把输出原文附在错误里回传前端,便于排查(80 端口被占、域名未解析等)。
 func runCmd(timeout time.Duration, home, name string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, name, args...)
+	bin, _ := resolveBin(name)
+	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Env = withHome(home)
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
@@ -147,7 +164,7 @@ func (a *AcmeService) DetectNginx() NginxStatus {
 		return status
 	}
 	status.Port80Busy = !port80Free()
-	if _, err := exec.LookPath("nginx"); err == nil {
+	if _, ok := resolveBin("nginx"); ok {
 		status.Installed = true
 	}
 	// systemctl is-active 在运行时退出码为 0、输出 "active"
@@ -266,7 +283,7 @@ func ensureAcmeSh() (bin, home string, err error) {
 
 // ensureSocat 仅 standalone 申请需要,best-effort 安装,失败不致命(由后续申请报真实错)。
 func ensureSocat() {
-	if _, err := exec.LookPath("socat"); err == nil {
+	if _, ok := resolveBin("socat"); ok {
 		return
 	}
 	logger.Info("socat 未安装,尝试自动安装(standalone 申请需要)...")
@@ -277,7 +294,7 @@ func ensureSocat() {
 		{"pacman", "-Sy", "--noconfirm", "socat"},
 	}
 	for _, m := range managers {
-		if _, err := exec.LookPath(m[0]); err == nil {
+		if _, ok := resolveBin(m[0]); ok {
 			if _, err := runCmd(acmeInstallTO, "/root", m[0], m[1:]...); err == nil {
 				return
 			}
