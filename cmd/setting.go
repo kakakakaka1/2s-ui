@@ -160,55 +160,44 @@ func getPublicIP() string {
 	return ""
 }
 
-func getPanelURI() {
-	err := database.InitDB(config.GetDBPath())
-	if err != nil {
-		fmt.Println(err)
+// 公网 IP 查询要走外网(每个 API 3s 超时),面板与订阅都可能用到,只查一次。
+var (
+	publicIPOnce   sync.Once
+	publicIPCached string
+)
+
+func cachedPublicIP() string {
+	publicIPOnce.Do(func() { publicIPCached = getPublicIP() })
+	return publicIPCached
+}
+
+// printAddresses 按「显式 URI → 域名 → 监听 IP → 枚举本机网卡 + 公网 IP」的顺序
+// 打印一组可访问地址,缩进一级挂在调用方打印的标题下。
+// 面板与订阅的推断规则完全相同,区别只在取哪组设置,故共用此函数。
+func printAddresses(uri, domain, listen, path string, port int, tls bool) {
+	// 手工设置的对外地址优先,不再推断:反代终结 TLS 时,服务自身的协议/端口跟对外
+	// 地址无关,推断必然是错的。与前端 restartApp、GetFinalSubURI 的取值顺序一致。
+	if uri != "" {
+		fmt.Println("  " + uri)
 		return
 	}
-	settingService := service.SettingService{}
-	// 手工设置的对外地址优先,不再推断:反代终结 TLS 时面板自身的协议/端口跟对外
-	// 地址无关,推断必然是错的。与前端 restartApp 的取值顺序一致。
-	if uri, _ := settingService.GetWebURI(); uri != "" {
-		fmt.Println(uri)
+	proto := "http://"
+	if tls {
+		proto = "https://"
+	}
+	portText := fmt.Sprintf(":%d", port)
+	if (port == 443 && tls) || (port == 80 && !tls) {
+		portText = ""
+	}
+	if domain != "" {
+		fmt.Println("  " + proto + domain + portText + path)
 		return
 	}
-	// 反代模式下没设对外地址,下面推断出来的是面板自身的内网地址,不是用户该访问的
-	if nginx, _ := settingService.GetWebNginx(); nginx {
-		fmt.Println("Note: TLS is terminated by a reverse proxy, so the address below is")
-		fmt.Println("      the panel's own, not the public one. Set \"Panel URI\" in the")
-		fmt.Println("      panel settings to have this command report the public address.")
-		fmt.Println()
-	}
-	Port, _ := settingService.GetPort()
-	BasePath, _ := settingService.GetWebPath()
-	Listen, _ := settingService.GetListen()
-	Domain, _ := settingService.GetWebDomain()
-	KeyFile, _ := settingService.GetKeyFile()
-	CertFile, _ := settingService.GetCertFile()
-	TLS := false
-	if KeyFile != "" && CertFile != "" {
-		TLS = true
-	}
-	Proto := ""
-	if TLS {
-		Proto = "https://"
-	} else {
-		Proto = "http://"
-	}
-	PortText := fmt.Sprintf(":%d", Port)
-	if (Port == 443 && TLS) || (Port == 80 && !TLS) {
-		PortText = ""
-	}
-	if len(Domain) > 0 {
-		fmt.Println(Proto + Domain + PortText + BasePath)
+	if listen != "" {
+		fmt.Println("  " + proto + listen + portText + path)
 		return
 	}
-	if len(Listen) > 0 {
-		fmt.Println(Proto + Listen + PortText + BasePath)
-		return
-	}
-	fmt.Println("Local address:")
+	fmt.Println("  Local address:")
 	netInterfaces, _ := net.Interfaces()
 	for i := 0; i < len(netInterfaces); i++ {
 		if len(netInterfaces[i].Flags) > 2 && netInterfaces[i].Flags[0] == "up" && netInterfaces[i].Flags[1] != "loopback" {
@@ -216,15 +205,60 @@ func getPanelURI() {
 			for _, address := range addrs {
 				IP := strings.Split(address.Addr, "/")[0]
 				if strings.Contains(address.Addr, ".") {
-					fmt.Println(Proto + IP + PortText + BasePath)
+					fmt.Println("    " + proto + IP + portText + path)
 				} else if address.Addr[0:6] != "fe80::" {
-					fmt.Println(Proto + "[" + IP + "]" + PortText + BasePath)
+					fmt.Println("    " + proto + "[" + IP + "]" + portText + path)
 				}
 			}
 		}
 	}
-	pubIP := getPublicIP()
-	if pubIP != "" {
-		fmt.Printf("\nGlobal address:\n%s%s%s\n", Proto, pubIP, PortText+BasePath)
+	if pubIP := cachedPublicIP(); pubIP != "" {
+		fmt.Println("  Global address:")
+		fmt.Println("    " + proto + pubIP + portText + path)
 	}
+}
+
+func getPanelURI() {
+	err := database.InitDB(config.GetDBPath())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	settingService := service.SettingService{}
+
+	webURI, _ := settingService.GetWebURI()
+	webDomain, _ := settingService.GetWebDomain()
+	webListen, _ := settingService.GetListen()
+	webPath, _ := settingService.GetWebPath()
+	webPort, _ := settingService.GetPort()
+	webCert, _ := settingService.GetCertFile()
+	webKey, _ := settingService.GetKeyFile()
+	webCertMode, _ := settingService.GetWebCertMode()
+
+	fmt.Println("Panel:")
+	// 反代模式下没设对外地址,推断出来的是面板自身的内网地址,不是用户该访问的
+	if nginx, _ := settingService.GetWebNginx(); nginx && webURI == "" {
+		fmt.Println("  Note: TLS is terminated by a reverse proxy, so the address below is")
+		fmt.Println("        the panel's own, not the public one. Set \"Panel URI\" in the")
+		fmt.Println("        panel settings to have this command report the public address.")
+	}
+	// TLS 判定对齐 web.go 的实际行为(acme 模式,或证书/私钥任一非空即尝试 TLS),
+	// 而非要求两者都填——只填一个是坏配置,服务端会直接报错,不该在这里显示成 http。
+	printAddresses(webURI, webDomain, webListen, webPath, webPort,
+		webCertMode == "acme" || webCert != "" || webKey != "")
+
+	subURI, _ := settingService.GetSubURI()
+	subDomain, _ := settingService.GetSubDomain()
+	subListen, _ := settingService.GetSubListen()
+	subPath, _ := settingService.GetSubPath()
+	subPort, _ := settingService.GetSubPort()
+	subCert, _ := settingService.GetSubCertFile()
+	subKey, _ := settingService.GetSubKeyFile()
+	subCertMode, _ := settingService.GetSubCertMode()
+
+	fmt.Println()
+	fmt.Println("Subscription:")
+	// 同上,对齐 sub.go 的判定
+	printAddresses(subURI, subDomain, subListen, subPath, subPort,
+		subCertMode == "acme" || subCert != "" || subKey != "")
 }
