@@ -83,7 +83,7 @@
           <Ico name="refresh" :size="15" /> {{ $t('setting.forceRenew') }}
         </Btn>
       </div>
-      <ToggleRow v-model="webBehindProxy" :label="$t('setting.behindProxy')" :desc="$t('setting.behindProxyHint')" />
+      <ToggleRow v-model="webBehindProxy" :label="$t('setting.behindProxy')" :desc="behindProxyDesc" />
       <template v-if="settings.webNginx !== 'true'">
         <SRow :label="$t('setting.sslKey')">
           <input class="input mono" v-model="settings.webKeyFile" placeholder="/path/key.pem" />
@@ -448,10 +448,11 @@ const buildURL = (host: string, port: string, isTLS: boolean, path: string) => {
 
 const detectedNginx = ref({ installed: false, active: false, port80Busy: false })
 
-// 「自动」将走哪条路的实时提示:nginx 在跑→借用 nginx;80 空闲→standalone;否则预警
+// 「自动」将走哪条路的实时提示,判定顺序与后端 resolveMethod 严格一致:
+// 80 空闲→standalone(即使 nginx 在跑);被占且 nginx 在跑→借用 nginx;否则预警
 const acmeMethodHint = computed(() => {
-  if (detectedNginx.value.active) return i18n.global.t('setting.acmeHintNginx')
   if (!detectedNginx.value.port80Busy) return i18n.global.t('setting.acmeHintFree')
+  if (detectedNginx.value.active) return i18n.global.t('setting.acmeHintNginx')
   return i18n.global.t('setting.acmeHint80Busy')
 })
 
@@ -467,6 +468,15 @@ const detectNginx = async () => {
 const webBehindProxy = computed({
   get: () => { return settings.value.webNginx == "true" },
   set: (v: boolean) => { settings.value.webNginx = v ? "true" : "false" }
+})
+
+// 反代模式下面板跑明文 HTTP,监听地址若不是回环(webListen 为空即 0.0.0.0),
+// 明文端口会直接暴露公网、绕过代理的 TLS——仅在这种真有风险时才追加警告,避免常驻噪音
+const loopbackListens = ['127.0.0.1', 'localhost', '::1', '[::1]']
+const behindProxyDesc = computed(() => {
+  const base = i18n.global.t('setting.behindProxyHint')
+  if (!webBehindProxy.value || loopbackListens.includes(settings.value.webListen.trim())) return base
+  return base + ' ' + i18n.global.t('setting.behindProxyListenWarn')
 })
 
 // 强制续期前先确认:--force 会立即重签,反复点会撞 Let's Encrypt「重复证书」限速(约 5 张/周)
@@ -498,11 +508,12 @@ const issueCert = async (scope: 'web' | 'sub' = 'web', force = false) => {
   }
   const via = i18n.global.t('setting.issuedVia', { method: r.obj.method })
   if (isWeb && settings.value.webNginx === 'true') {
-    // 反代模式:证书供反向代理使用,面板不回填、保持 HTTP
+    // 反代模式:证书供反向代理使用,面板不回填、保持 HTTP。
+    // 证书+私钥两个路径都报出来,写 nginx vhost 时 ssl_certificate / ssl_certificate_key 直接照抄
     push.success({
       title: i18n.global.t('success'),
       duration: 8000,
-      message: via + ' ' + i18n.global.t('setting.certForProxy', { path: r.obj.certFile }),
+      message: via + ' ' + i18n.global.t('setting.certForProxy', { cert: r.obj.certFile, key: r.obj.keyFile }),
     })
     loading.value = false
     return
@@ -535,13 +546,16 @@ const issueCert = async (scope: 'web' | 'sub' = 'web', force = false) => {
   loading.value = false
 }
 
-// 申请成功后的自动收尾:保存设置→重启面板→探活→跳转(web 切 https 地址,sub 留在原页)
+// 申请成功后的自动收尾:保存设置→重启面板→探活→跳转(web 切 https 地址,sub 留在原页)。
+// 注意:保存的是整页 settings,用户其它尚未保存的改动会随本次保存一并生效。
 const saveAndRestart = async (isWeb: boolean) => {
   const saveMsg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(settings.value) })
   if (!saveMsg.success) return
   oldSettings.value = { ...settings.value }
-  const restartMsg = await HttpUtils.post('api/restartApp', {})
-  if (!restartMsg.success) return
+  // 后端重启几乎即刻发生,restartApp 请求"失败"多半是响应没刷完连接就被掐——这恰是
+  // 重启已开始的信号,不能就此停下把用户留在死页;照样探活+跳转,真没重启则探活超时
+  // 后照样跳,由浏览器给出最终错误(与 waitReachable 的兜底哲学一致)。
+  await HttpUtils.post('api/restartApp', {})
   const target = isWeb
     ? buildURL(settings.value.webDomain, settings.value.webPort.toString(), true, settings.value.webPath)
     : window.location.href

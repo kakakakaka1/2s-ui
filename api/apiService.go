@@ -449,8 +449,11 @@ func (a *ApiService) IssueCert(c *gin.Context) {
 	email := c.Request.FormValue("email")
 	method := c.Request.FormValue("method")
 	force := c.Request.FormValue("force") == "true"
+	// webNginx=true 时反向代理(nginx)是证书消费方,续期后需要它 reload——由这里读
+	// 设置传入,AcmeService 自身不读库(见其结构体注释)。
+	behindProxy, _ := a.SettingService.GetWebNginx()
 	var acme service.AcmeService
-	res, err := acme.IssueWeb(domain, email, method, force)
+	res, err := acme.IssueWeb(domain, email, method, force, behindProxy)
 	if err != nil {
 		pureJsonMsg(c, false, err.Error())
 		return
