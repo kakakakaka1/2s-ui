@@ -200,6 +200,7 @@ export default {
     forceRenew: "强制续期",
     forceRenewConfirm: "强制续期会立即重新签发证书，并占用 Let's Encrypt 限速额度（同域名约 5 张/周）。确定继续？",
     webUri: "面板 URI",
+    webUriProxyHint: "反代模式下必填:面板推断不出对外地址,重启后的跳转依赖此项",
     sessionAge: "会话超时时限",
     trafficAge: "流量过期时限",
     timeLoc: "时区",

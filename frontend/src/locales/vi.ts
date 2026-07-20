@@ -200,6 +200,7 @@ export default {
     forceRenew: "Gia hạn bắt buộc",
     forceRenewConfirm: "Gia hạn bắt buộc sẽ cấp lại chứng chỉ ngay và tính vào giới hạn của Let's Encrypt (khoảng 5 chứng chỉ trùng mỗi tuần). Tiếp tục?",
     webUri: "URI bảng điều khiển",
+    webUriProxyHint: "Bắt buộc khi chạy sau proxy: bảng điều khiển không tự suy ra được địa chỉ công khai, và việc chuyển hướng sau khi khởi động lại phụ thuộc vào mục này",
     sessionAge: "Tuổi tối đa của phiên",
     trafficAge: "Tuổi lưu thông tối đa",
     timeLoc: "Vị trí múi giờ",

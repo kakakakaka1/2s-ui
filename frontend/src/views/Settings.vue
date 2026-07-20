@@ -92,7 +92,7 @@
           <input class="input mono" v-model="settings.webCertFile" placeholder="/path/cert.pem" />
         </SRow>
       </template>
-      <SRow :label="$t('setting.webUri')">
+      <SRow :label="$t('setting.webUri')" :hint="webUriHint">
         <input class="input mono" v-model="settings.webURI" placeholder="https://panel.example.com/app/" />
       </SRow>
       <SRow :label="$t('setting.sessionAge')" :hint="$t('date.m')">
@@ -420,8 +420,11 @@ const restartApp = async () => {
   loading.value = true
   const msg = await HttpUtils.post('api/restartApp', {})
   if (msg.success) {
+    // webURI 是对外地址的手工覆盖:填了就用它(反代模式下面板推断不出对外地址,
+    // 只能靠它),没填才按面板自身的域名/端口/协议拼。条件曾写反,导致填了被覆盖、
+    // 没填则 replace("") 原地打转。
     let url = settings.value.webURI
-    if (url !== "") {
+    if (url === "") {
       const isTLS = settings.value.webCertMode === "acme" || settings.value.webCertFile !== "" || settings.value.webKeyFile !== ""
       url = buildURL(settings.value.webDomain, settings.value.webPort.toString(), isTLS, settings.value.webPath)
     }
@@ -477,6 +480,12 @@ const behindProxyDesc = computed(() => {
   const base = i18n.global.t('setting.behindProxyHint')
   if (!webBehindProxy.value || loopbackListens.includes(settings.value.webListen.trim())) return base
   return base + ' ' + i18n.global.t('setting.behindProxyListenWarn')
+})
+
+// 反代模式下面板只知道自己是 http://内网:端口,推断不出对外地址(代理的域名/端口/协议
+// 它都看不到),重启后的跳转只能靠 webURI。仅此时提示,非反代模式它是可选覆盖项。
+const webUriHint = computed(() => {
+  return webBehindProxy.value ? i18n.global.t('setting.webUriProxyHint') : ''
 })
 
 // 强制续期前先确认:--force 会立即重签,反复点会撞 Let's Encrypt「重复证书」限速(约 5 张/周)
