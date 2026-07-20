@@ -28,9 +28,9 @@ const onlineUsers = clients.filter((c) => c.enable).slice(0, 27).map((c) => c.na
 
 // 三台节点覆盖三种状态:在线 / 核心已停 / 离线
 const nodes = [
-  { id: 1, enable: true, name: 'jp-tokyo-1', baseUrl: 'https://203.0.113.10:2095', webPath: '/app/', insecure: false, certPin: '', desc: '', lastSeen: 0, tokenSet: true, dirty: true },
-  { id: 2, enable: true, name: 'us-la-1', baseUrl: 'https://203.0.113.20:2095', webPath: '/app/', insecure: true, certPin: '', desc: '', lastSeen: 0, tokenSet: true },
-  { id: 3, enable: true, name: 'de-fra-1', baseUrl: 'http://203.0.113.30:2095', webPath: '/app/', insecure: false, certPin: '', desc: '', lastSeen: Math.floor(Date.now() / 1000) - 540, tokenSet: true },
+  { id: 1, enable: true, name: 'jp-tokyo-1', baseUrl: 'https://203.0.113.10:2095', webPath: '/app/', insecure: false, certPin: '', desc: '', lastSeen: 0, tokenSet: true, dirty: true, lastSync: Math.floor(Date.now() / 1000) - 90 },
+  { id: 2, enable: true, name: 'us-la-1', baseUrl: 'https://203.0.113.20:2095', webPath: '/app/', insecure: true, certPin: '', desc: '', lastSeen: 0, tokenSet: true, lastSync: Math.floor(Date.now() / 1000) - 3600 },
+  { id: 3, enable: true, name: 'de-fra-1', baseUrl: 'http://203.0.113.30:2095', webPath: '/app/', insecure: false, certPin: '', desc: '', lastSeen: Math.floor(Date.now() / 1000) - 540, tokenSet: true, lastSync: 0 },
 ]
 
 function nodesStatusObj() {

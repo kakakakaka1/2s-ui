@@ -170,6 +170,7 @@ export default {
     error: "错误",
     latency: "延迟",
     lastSeen: "最后在线",
+    lastSync: "上次同步",
     panelVersion: "面板",
     coreVersion: "内核",
     desc: "备注",

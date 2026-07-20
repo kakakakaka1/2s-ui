@@ -132,6 +132,10 @@ const pct = (v: number): string => Math.round(v) + '%'
 const cardRows = (n: Node): EntityRow[] => {
   const state = stateOf(n)
   const st = statusOf(n)
+  // 待同步的节点把"上次同步"标黄,与卡片顶部的 dirty 徽章呼应
+  const lastSync: EntityRow = n.dirty
+    ? { k: t('node.lastSync'), v: relTime(n.lastSync ?? 0), color: 'var(--amber)' }
+    : { k: t('node.lastSync'), v: relTime(n.lastSync ?? 0) }
   if (state === 'online' || state === 'core-stopped') {
     const memPct = st!.mem.total > 0 ? (st!.mem.current / st!.mem.total) * 100 : 0
     return [
@@ -141,6 +145,7 @@ const cardRows = (n: Node): EntityRow[] => {
       state === 'online'
         ? { k: t('node.coreVersion'), v: st!.coreVersion || t('ui.none'), mono: !!st!.coreVersion }
         : { k: t('node.coreVersion'), v: t('node.status.coreStopped'), color: 'var(--amber)' },
+      lastSync,
     ]
   }
   if (state === 'offline') {
@@ -149,6 +154,7 @@ const cardRows = (n: Node): EntityRow[] => {
       { k: t('node.error'), v: st?.error ?? t('ui.none'), color: 'var(--rose)' },
       { k: t('node.panelVersion'), v: t('ui.none') },
       { k: t('node.coreVersion'), v: t('ui.none') },
+      lastSync,
     ]
   }
   // pending / disabled
@@ -157,6 +163,7 @@ const cardRows = (n: Node): EntityRow[] => {
     { k: t('ui.cpu') + ' / ' + t('ui.memory'), v: t('ui.none') },
     { k: t('node.lastSeen'), v: relTime(n.lastSeen) },
     { k: t('node.coreVersion'), v: t('ui.none') },
+    lastSync,
   ]
 }
 

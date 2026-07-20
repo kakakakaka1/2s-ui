@@ -171,6 +171,7 @@ export default {
     error: "Ошибка",
     latency: "Задержка",
     lastSeen: "Последний раз в сети",
+    lastSync: "Последняя синхронизация",
     panelVersion: "Панель",
     coreVersion: "Ядро",
     desc: "Описание",

@@ -170,6 +170,7 @@ export default {
     error: "خطا",
     latency: "تأخیر",
     lastSeen: "آخرین حضور",
+    lastSync: "آخرین همگام‌سازی",
     panelVersion: "پنل",
     coreVersion: "هسته",
     desc: "توضیحات",

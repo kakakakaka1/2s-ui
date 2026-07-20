@@ -170,6 +170,7 @@ export default {
     error: "Lỗi",
     latency: "Độ trễ",
     lastSeen: "Trực tuyến lần cuối",
+    lastSync: "Đồng bộ lần cuối",
     panelVersion: "Bảng",
     coreVersion: "Lõi",
     desc: "Ghi chú",

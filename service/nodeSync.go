@@ -751,11 +751,6 @@ func (s *NodeSyncService) MarkAllDirty() {
 	}
 }
 
-func (s *NodeSyncService) MarkDirty(nodeId uint) {
-	bumpDirtyGen()
-	database.GetDB().Model(model.Node{}).Where("id = ?", nodeId).Update("dirty", true)
-}
-
 // ReconcileDirtyOnline reconciles every enabled node that is online and dirty.
 // Called by the heartbeat so offline-period edits converge once a node returns.
 func (s *NodeSyncService) ReconcileDirtyOnline() {

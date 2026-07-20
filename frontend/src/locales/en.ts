@@ -170,6 +170,7 @@ export default {
     error: "Error",
     latency: "Latency",
     lastSeen: "Last seen",
+    lastSync: "Last sync",
     panelVersion: "Panel",
     coreVersion: "Core",
     desc: "Description",
