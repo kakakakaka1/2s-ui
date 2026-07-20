@@ -510,6 +510,8 @@ const issueCert = async (scope: 'web' | 'sub' = 'web', force = false) => {
     // 订阅侧无验证方式下拉,恒为自动
     method: isWeb ? settings.value.webAcmeMethod : 'auto',
     force: force ? 'true' : 'false',
+    // 后端据此决定是否套用面板的反代设置(webNginx),订阅侧不继承
+    scope,
   })
   if (!r.success || !r.obj) {
     loading.value = false
@@ -519,10 +521,16 @@ const issueCert = async (scope: 'web' | 'sub' = 'web', force = false) => {
   if (isWeb && settings.value.webNginx === 'true') {
     // 反代模式:证书供反向代理使用,面板不回填、保持 HTTP。
     // 证书+私钥两个路径都报出来,写 nginx vhost 时 ssl_certificate / ssl_certificate_key 直接照抄
+    let message = via + ' ' + i18n.global.t('setting.certForProxy', { cert: r.obj.certFile, key: r.obj.keyFile })
+    // 后端只在确实检测到 nginx 时才配 reloadcmd。Caddy / Traefik / HAProxy 等拿不到
+    // 重载钩子:续期只覆盖磁盘文件,代理仍用内存里的旧证书,到期才暴雷——必须明说。
+    if (!r.obj.reloadCmd) {
+      message += ' ' + i18n.global.t('setting.proxyRenewHint')
+    }
     push.success({
       title: i18n.global.t('success'),
-      duration: 8000,
-      message: via + ' ' + i18n.global.t('setting.certForProxy', { cert: r.obj.certFile, key: r.obj.keyFile }),
+      duration: 10000,
+      message,
     })
     loading.value = false
     return
@@ -565,8 +573,10 @@ const saveAndRestart = async (isWeb: boolean) => {
   // 重启已开始的信号,不能就此停下把用户留在死页;照样探活+跳转,真没重启则探活超时
   // 后照样跳,由浏览器给出最终错误(与 waitReachable 的兜底哲学一致)。
   await HttpUtils.post('api/restartApp', {})
+  // 取值顺序必须与 restartApp 一致:填了 webURI 就用它。它不是反代专用——NAT 端口
+  // 映射、非标准对外端口、前面挂 CDN 的用户都会填,无条件推断会把他们跳到错地址。
   const target = isWeb
-    ? buildURL(settings.value.webDomain, settings.value.webPort.toString(), true, settings.value.webPath)
+    ? (settings.value.webURI || buildURL(settings.value.webDomain, settings.value.webPort.toString(), true, settings.value.webPath))
     : window.location.href
   await sleep(3000)
   await waitReachable(target)

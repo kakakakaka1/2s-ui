@@ -193,6 +193,7 @@ export default {
     behindProxyHint: "面板保持 HTTP;申请的证书留给反向代理使用",
     behindProxyListenWarn: "请将监听 IP 设为 127.0.0.1,否则面板的明文 HTTP 端口仍可从公网直连,绕过反向代理",
     certForProxy: "证书:{cert},私钥:{key};请在反向代理中配置这两个文件,面板保持 HTTP",
+    proxyRenewHint: "未检测到 nginx,未配置重载钩子;请自行让反向代理在续期后重载,否则证书更新后它仍会使用旧证书",
     issueCertRestarting: "证书已就绪,面板即将重启并切换到 HTTPS…",
     issuedVia: "已通过 {method} 验证签发证书。",
     issueCert: "申请证书 (acme.sh)",

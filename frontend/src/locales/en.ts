@@ -193,6 +193,7 @@ export default {
     behindProxyHint: "Panel keeps serving plain HTTP; issued certificates are left for the proxy to use",
     behindProxyListenWarn: "Set Listen IP to 127.0.0.1, otherwise the panel's plain-HTTP port stays reachable from the internet and bypasses the proxy.",
     certForProxy: "Certificate: {cert}, key: {key}. Point your reverse proxy at these files; the panel stays on HTTP.",
+    proxyRenewHint: "Nginx was not detected, so no reload hook was installed. Configure your proxy to reload after renewal, otherwise it keeps serving the old certificate once this one is renewed.",
     issueCertRestarting: "Certificate ready. Restarting the panel and switching to HTTPS…",
     issuedVia: "Certificate issued via {method} validation.",
     issueCert: "Issue Certificate (acme.sh)",

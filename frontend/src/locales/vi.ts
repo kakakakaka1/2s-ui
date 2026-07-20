@@ -193,6 +193,7 @@ export default {
     behindProxyHint: "Bảng điều khiển giữ HTTP; chứng chỉ cấp ra dành cho proxy sử dụng",
     behindProxyListenWarn: "Hãy đặt IP lắng nghe là 127.0.0.1, nếu không cổng HTTP thuần của bảng điều khiển vẫn truy cập được từ Internet và bỏ qua reverse proxy.",
     certForProxy: "Chứng chỉ: {cert}, khoá: {key}. Hãy trỏ reverse proxy tới hai tệp này; bảng điều khiển giữ HTTP.",
+    proxyRenewHint: "Không phát hiện nginx nên chưa cài lệnh tải lại. Hãy tự cấu hình reverse proxy tải lại sau khi gia hạn, nếu không nó sẽ tiếp tục dùng chứng chỉ cũ.",
     issueCertRestarting: "Chứng chỉ đã sẵn sàng. Đang khởi động lại và chuyển sang HTTPS…",
     issuedVia: "Đã cấp chứng chỉ qua xác minh {method}.",
     issueCert: "Cấp chứng chỉ (acme.sh)",

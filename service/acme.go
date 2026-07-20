@@ -49,9 +49,10 @@ type NginxStatus struct {
 }
 
 type IssueResult struct {
-	CertFile string `json:"certFile"`
-	KeyFile  string `json:"keyFile"`
-	Method   string `json:"method"` // 实际使用的验证方式:standalone / nginx
+	CertFile  string `json:"certFile"`
+	KeyFile   string `json:"keyFile"`
+	Method    string `json:"method"`    // 实际使用的验证方式:standalone / nginx
+	ReloadCmd string `json:"reloadCmd"` // 续期后的重载命令,空表示没配(前端据此提示自配钩子)
 }
 
 // withHome 返回把 HOME 固定为指定值、并补全 PATH 兜底的环境变量(去重)。
@@ -297,6 +298,19 @@ func (a *AcmeService) ensureNginxServerBlock(domain string) error {
 		_ = os.Remove(confPath)
 		return common.NewErrorf("reload nginx 失败,已回滚删除 %s:\n%s", confPath, out)
 	}
+	// 复验块是否真的生效:若本机 nginx.conf 没有 include conf.d/*.conf(源码编译、
+	// openresty、手写配置都常见),上面三步会全部「成功」——文件根本没被解析,nginx -t
+	// 自然通过——随后 acme.sh 才报它自己的 "Can not find conf file",离真因十万八千里。
+	// 复验把它变成一条指向根因的错误。
+	if out, err := runCmd(cmdDetectTO, "/root", "nginx", "-T"); err != nil || !nginxHasServerName(out, domain) {
+		_ = os.Remove(confPath)
+		// 若文件其实已被 include(nginx -T 因别的原因失败),上面那次 reload 已把块读进
+		// 内存,光删文件不足以复原;再 reload 一次抹掉。没被 include 时这次是空操作。
+		_, _ = runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx")
+		return common.NewErrorf("已写入 %s 但它未出现在 nginx 生效配置中,"+
+			"本机 nginx.conf 可能没有 include %s/*.conf;已回滚删除,请改用 standalone 验证",
+			confPath, nginxConfDir)
+	}
 	logger.Info("已生成 nginx 验证配置:", confPath)
 	return nil
 }
@@ -393,6 +407,12 @@ func (a *AcmeService) IssueWeb(domain, email, method string, force, behindProxy 
 		issueArgs = append(issueArgs, "--nginx")
 	} else {
 		ensureSocat()
+		// resolveMethod 的 80 端口预检发生在 ensureAcmeSh / ensureSocat 之前,而这两步
+		// 首次运行各可能耗掉 120s 装包——恰恰是包管理器可能拉起 :80 上某个服务的时刻。
+		// 预检负责给出清晰的早期错误,这里紧贴使用点再确认一次,收窄那段窗口。
+		if !port80Free() {
+			return nil, common.NewError("80 端口在准备阶段被占用,无法用 standalone 申请;请停止占用 80 端口的程序后重试")
+		}
 		issueArgs = append(issueArgs, "--standalone", "--httpport", "80")
 		// 纯 IPv6 主机必须显式切到 v6 监听,否则 acme.sh 只绑 v4、LE 的请求根本进不来。
 		// 判据是「有没有全局 v4」而非「内核支不支持 v6」——该标志是排他的,见 hasGlobalIPv4。
@@ -430,8 +450,9 @@ func (a *AcmeService) IssueWeb(domain, email, method string, force, behindProxy 
 	//    处理本次申请请求的进程,前端拿不到结果(即便证书已申请成功);
 	//  - 面板/订阅侧也无需 reloadcmd:network/tls.go 的 certReloader 每次 TLS 握手按
 	//    文件 mtime 热加载,续期覆盖 /root/cert 下的文件后自动生效。
-	if rc := a.buildReloadCmd(resolved, behindProxy); rc != "" {
-		installArgs = append(installArgs, "--reloadcmd", rc)
+	reloadCmd := a.buildReloadCmd(resolved, behindProxy)
+	if reloadCmd != "" {
+		installArgs = append(installArgs, "--reloadcmd", reloadCmd)
 	}
 	if out, err := runCmd(acmeIssueTO, home, bin, installArgs...); err != nil {
 		return nil, common.NewErrorf("安装证书失败:\n%s", out)
@@ -442,7 +463,7 @@ func (a *AcmeService) IssueWeb(domain, email, method string, force, behindProxy 
 		logger.Warning("启用 acme.sh 自动续期失败(不影响本次证书):", err)
 	}
 
-	return &IssueResult{CertFile: certFile, KeyFile: keyFile, Method: resolved}, nil
+	return &IssueResult{CertFile: certFile, KeyFile: keyFile, Method: resolved, ReloadCmd: reloadCmd}, nil
 }
 
 // buildReloadCmd 决定续期成功后的重载命令,按「谁消费证书」而非验证方式:
@@ -452,11 +473,24 @@ func (a *AcmeService) IssueWeb(domain, email, method string, force, behindProxy 
 //     失败把 --installcert 整体判失败(彼时证书文件其实已安装成功)。
 //   - 其余(standalone 且面板/订阅自用):返回空——证书由 certReloader 热加载,
 //     无需外部命令(见 IssueWeb 注释)。
+//
+// behindProxy 只说明「TLS 由反向代理终结」,没说那代理是 nginx——Caddy / Traefik /
+// HAProxy 的用户同样会开这个开关。此时不能硬发 nginx 命令:try-reload-or-restart
+// 的「不在跑就空转退 0」只对【已知但未激活】的 unit 成立,unit 根本不存在时 systemd
+// 以 5 退出,会让 --installcert 整体判失败(彼时证书其实已落盘),且这条注定失败的
+// 命令还会被写进 acme.sh 的域名 conf,让此后每次续期都报错。
+// 故先确认 nginx 确实存在;不存在就留空,由调用方提示用户自行配置重载钩子。
 func (a *AcmeService) buildReloadCmd(method string, behindProxy bool) string {
-	if method == methodNginx || behindProxy {
-		return "systemctl try-reload-or-restart nginx"
+	if method != methodNginx && !behindProxy {
+		return ""
 	}
-	return ""
+	// 只需判断存在性,用 resolveBin 而非 DetectNginx:省掉一次 systemctl 调用和一次
+	// :80 探测绑定。methodNginx 分支其实已由 resolveMethod 验过 Active,这里是为
+	// behindProxy 分支兜底。
+	if _, ok := resolveBin("nginx"); !ok {
+		return ""
+	}
+	return "systemctl try-reload-or-restart nginx"
 }
 
 // ListCerts 返回 acme.sh 已管理的证书列表,供前端展示、避免重复申请触发 LE 限速。

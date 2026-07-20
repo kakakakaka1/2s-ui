@@ -451,7 +451,12 @@ func (a *ApiService) IssueCert(c *gin.Context) {
 	force := c.Request.FormValue("force") == "true"
 	// webNginx=true 时反向代理(nginx)是证书消费方,续期后需要它 reload——由这里读
 	// 设置传入,AcmeService 自身不读库(见其结构体注释)。
-	behindProxy, _ := a.SettingService.GetWebNginx()
+	// webNginx 只描述【面板侧】:订阅证书由 sub 服务经 certReloader 自行热加载,不该
+	// 继承面板的 nginx reloadcmd。scope 缺省按 web 处理,保持既有调用方的行为不变。
+	behindProxy := false
+	if c.Request.FormValue("scope") != "sub" {
+		behindProxy, _ = a.SettingService.GetWebNginx()
+	}
 	var acme service.AcmeService
 	res, err := acme.IssueWeb(domain, email, method, force, behindProxy)
 	if err != nil {
