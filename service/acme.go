@@ -478,22 +478,20 @@ func (a *AcmeService) IssueWeb(domain, email, method string, force, behindProxy 
 // HAProxy 的用户同样会开这个开关。此时不能硬发 nginx 命令:try-reload-or-restart
 // 的「不在跑就空转退 0」只对【已知但未激活】的 unit 成立,unit 根本不存在时 systemd
 // 以 5 退出,会让 --installcert 整体判失败(彼时证书其实已落盘),且这条注定失败的
-// 命令还会被写进 acme.sh 的域名 conf,让此后每次续期都报错。
-// 同理,systemctl 本身也必须存在:Alpine/OpenRC、Devuan、容器里直跑 nginx 的主机上
-// 它压根没有,命令以 127 退出,后果与 unit 不存在完全一样。这条路径经 behindProxy
-// 可达(代理只听 443 → 80 空闲 → standalone 验证 → 走到这里),不是理论情况。
-// 故两者都确认存在才发命令;缺任一就留空,由调用方提示用户自行配置重载钩子。
+// 命令还会被写进 acme.sh 的域名 conf,让此后每次续期都报错。systemctl 本身缺席
+// (Alpine/OpenRC、Devuan、容器里直跑 nginx)以 127 退出,后果完全一样。
+// 这条路径经 behindProxy 可达(代理只听 443 → 80 空闲 → standalone 验证 → 走到
+// 这里),不是理论情况;确认不了就留空,由调用方提示用户自行配置重载钩子。
 func (a *AcmeService) buildReloadCmd(method string, behindProxy bool) string {
 	if method != methodNginx && !behindProxy {
 		return ""
 	}
-	// 只需判断存在性,用 resolveBin 而非 DetectNginx:省掉一次 systemctl 调用和一次
-	// :80 探测绑定。methodNginx 分支其实已由 resolveMethod 验过 Active,这里是为
-	// behindProxy 分支兜底。
-	if _, ok := resolveBin("nginx"); !ok {
-		return ""
-	}
-	if _, ok := resolveBin("systemctl"); !ok {
+	// 判据必须是「systemd 认识 nginx 这个 unit」,不能是「nginx 二进制在」:源码编译的
+	// nginx 装在 /usr/local/sbin(正好在 fallbackPath 上)却往往没有 unit 文件,查
+	// 二进制会放行,随后 try-reload-or-restart 退 5,正是上面要避免的那种失败。
+	// systemctl cat 恰好是需要的语义:unit 已知→退 0(哪怕没在跑),不存在→非 0;
+	// systemctl 自身缺席时 runCmd 直接报 not found,同样落进 err 分支。
+	if _, err := runCmd(cmdDetectTO, "/root", "systemctl", "cat", "nginx"); err != nil {
 		return ""
 	}
 	return "systemctl try-reload-or-restart nginx"
