@@ -572,7 +572,11 @@ const saveAndRestart = async (isWeb: boolean) => {
   // 后端重启几乎即刻发生,restartApp 请求"失败"多半是响应没刷完连接就被掐——这恰是
   // 重启已开始的信号,不能就此停下把用户留在死页;照样探活+跳转,真没重启则探活超时
   // 后照样跳,由浏览器给出最终错误(与 waitReachable 的兜底哲学一致)。
-  await HttpUtils.post('api/restartApp', {})
+  // 故意用裸 fetch 而非 HttpUtils:后者会把这个预期内的失败经统一处理弹成红色错误,
+  // 与刚推送的"即将重启"成功提示自相矛盾。返回值本就不看,吞掉异常即可。
+  // 路径保持相对形式,与 axios 的 baseURL="./" 解析结果一致(勿写成绝对路径,会破坏
+  // 自定义面板路径与 dev 模式);session cookie 由 same-origin 默认携带。
+  await fetch('api/restartApp', { method: 'POST', credentials: 'same-origin' }).catch(() => {})
   // 取值顺序必须与 restartApp 一致:填了 webURI 就用它。它不是反代专用——NAT 端口
   // 映射、非标准对外端口、前面挂 CDN 的用户都会填,无条件推断会把他们跳到错地址。
   const target = isWeb
@@ -585,11 +589,17 @@ const saveAndRestart = async (isWeb: boolean) => {
 
 // 用 no-cors 裸 fetch 探活目标地址:重启期间请求必然失败,走 HttpUtils 会刷错误 toast;
 // 跳 https 时与当前页跨协议,CORS 下也读不了响应——opaque 响应能 resolve 就说明面板已就绪。
+// 每次尝试单独限时:连接被静默丢包时(切 HTTPS 撞上防火墙规则变更就会这样),fetch 不会
+// 很快失败,而是一直挂到浏览器默认连接超时(可达 90s+),固定次数的循环便退化成数分钟的
+// 卡死。改用总预算封顶,单次超时由 AbortSignal 保证,整体最坏 probeBudget + probeTimeout。
 // 探活超时也照样跳转,由浏览器给出最终错误。
+const probeTimeout = 2000
+const probeBudget = 30000
 const waitReachable = async (url: string) => {
-  for (let i = 0; i < 20; i++) {
+  const deadline = Date.now() + probeBudget
+  while (Date.now() < deadline) {
     try {
-      await fetch(url, { mode: 'no-cors', cache: 'no-store' })
+      await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(probeTimeout) })
       return
     } catch {
       await sleep(800)
