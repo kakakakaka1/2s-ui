@@ -78,6 +78,8 @@ export interface Shadowsocks extends OutboundBasics, Dial {
     version?: number
   }
   multiplex?: oMultiplex
+  plugin?: string
+  plugin_opts?: string
 }
 
 export interface VMESS extends OutboundBasics, Dial {
