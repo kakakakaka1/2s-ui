@@ -16,7 +16,7 @@ import (
 )
 
 func (c *Core) UpdateInboundUsers(config []byte) (bool, error) {
-	if !c.isRunning {
+	if !c.IsRunning() {
 		return false, common.NewError("sing-box is not running")
 	}
 	var inboundConfig option.Inbound

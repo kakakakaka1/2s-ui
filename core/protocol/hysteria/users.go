@@ -19,6 +19,15 @@ func (h *Inbound) UpdateUsers(users []option.HysteriaUser) error {
 		}
 		userPasswordList = append(userPasswordList, password)
 	}
+	// Grow before the service learns the new users, shrink after it forgets the
+	// old ones. The service hands back an index into userNameList on every new
+	// connection, so it must never know about more users than the slice holds
+	// or that index goes out of range. (The two are still unsynchronised, as
+	// they are in sing-box itself -- a racing read can see a stale name, which
+	// only mis-labels a stat. Out of range would take down the process.)
+	if len(userNameList) > len(h.userNameList) {
+		h.userNameList = userNameList
+	}
 	h.service.UpdateUsers(userList, userPasswordList)
 	h.userNameList = userNameList
 	return nil

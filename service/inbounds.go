@@ -406,12 +406,22 @@ func (s *InboundService) UpdateInboundsUsers(tx *gorm.DB, ids []uint) error {
 			return err
 		}
 
+		// An in-place update that errors leaves the inbound running with its old
+		// user table, so a removed user would stay connected and keep
+		// authenticating. Fall through to the restart rather than returning:
+		// dropping every connection on this inbound is the safe failure.
 		handled, err := corePtr.UpdateInboundUsers(inboundConfig)
 		if err != nil {
-			return err
+			logger.Warning("in-place user update failed for inbound ", inbound.Tag, ", restarting it: ", err)
+			handled = false
 		}
 		if handled {
-			// Disconnect only users no longer enabled on this inbound
+			// Disconnect only users no longer enabled on this inbound.
+			//
+			// Matching is by user name, so rotating a client's UUID or password
+			// does NOT drop its live connection -- the name is unchanged, so it
+			// stays in `keep` and the old credential keeps working until the
+			// connection ends on its own. Tracked separately; see issue.
 			keep, err := s.enabledClientNames(tx, inbound.Id)
 			if err != nil {
 				return err

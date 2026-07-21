@@ -77,6 +77,7 @@ The rest (`api/`, `service/`, `util/`, `cmd/`, `cronjob/`, `logger/`, `middlewar
 | `network/` | Not protocol code — ACME issuance, TLS config, and a listener that sniffs the first packet: plaintext HTTP hitting the HTTPS port gets a 307 to `https://`, anything else falls through to the TLS handshake. |
 | `app/` | One file. Lifecycle orchestration only (DB → settings → core → cron → both servers). |
 | `core/` | The sing-box wrapper. Business logic lives in `service/`. |
+| `core/protocol/` | **Verbatim copies of sing-box's own inbound implementations**, forked only so `UpdateUsers` can be attached (see below). Not a place to put new code. |
 
 ### The config assembly loop (the central mechanism)
 
@@ -92,6 +93,19 @@ This lives in `ConfigService.GetConfig` ([service/config.go](service/config.go))
 
 - Editing an entity means editing a **DB row**, then restarting the core. `ConfigService.Save` is the single write path: it opens a transaction, dispatches by object type, writes a `Changes` audit row, and bumps `LastUpdate` (which drives the frontend's `api/changes` poll).
 - `StartCore` is guarded by `startCoreMu` + a 15s `startCooldown` after a failure, and a `@every 5s` cron job (`checkCoreJob`) restarts the core if it's down. A failed config does not permanently wedge the panel, but it also means **your bad config will be retried on a loop** — read the log, don't just re-save.
+
+### `core/protocol/` — forked sing-box inbounds, and what it costs
+
+Editing a client used to go through `InboundService.RestartInbounds`, which removes the inbound from the core and adds it back. For the QUIC protocols that also destroys the QUIC session, so **changing one user dropped every connected user on that inbound**.
+
+sing-box keeps an inbound's user table in unexported fields and its `Inbound` types do not surface `UpdateUsers`. The underlying services (`*vless.Service`, …) do have it, but it is unreachable from outside the sing-box package. So seven inbounds (anytls, hysteria, hysteria2, trojan, tuic, vless, vmess) are **copied verbatim** into `core/protocol/`, `core/register.go` registers the copies, and `Core.UpdateInboundUsers` dispatches on the option type. Shadowsocks is not copied — sing-box already exports `MultiInbound.UpdateUsers`. Anything unrecognised returns `handled=false` and the caller falls back to the full restart; certificate changes (`service/tls.go`) keep restarting on purpose.
+
+Two things to internalise:
+
+- **The copies go stale silently.** They keep compiling after a sing-box bump while running the old implementation. `scripts/check-protocol-copies.sh` diffs them against the version in `go.mod` and runs in CI — **after bumping sing-box, expect it to fail**, and re-copy from the module cache rather than patching around it.
+- **`UpdateUsers` grows the name slice before the service learns the new users and shrinks it after.** That order is load-bearing: the service returns an index into that slice on every new connection, so the reverse order can index out of range. The two are still unsynchronised — as they are in sing-box itself — so a racing read can see a stale *name*, which only mis-labels a stat.
+
+Who gets disconnected is decided by `ConnTracker.CloseConnByInboundUsers`, matching on **user name**. Consequence: rotating a client's UUID or password does not drop its live connection.
 
 ### Model pattern: fixed columns + `Options` blob
 

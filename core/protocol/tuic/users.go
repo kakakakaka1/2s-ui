@@ -25,6 +25,11 @@ func (h *Inbound) UpdateUsers(users []option.TUICUser) error {
 		userUUIDList = append(userUUIDList, userUUID)
 		userPasswordList = append(userPasswordList, user.Password)
 	}
+	// Grow before the server learns the new users, shrink after. See the
+	// comment in core/protocol/hysteria/users.go for why the order matters.
+	if len(userNameList) > len(h.userNameList) {
+		h.userNameList = userNameList
+	}
 	h.server.UpdateUsers(userList, userUUIDList, userPasswordList)
 	h.userNameList = userNameList
 	return nil
