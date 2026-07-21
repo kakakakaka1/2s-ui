@@ -411,9 +411,12 @@ func (s *SettingService) GetFinalSubURI(host string) (string, error) {
 	if SubURI != "" {
 		return SubURI, nil
 	}
+	// TLS 判定必须与 sub.go 的实际行为一致:acme 模式,或证书/私钥【任一】非空即尝试
+	// TLS。早先这里要求两者都填,只填一个时 sub 服务已经在跑 https,本函数生成的订阅
+	// 链接却还是 http——而这是真正发给客户端的地址。判定与 sui uri 同源。
 	protocol := "http"
 	if (*allSetting)["subCertMode"] == "acme" ||
-		((*allSetting)["subKeyFile"] != "" && (*allSetting)["subCertFile"] != "") {
+		(*allSetting)["subKeyFile"] != "" || (*allSetting)["subCertFile"] != "" {
 		protocol = "https"
 	}
 	if (*allSetting)["subDomain"] != "" {
