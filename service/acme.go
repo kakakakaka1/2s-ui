@@ -143,6 +143,15 @@ func port80Free() bool {
 	return true
 }
 
+// port80Hint 在面板非 root 运行时补一句说明:非特权进程绑 :80 拿到的是 EACCES,
+// 在 port80Free 里与「端口被占用」同样是 false,错误文案不区分会把排查方向带偏。
+func port80Hint() string {
+	if os.Geteuid() != 0 {
+		return "(注意:面板当前不是以 root 运行,绑定 80 端口会被内核直接拒绝,这也可能是本次判定不可用的真正原因)"
+	}
+	return ""
+}
+
 // ipv6Available 探测内核能否创建 IPv6 监听(ipv6.disable=1 的主机不行):
 // 生成 nginx 验证块时据此决定是否加 listen [::]:80,避免 reload 因开不了 v6 socket 失败。
 func ipv6Available() bool {
@@ -218,7 +227,7 @@ func (a *AcmeService) resolveMethod(method string) (string, error) {
 	switch method {
 	case methodStandalone:
 		if !port80Free() {
-			return "", common.NewError("80 端口被占用,无法用 standalone 申请;若 nginx 正在运行请改选 nginx 验证或「自动」,否则请先停止占用 80 端口的服务")
+			return "", common.NewErrorf("80 端口被占用,无法用 standalone 申请;若 nginx 正在运行请改选 nginx 验证或「自动」,否则请先停止占用 80 端口的服务%s", port80Hint())
 		}
 		return methodStandalone, nil
 	case methodNginx:
@@ -233,7 +242,7 @@ func (a *AcmeService) resolveMethod(method string) (string, error) {
 		if a.DetectNginx().Active {
 			return methodNginx, nil
 		}
-		return "", common.NewError("80 端口被未知程序占用且未检测到运行中的 nginx:请停止占用 80 端口的程序,或启动 nginx 后重试")
+		return "", common.NewErrorf("80 端口不可用且未检测到运行中的 nginx:请停止占用 80 端口的程序,或启动 nginx 后重试%s", port80Hint())
 	default:
 		return "", common.NewErrorf("未知的验证方式: %q", method)
 	}
@@ -287,6 +296,15 @@ func (a *AcmeService) ensureNginxServerBlock(domain string) error {
 		"    server_name " + domain + ";\n" +
 		"    root /var/www/html;\n" +
 		"}\n"
+	// 先确认目录本身在:Alpine 用的是 /etc/nginx/http.d,源码编译的 nginx 可能压根没有
+	// conf.d。不预判就会撞上一条没有指向性的 ENOENT,与下面「文件写了但没被 include」
+	// 是同一类问题(本机 nginx 布局不符合假设),给同样指向根因的错误。
+	if st, err := os.Stat(nginxConfDir); err != nil || !st.IsDir() {
+		return common.NewErrorf("nginx 配置目录 %s 不存在,无法自动生成验证配置"+
+			"(Alpine 通常是 /etc/nginx/http.d,源码编译的 nginx 可能没有此目录);"+
+			"请改用 standalone 验证,或手动为 %s 添加一个 server_name 匹配的 server 块",
+			nginxConfDir, domain)
+	}
 	if err := os.WriteFile(confPath, []byte(content), 0644); err != nil {
 		return common.NewErrorf("写入 nginx 验证配置失败 %s: %v", confPath, err)
 	}
