@@ -425,7 +425,11 @@ const restartApp = async () => {
     // 没填则 replace("") 原地打转。
     let url = settings.value.webURI
     if (url === "") {
-      const isTLS = settings.value.webCertMode === "acme" || settings.value.webCertFile !== "" || settings.value.webKeyFile !== ""
+      // 判定优先级必须跟 web.go 一致:webNginx 最先短路,面板只跑 HTTP、根本不看证书
+      // 字段。漏掉这层会真跳错——反代模式下证书路径输入框是隐藏的,用户没途径清掉旧值,
+      // 残留路径会让这里拼出 https,而面板实际在跑 http。
+      const isTLS = settings.value.webNginx !== "true" &&
+        (settings.value.webCertMode === "acme" || settings.value.webCertFile !== "" || settings.value.webKeyFile !== "")
       url = buildURL(settings.value.webDomain, settings.value.webPort.toString(), isTLS, settings.value.webPath)
     }
     await sleep(3000)

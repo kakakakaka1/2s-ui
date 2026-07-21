@@ -234,18 +234,22 @@ func getPanelURI() {
 	webCert, _ := settingService.GetCertFile()
 	webKey, _ := settingService.GetKeyFile()
 	webCertMode, _ := settingService.GetWebCertMode()
+	webNginx, _ := settingService.GetWebNginx()
 
 	fmt.Println("Panel:")
 	// 反代模式下没设对外地址,推断出来的是面板自身的内网地址,不是用户该访问的
-	if nginx, _ := settingService.GetWebNginx(); nginx && webURI == "" {
+	if webNginx && webURI == "" {
 		fmt.Println("  Note: TLS is terminated by a reverse proxy, so the address below is")
 		fmt.Println("        the panel's own, not the public one. Set \"Panel URI\" in the")
 		fmt.Println("        panel settings to have this command report the public address.")
 	}
-	// TLS 判定对齐 web.go 的实际行为(acme 模式,或证书/私钥任一非空即尝试 TLS),
-	// 而非要求两者都填——只填一个是坏配置,服务端会直接报错,不该在这里显示成 http。
+	// TLS 判定对齐 web.go 的实际分支【优先级】:webNginx 最先短路,面板只跑 HTTP、
+	// 根本不看证书字段;其后才是 acme 模式,或证书/私钥任一非空即尝试 TLS(而非要求
+	// 两者都填——只填一个是坏配置,服务端会直接报错,不该在这里显示成 http)。
+	// 漏掉 webNginx 这一层会真出错:反代模式下前端把证书路径输入框隐藏了,用户没途径
+	// 清掉旧值,于是残留路径会让这里报 https,而面板实际在跑 http。
 	printAddresses(webURI, webDomain, webListen, webPath, webPort,
-		webCertMode == "acme" || webCert != "" || webKey != "")
+		!webNginx && (webCertMode == "acme" || webCert != "" || webKey != ""))
 
 	subURI, _ := settingService.GetSubURI()
 	subDomain, _ := settingService.GetSubDomain()
