@@ -165,8 +165,10 @@
 
     <!-- ===================== ACME ===================== -->
     <!-- Hidden on a Windows server: sing-box's built-in ACME does not work
-         there, and offering it silently does nothing (upstream #1189). -->
-    <template v-if="!isWindows">
+         there, and offering it silently does nothing (upstream #1189).
+         An entry that already has ACME configured still shows the section, or
+         it would be invisible and impossible to turn off from the panel. -->
+    <template v-if="!isWindows || acmeEnabled">
       <MSwitchRow v-model="acmeEnabled" :label="$t('ui.acmeTitle')" :desc="$t('ui.acmeDesc')" />
       <Acme :tls="inTls" />
     </template>
