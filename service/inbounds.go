@@ -8,6 +8,7 @@ import (
 
 	"github.com/shenaba/2s-ui/database"
 	"github.com/shenaba/2s-ui/database/model"
+	"github.com/shenaba/2s-ui/logger"
 	"github.com/shenaba/2s-ui/util"
 	"github.com/shenaba/2s-ui/util/common"
 
@@ -365,6 +366,83 @@ func (s *InboundService) initUsers(db *gorm.DB, inboundJson []byte, clientIds st
 	}
 
 	return json.Marshal(inbound)
+}
+
+func (s *InboundService) enabledClientNames(tx *gorm.DB, inboundId uint) (map[string]struct{}, error) {
+	var names []string
+	err := tx.Raw(
+		"SELECT clients.name FROM clients, json_each(clients.inbounds) AS je WHERE je.value = ? AND clients.enable = true",
+		inboundId).Scan(&names).Error
+	if err != nil {
+		return nil, err
+	}
+	keep := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		keep[name] = struct{}{}
+	}
+	return keep, nil
+}
+
+func (s *InboundService) UpdateInboundsUsers(tx *gorm.DB, ids []uint) error {
+	if !corePtr.IsRunning() {
+		return nil
+	}
+	var inbounds []*model.Inbound
+	// Same filter as RestartInbounds: a client edit passes in the union of its
+	// inbound ids, which may include node replicas. Those are not in the local
+	// core, so the fallback below would AddInbound them here and bind the remote
+	// node's port locally.
+	err := tx.Model(model.Inbound{}).Preload("Tls").Where("id in ?", ids).Where("node_id IS NULL").Find(&inbounds).Error
+	if err != nil {
+		return err
+	}
+	for _, inbound := range inbounds {
+		inboundConfig, err := inbound.MarshalJSON()
+		if err != nil {
+			return err
+		}
+		inboundConfig, err = s.addUsers(tx, inboundConfig, inbound.Id, inbound.Type)
+		if err != nil {
+			return err
+		}
+
+		// An in-place update that errors leaves the inbound running with its old
+		// user table, so a removed user would stay connected and keep
+		// authenticating. Fall through to the restart rather than returning:
+		// dropping every connection on this inbound is the safe failure.
+		handled, err := corePtr.UpdateInboundUsers(inboundConfig)
+		if err != nil {
+			logger.Warning("in-place user update failed for inbound ", inbound.Tag, ", restarting it: ", err)
+			handled = false
+		}
+		if handled {
+			// Disconnect only users no longer enabled on this inbound.
+			//
+			// Matching is by user name, so rotating a client's UUID or password
+			// does NOT drop its live connection -- the name is unchanged, so it
+			// stays in `keep` and the old credential keeps working until the
+			// connection ends on its own. Tracked separately; see issue.
+			keep, err := s.enabledClientNames(tx, inbound.Id)
+			if err != nil {
+				return err
+			}
+			closed := corePtr.GetInstance().ConnTracker().CloseConnByInboundUsers(inbound.Tag, keep)
+			logger.Debug("updated users of inbound ", inbound.Tag, " in place, closed ", closed, " stale connections")
+			continue
+		}
+
+		// Fallback: full restart for protocols without in-place user updates
+		err = corePtr.RemoveInbound(inbound.Tag)
+		if err != nil && err != os.ErrInvalid {
+			return err
+		}
+		corePtr.GetInstance().ConnTracker().CloseConnByInbound(inbound.Tag)
+		err = corePtr.AddInbound(inboundConfig)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {

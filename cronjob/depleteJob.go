@@ -23,11 +23,11 @@ func (s *DepleteJob) Run() {
 		return
 	}
 	if len(inboundIds) > 0 {
-		// RestartInbounds already filters to node_id IS NULL — only local
-		// inbounds are hot-restarted here.
-		err := s.InboundService.RestartInbounds(database.GetDB(), inboundIds)
+		// UpdateInboundsUsers already filters to node_id IS NULL — only local
+		// inbounds are touched here.
+		err := s.InboundService.UpdateInboundsUsers(database.GetDB(), inboundIds)
 		if err != nil {
-			logger.Error("unable to restart inbounds: ", err)
+			logger.Error("unable to update inbound users: ", err)
 		}
 	}
 	// Fan the disable out to nodes: reconcile sees enable=false in the expected
