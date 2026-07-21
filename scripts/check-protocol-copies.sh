@@ -31,12 +31,14 @@ expect_diff() {
 }
 
 status=0
+checked=0
 for dir in core/protocol/*/; do
   proto=$(basename "$dir")
   local_file="$dir/inbound.go"
   upstream_file="$MODDIR/protocol/$proto/inbound.go"
 
   [ -f "$local_file" ] || continue
+  checked=$((checked + 1))
   if [ ! -f "$upstream_file" ]; then
     echo "  $proto: FAIL - no upstream counterpart at protocol/$proto/inbound.go"
     status=1
@@ -58,6 +60,13 @@ for dir in core/protocol/*/; do
     status=1
   fi
 done
+
+# An unmatched glob would run the loop zero times and exit 0, which reads as
+# "everything is in sync" when it actually means the check found nothing.
+if [ "$checked" -eq 0 ]; then
+  echo "no inbound.go found under core/protocol/ -- has the layout changed?" >&2
+  exit 1
+fi
 
 if [ "$status" -ne 0 ]; then
   echo
