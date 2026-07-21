@@ -589,6 +589,15 @@ func getTransportParams(t interface{}) []LinkParam {
 		}
 	case "ws":
 		if path, ok := trasport["path"].(string); ok {
+			if maxED, ok := trasport["max_early_data"].(float64); ok && maxED > 0 {
+				if edName, _ := trasport["early_data_header_name"].(string); edName == "Sec-WebSocket-Protocol" {
+					sep := "?"
+					if strings.Contains(path, "?") {
+						sep = "&"
+					}
+					path = fmt.Sprintf("%s%sed=%d", path, sep, int(maxED))
+				}
+			}
 			params = append(params, LinkParam{"path", path})
 		}
 		if headers, ok := trasport["headers"].(map[string]interface{}); ok {
