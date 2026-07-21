@@ -125,7 +125,14 @@
                 <span v-else style="color: var(--text-3); font-size: 13px;">—</span>
               </td>
               <td class="actions-td">
-                <div style="display: flex; gap: 2px; justify-content: flex-end;" @click.stop>
+                <div style="display: flex; gap: 2px; justify-content: flex-end; align-items: center;" @click.stop>
+                  <Toggle
+                    :model-value="c.enable"
+                    :scale="0.8"
+                    :title="$t(c.enable ? 'disable' : 'enable')"
+                    style="margin-inline-end: 4px;"
+                    @update:model-value="toggleEnable(c)"
+                  />
                   <IconBtn name="qr" :title="$t('client.links')" @click="showQrCode(c.id)" />
                   <IconBtn v-if="dataStore.enableTraffic" name="chart" :title="$t('stats.graphTitle')" @click="showStats(c.name)" />
                   <IconBtn name="edit" :title="$t('actions.edit')" @click="openDrawer(c.id)" />
@@ -194,6 +201,13 @@
           </span>
         </div>
         <div class="m-actions" @click.stop>
+          <Toggle
+            :model-value="c.enable"
+            :scale="0.8"
+            :title="$t(c.enable ? 'disable' : 'enable')"
+            style="margin-inline-end: 4px;"
+            @update:model-value="toggleEnable(c)"
+          />
           <IconBtn name="qr" :title="$t('client.links')" @click="showQrCode(c.id)" />
           <IconBtn v-if="dataStore.enableTraffic" name="chart" :title="$t('stats.graphTitle')" @click="showStats(c.name)" />
           <IconBtn name="edit" :title="$t('actions.edit')" @click="openDrawer(c.id)" />
@@ -228,6 +242,7 @@ import Chip from '@/components/ui/Chip.vue'
 import Check from '@/components/ui/Check.vue'
 import Avatar from '@/components/ui/Avatar.vue'
 import IconBtn from '@/components/ui/IconBtn.vue'
+import Toggle from '@/components/ui/Toggle.vue'
 import Segmented from '@/components/ui/Segmented.vue'
 import Modal from '@/components/ui/Modal.vue'
 import BarMini from '@/components/charts/BarMini.vue'
@@ -357,6 +372,25 @@ const protoSummary = (c: any): string => {
   return types.length > 0 ? types.join(', ') : '—'
 }
 const inbTitle = (c: any): string => inboundsOf(c).map((i: any) => i.tag).join('\n')
+
+// ---------------- quick enable / disable ----------------
+// The list rows are a projection, so the full client has to be fetched before
+// saving or the unprojected fields would be written back as empty.
+const toggling = ref<Record<number, boolean>>({})
+
+const toggleEnable = async (c: any) => {
+  if (toggling.value[c.id]) return
+  toggling.value = { ...toggling.value, [c.id]: true }
+  try {
+    const full = await Data().loadClients(c.id)
+    if (full?.id) {
+      full.enable = !c.enable
+      await Data().save('clients', 'edit', full)
+    }
+  } finally {
+    toggling.value = { ...toggling.value, [c.id]: false }
+  }
+}
 
 // ---------------- drawers / modals ----------------
 const drawer = ref({ visible: false, id: 0 })
