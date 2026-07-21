@@ -9,6 +9,7 @@
       <div style="display: flex; flex-direction: column; gap: 2px; padding: 4px;">
         <div class="pop-item"><SwitchLabel v-model="optionRsvConn" label="Recv window conn" /></div>
         <div class="pop-item"><SwitchLabel v-model="optionRsvWin" label="Recv window" /></div>
+        <div class="pop-item"><SwitchLabel v-model="optionMPort" :label="$t('rule.portRange')" /></div>
       </div>
     </Pop>
   </div>
@@ -33,6 +34,14 @@
       <input class="input mono" type="number" min="0" v-model.number="data.recv_window" />
     </Field>
   </div>
+  <template v-if="optionMPort">
+    <Field :label="$t('rule.portRange') + ' ' + $t('commaSeparated')">
+      <input class="input mono" v-model="serverPorts" />
+    </Field>
+    <Field :label="$t('ruleset.interval') + ' (' + $t('date.s') + ')'">
+      <input class="input mono" type="number" min="0" v-model.number="hopInterval" />
+    </Field>
+  </template>
   <div style="margin-bottom: 15px;">
     <SwitchLabel v-model="disableMtu" label="Disable MTU discovery" />
   </div>
@@ -60,6 +69,18 @@ const optionRsvConn = computed({
 const optionRsvWin = computed({
   get: (): boolean => props.data.recv_window != undefined,
   set: (v: boolean) => { props.data.recv_window = v ? 67108864 : undefined },
+})
+const optionMPort = computed({
+  get: (): boolean => props.data.server_ports != undefined,
+  set: (v: boolean) => { props.data.server_ports = v ? [] : undefined },
+})
+const serverPorts = computed({
+  get: () => props.data.server_ports?.join(',') ?? '',
+  set: (v: string) => { props.data.server_ports = v.length > 0 ? v.split(',') : undefined },
+})
+const hopInterval = computed({
+  get: () => props.data.hop_interval ? parseInt(props.data.hop_interval.replace('s', '')) : 0,
+  set: (v: number) => { props.data.hop_interval = v > 0 ? v + 's' : undefined },
 })
 const downMbps = computed({
   get: () => props.data.down_mbps ? props.data.down_mbps : 0,
