@@ -47,6 +47,14 @@
         <input class="input mono" type="number" min="0" v-model.number="hop_interval" />
       </Field>
     </template>
+    <template v-if="type == inTypes.Shadowsocks">
+      <Field label="Plugin">
+        <input class="input mono" v-model="plugin" />
+      </Field>
+      <Field v-if="inData.out_json.plugin" label="Plugin Options">
+        <input class="input mono" v-model="pluginOpts" />
+      </Field>
+    </template>
     <Headers v-if="type == inTypes.HTTP" :data="inData.out_json" />
     <AnyTls v-if="type == inTypes.AnyTls" :data="inData.out_json" direction="out_json" />
     <Naive v-if="type == inTypes.Naive" :data="inData.out_json" direction="out_json" />
@@ -133,5 +141,20 @@ const hop_interval = computed({
   get: (): number =>
     props.inData.out_json.hop_interval ? parseInt(props.inData.out_json.hop_interval.replace('s', '')) : 0,
   set: (v: number) => { props.inData.out_json.hop_interval = v > 0 ? v + 's' : undefined },
+})
+
+// These two ride in out_json rather than the inbound itself: sing-box has no
+// server-side plugin option, but the client needs `?plugin=` in its ss:// link.
+const plugin = computed({
+  get: (): string => props.inData.out_json.plugin ?? '',
+  set: (v: string) => {
+    props.inData.out_json.plugin = v.length > 0 ? v : undefined
+    if (!props.inData.out_json.plugin) props.inData.out_json.plugin_opts = undefined
+  },
+})
+
+const pluginOpts = computed({
+  get: (): string => props.inData.out_json.plugin_opts ?? '',
+  set: (v: string) => { props.inData.out_json.plugin_opts = v.length > 0 ? v : undefined },
 })
 </script>

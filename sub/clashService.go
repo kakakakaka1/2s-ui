@@ -1,6 +1,7 @@
 package sub
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/shenaba/2s-ui/logger"
@@ -295,14 +296,15 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 					wsOpts["path"] = path
 				}
 				wsHeaders := make(map[string]interface{})
+				// Only the Host header is carried into Clash
 				if headers, ok := transport["headers"].(map[string]interface{}); ok {
-					for k, v := range headers {
+					if v, ok := headers["Host"]; ok {
 						if arr, ok := v.([]interface{}); ok {
 							if len(arr) > 0 {
-								wsHeaders[k] = arr[0]
+								wsHeaders["Host"] = arr[0]
 							}
 						} else {
-							wsHeaders[k] = v
+							wsHeaders["Host"] = v
 						}
 					}
 				}
@@ -317,6 +319,11 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 				}
 				if len(wsHeaders) > 0 {
 					wsOpts["headers"] = wsHeaders
+				}
+				// mihomo needs both keys before it will use early data: the
+				// header name alone leaves max-early-data at 0, which disables it.
+				if maxED, ok := transport["max_early_data"].(float64); ok && maxED > 0 {
+					wsOpts["max-early-data"] = int(maxED)
 				}
 				if ed, ok := transport["early_data_header_name"].(string); ok {
 					wsOpts["early-data-header-name"] = ed
@@ -389,65 +396,10 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 		output["proxies"] = proxies
 	}
 
-	pgSlice, _ := output["proxy-groups"].([]interface{})
-
 	noDefGrp, _ := s.SettingService.GetSubClashNoDefGrp()
 	sprtAll, _ := s.SettingService.GetSubClashSprtAll()
-
-	if !noDefGrp {
-		var proxyGroups []map[string]interface{}
-		if err := yaml.Unmarshal([]byte(ProxyGroups), &proxyGroups); err != nil {
-			return "", err
-		}
-		proxyGroups[1]["proxies"] = proxyTags
-		proxyGroups[0]["proxies"] = append([]string{proxyGroups[1]["name"].(string)}, proxyTags...)
-		// Don't inject a duplicate "Auto" if the user already defines one.
-		if hasGroupNamed(pgSlice, "Auto") {
-			proxyGroups = proxyGroups[:1]
-			proxyGroups[0]["proxies"] = proxyTags
-		}
-		if pg, ok := output["proxy-groups"].([]interface{}); ok {
-			for _, item := range pg {
-				if g, ok := item.(map[string]interface{}); ok {
-					proxyGroups = append(proxyGroups, g)
-				}
-			}
-			output["proxy-groups"] = proxyGroups
-		} else {
-			output["proxy-groups"] = proxyGroups
-		}
-	}
-
-	if sprtAll {
-		expand := func(group map[string]interface{}) {
-			proxies, ok := group["proxies"].([]interface{})
-			if !ok {
-				return
-			}
-			newProxies := make([]interface{}, 0, len(proxies))
-			for _, p := range proxies {
-				if name, ok := p.(string); ok && strings.EqualFold(name, "all") {
-					for _, tag := range proxyTags {
-						newProxies = append(newProxies, tag)
-					}
-				} else {
-					newProxies = append(newProxies, p)
-				}
-			}
-			group["proxies"] = newProxies
-		}
-		switch list := output["proxy-groups"].(type) {
-		case []map[string]interface{}: // after default-group injection
-			for _, group := range list {
-				expand(group)
-			}
-		case []interface{}: // noDefGrp: groups come straight from the user's YAML
-			for _, item := range list {
-				if group, ok := item.(map[string]interface{}); ok {
-					expand(group)
-				}
-			}
-		}
+	if err := buildProxyGroups(output, proxyTags, noDefGrp, sprtAll); err != nil {
+		return "", err
 	}
 
 	result, err := yaml.Marshal(output)
@@ -457,17 +409,159 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 	return string(result), nil
 }
 
-// hasGroupNamed checks whether a "proxy-groups" interface{} slice contains a group with the given name.
-func hasGroupNamed(pg interface{}, name string) bool {
-	list, ok := pg.([]interface{})
-	if !ok {
-		return false
+func buildProxyGroups(output map[string]interface{}, proxyTags []string, noDefGrp bool, sprtAll bool) error {
+	customGroups := proxyGroupList(output["proxy-groups"])
+	var defaultGroups []map[string]interface{}
+
+	if !noDefGrp {
+		if err := yaml.Unmarshal([]byte(ProxyGroups), &defaultGroups); err != nil {
+			return err
+		}
+		defaultGroups[1]["proxies"] = proxyTags
+		defaultGroups[0]["proxies"] = append([]string{defaultGroups[1]["name"].(string)}, proxyTags...)
+		// Don't inject a duplicate "Auto" if the user already defines one.
+		if hasGroupNamed(customGroups, "Auto") {
+			defaultGroups = defaultGroups[:1]
+			defaultGroups[0]["proxies"] = proxyTags
+		}
 	}
-	for _, item := range list {
-		group, ok := item.(map[string]interface{})
-		if !ok {
+	// noDefGrp leaves defaultGroups nil, so this is the custom groups alone.
+	proxyGroups := mergeProxyGroups(defaultGroups, customGroups)
+
+	if len(proxyGroups) > 0 || !noDefGrp {
+		resolveProxyGroupTags(proxyGroups, proxyTags, sprtAll)
+		output["proxy-groups"] = proxyGroups
+	}
+	return nil
+}
+
+func proxyGroupList(pg interface{}) []map[string]interface{} {
+	switch list := pg.(type) {
+	case []map[string]interface{}:
+		return list
+	case []interface{}:
+		groups := make([]map[string]interface{}, 0, len(list))
+		for _, item := range list {
+			if group, ok := item.(map[string]interface{}); ok {
+				groups = append(groups, group)
+			}
+		}
+		return groups
+	}
+	return nil
+}
+
+func mergeProxyGroups(base, extra []map[string]interface{}) []map[string]interface{} {
+	groups := make([]map[string]interface{}, 0, len(base)+len(extra))
+	index := make(map[string]int)
+
+	// Not append(base, extra...): that writes into base's backing array when it
+	// has spare capacity, which base[:1] above deliberately leaves.
+	all := make([]map[string]interface{}, 0, len(base)+len(extra))
+	all = append(all, base...)
+	all = append(all, extra...)
+
+	for _, group := range all {
+		if gname, ok := group["name"].(string); ok {
+			if i, exists := index[gname]; exists {
+				mergeProxyGroup(groups[i], group)
+				continue
+			}
+			index[gname] = len(groups)
+		}
+		groups = append(groups, group)
+	}
+	return groups
+}
+
+func mergeProxyGroup(dst, src map[string]interface{}) {
+	for key, value := range src {
+		switch key {
+		case "name":
+			continue
+		case "proxies":
+			dst["proxies"] = appendProxyNames(proxyNames(dst["proxies"]), proxyNames(value))
+		default:
+			if _, exists := dst[key]; !exists {
+				dst[key] = value
+			}
+		}
+	}
+}
+
+func resolveProxyGroupTags(groups []map[string]interface{}, proxyTags []string, sprtAll bool) {
+	for _, group := range groups {
+		proxies := proxyNames(group["proxies"])
+		if sprtAll {
+			proxies = expandAllProxyTag(proxies, proxyTags)
+		}
+		if filter, _ := group["filter"].(string); filter != "" {
+			proxies = appendProxyNames(proxies, filteredProxyTags(proxyTags, filter))
+		}
+		if len(proxies) > 0 {
+			group["proxies"] = proxies
+		}
+	}
+}
+
+func expandAllProxyTag(proxies []string, proxyTags []string) []string {
+	result := make([]string, 0, len(proxies)+len(proxyTags))
+	for _, proxy := range proxies {
+		if strings.EqualFold(proxy, "all") {
+			result = appendProxyNames(result, proxyTags)
+		} else {
+			result = appendProxyNames(result, []string{proxy})
+		}
+	}
+	return result
+}
+
+func filteredProxyTags(proxyTags []string, filter string) []string {
+	re, err := regexp.Compile(filter)
+	if err != nil {
+		logger.Warning("sub: invalid Clash proxy-group filter:", err)
+		return nil
+	}
+	var result []string
+	for _, tag := range proxyTags {
+		if re.MatchString(tag) {
+			result = append(result, tag)
+		}
+	}
+	return result
+}
+
+func proxyNames(value interface{}) []string {
+	switch list := value.(type) {
+	case []string:
+		return append([]string(nil), list...)
+	case []interface{}:
+		proxies := make([]string, 0, len(list))
+		for _, item := range list {
+			if name, ok := item.(string); ok {
+				proxies = append(proxies, name)
+			}
+		}
+		return proxies
+	}
+	return nil
+}
+
+func appendProxyNames(proxies []string, names []string) []string {
+	seen := make(map[string]bool, len(proxies)+len(names))
+	result := make([]string, 0, len(proxies)+len(names))
+	for _, name := range append(proxies, names...) {
+		if name == "" || seen[name] {
 			continue
 		}
+		seen[name] = true
+		result = append(result, name)
+	}
+	return result
+}
+
+func hasGroupNamed(groups []map[string]interface{}, name string) bool {
+	for _, group := range groups {
 		if gname, ok := group["name"].(string); ok && gname == name {
 			return true
 		}

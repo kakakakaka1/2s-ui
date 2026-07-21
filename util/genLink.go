@@ -187,10 +187,28 @@ func shadowsocksLink(
 
 	uriBase := fmt.Sprintf("ss://%s", toBase64([]byte(fmt.Sprintf("%s:%s", method, strings.Join(userPass, ":")))))
 
+	var plugin, pluginOpts string
+	if raw, ok := inbound["out_json"].(json.RawMessage); ok {
+		var outJson map[string]interface{}
+		if json.Unmarshal(raw, &outJson) == nil {
+			plugin, _ = outJson["plugin"].(string)
+			pluginOpts, _ = outJson["plugin_opts"].(string)
+		}
+	}
+
 	var links []string
 	for _, addr := range addrs {
 		port, _ := addr["server_port"].(float64)
-		links = append(links, fmt.Sprintf("%s@%s:%.0f#%s", uriBase, addr["server"].(string), port, addr["remark"].(string)))
+		link := fmt.Sprintf("%s@%s:%.0f", uriBase, addr["server"].(string), port)
+		if plugin != "" {
+			pluginVal := plugin
+			if pluginOpts != "" {
+				pluginVal += ";" + pluginOpts
+			}
+			link += "?plugin=" + url.QueryEscape(pluginVal)
+		}
+		link += "#" + addr["remark"].(string)
+		links = append(links, link)
 	}
 	return links
 }
@@ -589,6 +607,15 @@ func getTransportParams(t interface{}) []LinkParam {
 		}
 	case "ws":
 		if path, ok := trasport["path"].(string); ok {
+			if maxED, ok := trasport["max_early_data"].(float64); ok && maxED > 0 {
+				if edName, _ := trasport["early_data_header_name"].(string); edName == "Sec-WebSocket-Protocol" {
+					sep := "?"
+					if strings.Contains(path, "?") {
+						sep = "&"
+					}
+					path = fmt.Sprintf("%s%sed=%d", path, sep, int(maxED))
+				}
+			}
 			params = append(params, LinkParam{"path", path})
 		}
 		if headers, ok := trasport["headers"].(map[string]interface{}); ok {
