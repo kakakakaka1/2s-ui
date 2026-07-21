@@ -320,6 +320,11 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 				if len(wsHeaders) > 0 {
 					wsOpts["headers"] = wsHeaders
 				}
+				// mihomo needs both keys before it will use early data: the
+				// header name alone leaves max-early-data at 0, which disables it.
+				if maxED, ok := transport["max_early_data"].(float64); ok && maxED > 0 {
+					wsOpts["max-early-data"] = int(maxED)
+				}
 				if ed, ok := transport["early_data_header_name"].(string); ok {
 					wsOpts["early-data-header-name"] = ed
 				}
@@ -406,10 +411,9 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 
 func buildProxyGroups(output map[string]interface{}, proxyTags []string, noDefGrp bool, sprtAll bool) error {
 	customGroups := proxyGroupList(output["proxy-groups"])
-	proxyGroups := mergeProxyGroups(nil, customGroups)
+	var defaultGroups []map[string]interface{}
 
 	if !noDefGrp {
-		var defaultGroups []map[string]interface{}
 		if err := yaml.Unmarshal([]byte(ProxyGroups), &defaultGroups); err != nil {
 			return err
 		}
@@ -420,8 +424,9 @@ func buildProxyGroups(output map[string]interface{}, proxyTags []string, noDefGr
 			defaultGroups = defaultGroups[:1]
 			defaultGroups[0]["proxies"] = proxyTags
 		}
-		proxyGroups = mergeProxyGroups(defaultGroups, customGroups)
 	}
+	// noDefGrp leaves defaultGroups nil, so this is the custom groups alone.
+	proxyGroups := mergeProxyGroups(defaultGroups, customGroups)
 
 	if len(proxyGroups) > 0 || !noDefGrp {
 		resolveProxyGroupTags(proxyGroups, proxyTags, sprtAll)
@@ -450,7 +455,13 @@ func mergeProxyGroups(base, extra []map[string]interface{}) []map[string]interfa
 	groups := make([]map[string]interface{}, 0, len(base)+len(extra))
 	index := make(map[string]int)
 
-	for _, group := range append(base, extra...) {
+	// Not append(base, extra...): that writes into base's backing array when it
+	// has spare capacity, which base[:1] above deliberately leaves.
+	all := make([]map[string]interface{}, 0, len(base)+len(extra))
+	all = append(all, base...)
+	all = append(all, extra...)
+
+	for _, group := range all {
 		if gname, ok := group["name"].(string); ok {
 			if i, exists := index[gname]; exists {
 				mergeProxyGroup(groups[i], group)
