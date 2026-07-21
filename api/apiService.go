@@ -338,7 +338,10 @@ func (a *ApiService) Save(c *gin.Context, loginUser string) {
 }
 
 func (a *ApiService) RestartApp(c *gin.Context) {
-	err := a.PanelService.RestartPanel(3)
+	// 单位是 time.Duration(纳秒)。这里曾传裸 3,即 3 纳秒 ≈ 立即重启,响应能否在
+	// gin server 被拆掉前刷出去纯属竞态:前端 restartApp 靠 msg.success 才跳转,
+	// 于是"点了没反应还弹红字"。500ms 足够刷完响应,又不引入前端要配合的长窗口。
+	err := a.PanelService.RestartPanel(500 * time.Millisecond)
 	jsonMsg(c, "restartApp", err)
 }
 

@@ -569,11 +569,11 @@ const saveAndRestart = async (isWeb: boolean) => {
   const saveMsg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(settings.value) })
   if (!saveMsg.success) return
   oldSettings.value = { ...settings.value }
-  // 后端重启几乎即刻发生,restartApp 请求"失败"多半是响应没刷完连接就被掐——这恰是
-  // 重启已开始的信号,不能就此停下把用户留在死页;照样探活+跳转,真没重启则探活超时
-  // 后照样跳,由浏览器给出最终错误(与 waitReachable 的兜底哲学一致)。
-  // 故意用裸 fetch 而非 HttpUtils:后者会把这个预期内的失败经统一处理弹成红色错误,
-  // 与刚推送的"即将重启"成功提示自相矛盾。返回值本就不看,吞掉异常即可。
+  // 后端安排 500ms 后重启,响应通常能正常返回;但结果一律不看——重启窗口边界上仍可能
+  // 连接被掐,而那也只说明重启已开始,不该就此停下把用户留在死页。照样探活+跳转,真没
+  // 重启则探活超时后照样跳,由浏览器给出最终错误(与 waitReachable 的兜底哲学一致)。
+  // 故意用裸 fetch 而非 HttpUtils:后者会把这种失败经统一处理弹成红色错误,与刚推送的
+  // "即将重启"成功提示自相矛盾。返回值本就不看,吞掉异常即可。
   // 路径保持相对形式,与 axios 的 baseURL="./" 解析结果一致(勿写成绝对路径,会破坏
   // 自定义面板路径与 dev 模式);session cookie 由 same-origin 默认携带。
   await fetch('api/restartApp', { method: 'POST', credentials: 'same-origin' }).catch(() => {})
