@@ -479,7 +479,10 @@ func (a *AcmeService) IssueWeb(domain, email, method string, force, behindProxy 
 // 的「不在跑就空转退 0」只对【已知但未激活】的 unit 成立,unit 根本不存在时 systemd
 // 以 5 退出,会让 --installcert 整体判失败(彼时证书其实已落盘),且这条注定失败的
 // 命令还会被写进 acme.sh 的域名 conf,让此后每次续期都报错。
-// 故先确认 nginx 确实存在;不存在就留空,由调用方提示用户自行配置重载钩子。
+// 同理,systemctl 本身也必须存在:Alpine/OpenRC、Devuan、容器里直跑 nginx 的主机上
+// 它压根没有,命令以 127 退出,后果与 unit 不存在完全一样。这条路径经 behindProxy
+// 可达(代理只听 443 → 80 空闲 → standalone 验证 → 走到这里),不是理论情况。
+// 故两者都确认存在才发命令;缺任一就留空,由调用方提示用户自行配置重载钩子。
 func (a *AcmeService) buildReloadCmd(method string, behindProxy bool) string {
 	if method != methodNginx && !behindProxy {
 		return ""
@@ -488,6 +491,9 @@ func (a *AcmeService) buildReloadCmd(method string, behindProxy bool) string {
 	// :80 探测绑定。methodNginx 分支其实已由 resolveMethod 验过 Active,这里是为
 	// behindProxy 分支兜底。
 	if _, ok := resolveBin("nginx"); !ok {
+		return ""
+	}
+	if _, ok := resolveBin("systemctl"); !ok {
 		return ""
 	}
 	return "systemctl try-reload-or-restart nginx"
