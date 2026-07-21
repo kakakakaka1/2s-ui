@@ -370,7 +370,10 @@ func (a *ApiService) Save(c *gin.Context, loginUser string, fanout bool) {
 }
 
 func (a *ApiService) RestartApp(c *gin.Context) {
-	err := a.PanelService.RestartPanel(3)
+	// 单位是 time.Duration(纳秒)。这里曾传裸 3,即 3 纳秒 ≈ 立即重启,响应能否在
+	// gin server 被拆掉前刷出去纯属竞态:前端 restartApp 靠 msg.success 才跳转,
+	// 于是"点了没反应还弹红字"。500ms 足够刷完响应,又不引入前端要配合的长窗口。
+	err := a.PanelService.RestartPanel(500 * time.Millisecond)
 	jsonMsg(c, "restartApp", err)
 }
 
@@ -479,10 +482,26 @@ func (a *ApiService) DetectNginx(c *gin.Context) {
 func (a *ApiService) IssueCert(c *gin.Context) {
 	domain := c.Request.FormValue("domain")
 	email := c.Request.FormValue("email")
-	useNginx := c.Request.FormValue("nginx") == "true"
+	method := c.Request.FormValue("method")
 	force := c.Request.FormValue("force") == "true"
+	// webNginx=true 时反向代理(nginx)是证书消费方,续期后需要它 reload——由这里读
+	// 设置传入,AcmeService 自身不读库(见其结构体注释)。
+	// webNginx 只描述【面板侧】:订阅证书由 sub 服务经 certReloader 自行热加载,不该
+	// 继承面板的 nginx reloadcmd。scope 缺省按 web 处理,保持既有调用方的行为不变。
+	//
+	// 取值以前端表单为准、缺省才回退读库:前端是按【表单】上的开关决定申请后走哪条
+	// 收尾流程的,而开关改了没保存时库里还是旧值,两边据此分岔会装上一条对不上号的
+	// reloadcmd。字段缺席时回退读库,直接调 API 的场景行为不变。
+	behindProxy := false
+	if c.Request.FormValue("scope") != "sub" {
+		if v := c.Request.FormValue("behindProxy"); v != "" {
+			behindProxy = v == "true"
+		} else {
+			behindProxy, _ = a.SettingService.GetWebNginx()
+		}
+	}
 	var acme service.AcmeService
-	res, err := acme.IssueWeb(domain, email, useNginx, force)
+	res, err := acme.IssueWeb(domain, email, method, force, behindProxy)
 	if err != nil {
 		pureJsonMsg(c, false, err.Error())
 		return

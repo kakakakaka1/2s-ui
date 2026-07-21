@@ -50,6 +50,7 @@ var defaultValueMap = map[string]string{
 	"webKeyFile":         "",
 	"webCertMode":        "",
 	"webNginx":           "",
+	"webAcmeMethod":      "auto",
 	"webAcmeEmail":       "",
 	"webPath":            "/app/",
 	"webURI":             "",
@@ -228,6 +229,12 @@ func (s *SettingService) GetWebAcmeEmail() (string, error) {
 	return s.getString("webAcmeEmail")
 }
 
+// GetWebURI 返回面板对外地址的手工覆盖值(空表示未设置,由调用方自行推断)。
+// 反代场景下面板推断不出对外地址,只能靠它,参见 sui uri 与前端 restartApp。
+func (s *SettingService) GetWebURI() (string, error) {
+	return s.getString("webURI")
+}
+
 func (s *SettingService) GetWebPath() (string, error) {
 	webPath, err := s.getString("webPath")
 	if err != nil {
@@ -404,17 +411,25 @@ func (s *SettingService) GetFinalSubURI(host string) (string, error) {
 	if SubURI != "" {
 		return SubURI, nil
 	}
+	// TLS 判定必须与 sub.go 的实际行为一致:acme 模式,或证书/私钥【任一】非空即尝试
+	// TLS。早先这里要求两者都填,只填一个时 sub 服务已经在跑 https,本函数生成的订阅
+	// 链接却还是 http——而这是真正发给客户端的地址。判定与 sui uri 同源。
 	protocol := "http"
 	if (*allSetting)["subCertMode"] == "acme" ||
-		((*allSetting)["subKeyFile"] != "" && (*allSetting)["subCertFile"] != "") {
+		(*allSetting)["subKeyFile"] != "" || (*allSetting)["subCertFile"] != "" {
 		protocol = "https"
 	}
 	if (*allSetting)["subDomain"] != "" {
 		host = (*allSetting)["subDomain"]
 	}
-	port := ":" + (*allSetting)["subPort"]
-	if (port == "80" && protocol == "http") || (port == "443" && protocol == "https") {
+	// 协议默认端口不写进 URL。注意必须【先比较后拼冒号】:早先写成 ":"+port 再跟
+	// "80"/"443" 比,永远不相等,省略逻辑是死代码,链接一直带着 :80 / :443。
+	// 判定顺序与前端 buildURL 保持一致。
+	port := (*allSetting)["subPort"]
+	if port == "" || (protocol == "http" && port == "80") || (protocol == "https" && port == "443") {
 		port = ""
+	} else {
+		port = ":" + port
 	}
 	return protocol + "://" + host + port + (*allSetting)["subPath"], nil
 }

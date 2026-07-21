@@ -62,7 +62,7 @@ t() {
             prompt_sub_path)   echo "输入订阅路径（留空保留现有/默认值）：" ;;
             msg_initializing)  echo "初始化中，请稍候..." ;;
             msg_uninstalled)   echo "卸载成功，如需删除脚本，退出后执行 rm /usr/local/s-ui -f 命令。" ;;
-            msg_panel_uri)     echo "可通过以下地址访问面板：" ;;
+            msg_panel_uri)     echo "面板与订阅地址：" ;;
             msg_lang_select)   echo "选择语言 / Select language:" ;;
             msg_lang_saved)    echo "语言已切换为简体中文。" ;;
             msg_panel_version) echo "输入面板版本（如 0.0.1）：" ;;
@@ -122,7 +122,7 @@ t() {
             prompt_sub_path)   echo "輸入訂閱路徑（留空保留現有/預設值）：" ;;
             msg_initializing)  echo "初始化中，請稍候..." ;;
             msg_uninstalled)   echo "解除安裝成功，如需刪除腳本，離開後執行 rm /usr/local/s-ui -f 指令。" ;;
-            msg_panel_uri)     echo "可透過以下網址存取面板：" ;;
+            msg_panel_uri)     echo "面板與訂閱位址：" ;;
             msg_lang_select)   echo "選擇語言 / Select language:" ;;
             msg_lang_saved)    echo "語言已切換為繁體中文。" ;;
             msg_panel_version) echo "輸入面板版本（如 0.0.1）：" ;;
@@ -182,7 +182,7 @@ t() {
             prompt_sub_path)   echo "Путь подписки (пусто — оставить текущее/по умолчанию):" ;;
             msg_initializing)  echo "Инициализация, подождите..." ;;
             msg_uninstalled)   echo "Удаление выполнено. Чтобы удалить сам скрипт, после выхода выполните rm /usr/local/s-ui -f" ;;
-            msg_panel_uri)     echo "Панель доступна по следующим адресам:" ;;
+            msg_panel_uri)     echo "Адреса панели и подписки:" ;;
             msg_lang_select)   echo "Выберите язык / Select language:" ;;
             msg_lang_saved)    echo "Язык переключён на русский." ;;
             msg_panel_version) echo "Введите версию панели (например 0.0.1):" ;;
@@ -242,7 +242,7 @@ t() {
             prompt_sub_path)   echo "مسیر اشتراک (برای حفظ مقدار فعلی/پیش‌فرض خالی بگذارید):" ;;
             msg_initializing)  echo "در حال آماده‌سازی، لطفاً صبر کنید..." ;;
             msg_uninstalled)   echo "حذف نصب با موفقیت انجام شد. برای حذف این اسکریپت پس از خروج دستور rm /usr/local/s-ui -f را اجرا کنید." ;;
-            msg_panel_uri)     echo "پنل از طریق نشانی‌های زیر در دسترس است:" ;;
+            msg_panel_uri)     echo "نشانی‌های پنل و اشتراک:" ;;
             msg_lang_select)   echo "انتخاب زبان / Select language:" ;;
             msg_lang_saved)    echo "زبان به فارسی تغییر کرد." ;;
             msg_panel_version) echo "نسخه پنل را وارد کنید (مانند 0.0.1):" ;;
@@ -302,7 +302,7 @@ t() {
             prompt_sub_path)   echo "Nhập đường dẫn đăng ký (để trống giữ giá trị hiện tại/mặc định):" ;;
             msg_initializing)  echo "Đang khởi tạo, vui lòng đợi..." ;;
             msg_uninstalled)   echo "Gỡ cài đặt thành công. Nếu muốn xóa tập lệnh này, sau khi thoát hãy chạy lệnh rm /usr/local/s-ui -f" ;;
-            msg_panel_uri)     echo "Bạn có thể truy cập bảng điều khiển qua các địa chỉ sau:" ;;
+            msg_panel_uri)     echo "Địa chỉ bảng điều khiển và đăng ký:" ;;
             msg_lang_select)   echo "Chọn ngôn ngữ / Select language:" ;;
             msg_lang_saved)    echo "Đã chuyển ngôn ngữ sang tiếng Việt." ;;
             msg_panel_version) echo "Nhập phiên bản bảng điều khiển (ví dụ 0.0.1):" ;;
@@ -362,7 +362,7 @@ t() {
             prompt_sub_path)   echo "Enter the subscription path (leave blank for existing/default value):" ;;
             msg_initializing)  echo "Initializing, please wait..." ;;
             msg_uninstalled)   echo "Uninstalled Successfully, If you want to remove this script, then after exiting the script run" ;;
-            msg_panel_uri)     echo "You may access the Panel with following URL(s):" ;;
+            msg_panel_uri)     echo "Panel and subscription addresses:" ;;
             msg_lang_select)   echo "Select language / 选择语言:" ;;
             msg_lang_saved)    echo "Language switched to English." ;;
             msg_panel_version) echo "Enter the panel version (like 0.0.1):" ;;
