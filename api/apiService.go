@@ -456,9 +456,17 @@ func (a *ApiService) IssueCert(c *gin.Context) {
 	// 设置传入,AcmeService 自身不读库(见其结构体注释)。
 	// webNginx 只描述【面板侧】:订阅证书由 sub 服务经 certReloader 自行热加载,不该
 	// 继承面板的 nginx reloadcmd。scope 缺省按 web 处理,保持既有调用方的行为不变。
+	//
+	// 取值以前端表单为准、缺省才回退读库:前端是按【表单】上的开关决定申请后走哪条
+	// 收尾流程的,而开关改了没保存时库里还是旧值,两边据此分岔会装上一条对不上号的
+	// reloadcmd。字段缺席时回退读库,直接调 API 的场景行为不变。
 	behindProxy := false
 	if c.Request.FormValue("scope") != "sub" {
-		behindProxy, _ = a.SettingService.GetWebNginx()
+		if v := c.Request.FormValue("behindProxy"); v != "" {
+			behindProxy = v == "true"
+		} else {
+			behindProxy, _ = a.SettingService.GetWebNginx()
+		}
 	}
 	var acme service.AcmeService
 	res, err := acme.IssueWeb(domain, email, method, force, behindProxy)

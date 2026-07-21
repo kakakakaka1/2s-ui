@@ -516,6 +516,9 @@ const issueCert = async (scope: 'web' | 'sub' = 'web', force = false) => {
     force: force ? 'true' : 'false',
     // 后端据此决定是否套用面板的反代设置(webNginx),订阅侧不继承
     scope,
+    // 反代开关按【表单】上传:下面挑收尾流程用的也是表单值,开关改了没保存时库里还是
+    // 旧值,让后端自己读库会与这里分岔(装上一条对不上号的 reloadcmd)。订阅侧不带。
+    ...(isWeb ? { behindProxy: settings.value.webNginx === 'true' ? 'true' : 'false' } : {}),
   })
   if (!r.success || !r.obj) {
     loading.value = false
