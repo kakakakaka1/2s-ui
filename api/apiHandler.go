@@ -62,6 +62,8 @@ func (a *APIHandler) postHandler(c *gin.Context) {
 		a.ApiService.TestAcme(c)
 	case "issueCert":
 		a.ApiService.IssueCert(c)
+	case "setupNginxProxy":
+		a.ApiService.SetupNginxProxy(c)
 	case "importdb":
 		a.ApiService.ImportDb(c)
 	case "addToken":

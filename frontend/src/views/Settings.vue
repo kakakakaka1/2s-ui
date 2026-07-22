@@ -327,7 +327,8 @@ import ToggleRow from '@/components/ui/ToggleRow.vue'
 
 const tab = ref('interface')
 const loading = ref(false)
-const oldSettings = ref({})
+// 保存时要跟当前值逐字段比对,判断反代配置需不需要重新生成(见 save)
+const oldSettings = ref<Record<string, any>>({})
 const jsonEditor = ref(false)
 const clashEditor = ref(false)
 
@@ -400,7 +401,74 @@ const setData = (data: any) => {
   oldSettings.value = { ...settings.value }
 }
 
+// nginx 那份配置里写死了这些值,任何一个变了都得重新生成并重启面板
+const proxyInputs = ['webDomain', 'webPort', 'webPath', 'webListen', 'webCertFile', 'webKeyFile']
+
 const save = async () => {
+  const now = settings.value as Record<string, any>
+  const before = oldSettings.value
+  const on = now.webNginx === 'true'
+  const wasOn = before.webNginx === 'true'
+  const domainBefore = before.webDomain
+
+  // 只要反代开着就同步一次 nginx——不止是刚打开的那一次。改了端口/路径/域名要跟着改,
+  // 而「开关开着、配置却不在」的实例(升级上来的,或者配置被手工删过)也能靠这一步自愈。
+  // 后端在内容没变且已生效时会直接返回,不会白 reload 一次 nginx。
+  if (on) {
+    loading.value = true
+    const r = await HttpUtils.post('api/setupNginxProxy', {
+      enable: 'true',
+      domain: now.webDomain,
+      port: now.webPort,
+      webPath: now.webPath,
+      listen: now.webListen,
+      listenSet: 'true',
+      certFile: now.webCertFile,
+      keyFile: now.webKeyFile,
+    })
+    loading.value = false
+    // 生成失败就【不保存】:面板继续自己终结 TLS,访问方式不变。
+    // 反过来先存后配的话,面板已经改跑明文 HTTP 而 nginx 没接住,人就进不来了。
+    if (!r.success) return
+    if (r.obj?.url) {
+      // 对外地址现在由 nginx 那份配置决定,面板自己推断不出来(它只知道内网的 http://ip:端口)。
+      // 顺手填好,重启后的跳转就落在真正能打开的地址上。用户手填过就不动。
+      if (!now.webURI) settings.value.webURI = r.obj.url
+      push.success({
+        title: i18n.global.t('setting.proxyGenerated'),
+        duration: 9000,
+        message: i18n.global.t('setting.proxyGeneratedHint', { url: r.obj.url, conf: r.obj.confFile }),
+      })
+    }
+  }
+
+  // 换域名或关掉反代,旧域名那份配置就该清掉:关掉时它还在把 443 的明文请求转给一个
+  // 已经改回 TLS 的端口(结果是 502),换域名时它则再没人引用。必须赶在下面可能发生的
+  // 页面跳转之前做完。
+  if (wasOn && domainBefore && (!on || domainBefore !== now.webDomain)) {
+    await HttpUtils.post('api/setupNginxProxy', { enable: 'false', domain: domainBefore })
+  }
+  // 关掉反代后 https://域名/路径 就没人监听了。若对外地址正是开启时自动填的那个,
+  // 清空它,让跳转按面板自身的域名/端口重新推断;用户自己填的照旧不动。
+  if (!on && wasOn && now.webURI === 'https://' + domainBefore + before.webPath) {
+    settings.value.webURI = ''
+  }
+
+  // 面板只在启动时读 webNginx / 端口 / 监听地址,所以这些改动必须带一次重启:
+  // 开启后不重启,面板还在原端口上说 TLS,而 nginx 已经用明文 HTTP 连它 —— 443 全站 502;
+  // 关闭后不重启则反过来。saveAndRestart 会保存、重启、探活,再跳到新地址。
+  if (on !== wasOn || (on && proxyInputs.some(k => now[k] !== before[k]))) {
+    loading.value = true
+    push.success({
+      title: i18n.global.t('success'),
+      duration: 8000,
+      message: i18n.global.t('setting.proxyRestarting'),
+    })
+    await saveAndRestart(true)
+    loading.value = false
+    return
+  }
+
   loading.value = true
   const msg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(settings.value) })
   if (msg.success) {

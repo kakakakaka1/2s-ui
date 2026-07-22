@@ -481,6 +481,60 @@ func (a *ApiService) DetectNginx(c *gin.Context) {
 	jsonObj(c, acme.DetectNginx(), nil)
 }
 
+// SetupNginxProxy 按当前表单值生成面板的 nginx 反向代理配置(enable=false 时删除它)。
+// 前端在【保存设置之前】调用:只有这里成功了,把面板切成明文 HTTP 才是安全的。
+// 参数取表单值、缺席才回退读库——开关和端口/路径常常是同一次改动里一起改的,
+// 读库会拿到还没保存的旧值,生成出一份指向错误端口的配置。
+func (a *ApiService) SetupNginxProxy(c *gin.Context) {
+	var acme service.AcmeService
+
+	domain := c.Request.FormValue("domain")
+	if domain == "" {
+		domain, _ = a.SettingService.GetWebDomain()
+	}
+
+	if c.Request.FormValue("enable") == "false" {
+		if err := acme.RemovePanelProxy(domain); err != nil {
+			pureJsonMsg(c, false, err.Error())
+			return
+		}
+		pureJsonMsg(c, true, "")
+		return
+	}
+
+	opt := service.PanelProxyOptions{Domain: domain}
+
+	if v := c.Request.FormValue("port"); v != "" {
+		opt.Port, _ = strconv.Atoi(v)
+	}
+	if opt.Port <= 0 {
+		opt.Port, _ = a.SettingService.GetPort()
+	}
+	if opt.WebPath = c.Request.FormValue("webPath"); opt.WebPath == "" {
+		opt.WebPath, _ = a.SettingService.GetWebPath()
+	}
+	// 监听地址允许为空(= 0.0.0.0),没法用空值区分「没传」和「传了空」,
+	// 所以用一个独立字段表示表单确实带了这一项。
+	if c.Request.FormValue("listenSet") == "true" {
+		opt.Listen = c.Request.FormValue("listen")
+	} else {
+		opt.Listen, _ = a.SettingService.GetListen()
+	}
+	if opt.CertFile = c.Request.FormValue("certFile"); opt.CertFile == "" {
+		opt.CertFile, _ = a.SettingService.GetCertFile()
+	}
+	if opt.KeyFile = c.Request.FormValue("keyFile"); opt.KeyFile == "" {
+		opt.KeyFile, _ = a.SettingService.GetKeyFile()
+	}
+
+	res, err := acme.EnsurePanelProxy(opt)
+	if err != nil {
+		pureJsonMsg(c, false, err.Error())
+		return
+	}
+	jsonMsgObj(c, "", res, nil)
+}
+
 func (a *ApiService) IssueCert(c *gin.Context) {
 	domain := c.Request.FormValue("domain")
 	email := c.Request.FormValue("email")
