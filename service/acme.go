@@ -334,25 +334,37 @@ func (a *AcmeService) ensureNginxServerBlock(domain string) error {
 	return nil
 }
 
-// ===== 面板反向代理:由面板自动生成、自动校验、失败自动回滚 =====
+// ===== 反向代理 vhost:由面板自动生成、自动校验、失败自动回滚 =====
 
-const nginxPanelConfPrefix = "s-ui-panel-"
+// 生成的文件是 s-ui-proxy-<域名>.conf。前缀刻意和 ACME 验证块的 s-ui-acme- 区分开:
+// 清理不再需要的配置时要能 glob 出「我们生成的反代」,又绝不能扫到验证块——
+// 那个删掉证书就续不了期了。
+const nginxProxyConfPrefix = "s-ui-proxy-"
 
-// PanelProxyOptions 是生成反代配置需要的全部输入,全部由调用方从设置里取。
-type PanelProxyOptions struct {
-	Domain   string // 对外域名,也是 server_name
-	Port     int    // 面板监听端口
-	WebPath  string // 面板路径,形如 /app/
-	Listen   string // 面板监听地址,空表示 0.0.0.0
-	CertFile string // 设置里手填的证书,仅当面板自己申请的那份不存在时才用
-	KeyFile  string
+// ProxyEndpoint 是一个域名下的一条反代规则:把 Path 交给本机的某个端口。
+// 面板和订阅各算一条;两者共用域名时会落进同一个 server 块的两个 location——
+// 各生成一份 server 块会被 nginx 判 conflicting server name 而忽略掉后一个。
+type ProxyEndpoint struct {
+	Name   string // 只用于配置里的注释和日志:panel / sub
+	Path   string // 形如 /app/
+	Listen string // 上游监听地址,空表示 0.0.0.0
+	Port   int
 }
 
-// PanelProxyResult 回给前端展示:生成了哪个文件、对外地址是什么。
-type PanelProxyResult struct {
-	ConfFile string `json:"confFile"`
-	URL      string `json:"url"`
-	CertFile string `json:"certFile"`
+// VhostOptions 描述一个域名要生成的整份配置。
+type VhostOptions struct {
+	Domain    string
+	CertFile  string // 设置里手填的证书,仅当 /root/cert/<域名>/ 下那份不存在时才用
+	KeyFile   string
+	Endpoints []ProxyEndpoint
+}
+
+// VhostResult 回给前端展示:生成了哪个文件、每个端点的对外地址是什么。
+type VhostResult struct {
+	Domain   string   `json:"domain"`
+	ConfFile string   `json:"confFile"`
+	CertFile string   `json:"certFile"`
+	URLs     []string `json:"urls"`
 }
 
 func fileReadable(p string) bool {
@@ -419,19 +431,19 @@ func detectNginxEnv() nginxEnv {
 	return env
 }
 
-// resolvePanelCert 挑选喂给 nginx 的证书:优先面板自己用 acme.sh 申请的那份
-// (/root/cert/{域名}/),它的路径固定、续期时被原地覆盖;没有才回退到设置里手填的路径。
-func resolvePanelCert(opt PanelProxyOptions) (certFile, keyFile string, err error) {
-	autoCert := filepath.Join(certBaseDir, opt.Domain, "fullchain.pem")
-	autoKey := filepath.Join(certBaseDir, opt.Domain, "privkey.pem")
+// resolveDomainCert 挑选喂给 nginx 的证书:优先面板自己用 acme.sh 申请的那份
+// (/root/cert/{域名}/),它的路径固定、续期时被原地覆盖;没有才回退到手填的路径。
+func resolveDomainCert(domain, certFile, keyFile string) (string, string, error) {
+	autoCert := filepath.Join(certBaseDir, domain, "fullchain.pem")
+	autoKey := filepath.Join(certBaseDir, domain, "privkey.pem")
 	if fileReadable(autoCert) && fileReadable(autoKey) {
 		return autoCert, autoKey, nil
 	}
-	if fileReadable(opt.CertFile) && fileReadable(opt.KeyFile) {
-		return opt.CertFile, opt.KeyFile, nil
+	if fileReadable(certFile) && fileReadable(keyFile) {
+		return certFile, keyFile, nil
 	}
-	return "", "", common.NewErrorf("找不到 %s 的证书:请先点「申请证书 (acme.sh)」,"+
-		"或在设置里填上已有证书的路径。(已查 %s 与设置里的证书路径)", opt.Domain, filepath.Dir(autoCert))
+	return "", "", common.NewErrorf("找不到 %s 的证书:请先为它申请证书,"+
+		"或登记一份已有的证书文件。(已查 %s 与设置里填写的证书路径)", domain, filepath.Dir(autoCert))
 }
 
 // upstreamAddr 是 nginx 要回连的面板地址。面板监听 0.0.0.0/空时回连 127.0.0.1;
@@ -446,30 +458,51 @@ func upstreamAddr(listen string, port int) string {
 	return host + ":" + strconv.Itoa(port)
 }
 
-// buildPanelProxyConf 拼出反代配置。纯函数(本机事实全从 env 传入),
-// 好在没有 nginx 的机器上也能验证输出。
-func buildPanelProxyConf(opt PanelProxyOptions, certFile, keyFile string, env nginxEnv) string {
+// normalizeProxyPath 把路径规整成前后都有斜杠的形式(location 前缀匹配要靠它)。
+func normalizeProxyPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		p = "/"
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	if !strings.HasSuffix(p, "/") {
+		p += "/"
+	}
+	return p
+}
+
+// buildVhostConf 拼出一个域名的整份配置:一个 server 块,每个端点一个 location。
+// 纯函数(本机事实全从 env 传入),好在没有 nginx 的机器上也能验证输出。
+func buildVhostConf(opt VhostOptions, certFile, keyFile string, env nginxEnv) string {
 	listen := "    listen 443 ssl" + env.http2Listen + ";\n"
 	if env.ipv6 {
 		listen += "    listen [::]:443 ssl" + env.http2Listen + ";\n"
 	}
 
-	webPath := opt.WebPath
-	if !strings.HasPrefix(webPath, "/") {
-		webPath = "/" + webPath
-	}
-	if !strings.HasSuffix(webPath, "/") {
-		webPath += "/"
-	}
-	// 用户手输对外地址时几乎一定会漏掉尾斜杠,而 location /app/ 是前缀匹配、
-	// 配不上 /app。补一条精确跳转,省掉一个必然会踩的 404。
-	redirect := ""
-	if trimmed := strings.TrimSuffix(webPath, "/"); trimmed != "" {
-		redirect = "    location = " + trimmed + " { return 301 " + webPath + "; }\n\n"
+	var locations strings.Builder
+	for _, ep := range opt.Endpoints {
+		path := normalizeProxyPath(ep.Path)
+		locations.WriteString("\n    # " + ep.Name + "\n")
+		// 手输对外地址时几乎一定会漏掉尾斜杠,而 location /app/ 是前缀匹配、配不上 /app。
+		// 补一条精确跳转,省掉一个必然会踩的 404。路径就是 / 时无需(也不能)加。
+		if trimmed := strings.TrimSuffix(path, "/"); trimmed != "" {
+			locations.WriteString("    location = " + trimmed + " { return 301 " + path + "; }\n")
+		}
+		locations.WriteString("    location " + path + " {\n" +
+			"        proxy_pass http://" + upstreamAddr(ep.Listen, ep.Port) + ";\n" +
+			"        # 面板/订阅都校验 Host 必须等于设置里的域名,少了这行会对每个请求回 403\n" +
+			"        proxy_set_header Host              $host;\n" +
+			"        proxy_set_header X-Real-IP         $remote_addr;\n" +
+			"        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;\n" +
+			"        proxy_set_header X-Forwarded-Proto $scheme;\n" +
+			"        proxy_read_timeout 300s;\n" +
+			"    }\n")
 	}
 
 	return "# Generated by s-ui for " + opt.Domain + " - do not edit.\n" +
-		"# The panel rewrites this file whenever the reverse-proxy setting is saved.\n" +
+		"# The panel rewrites this file whenever the reverse-proxy settings are saved.\n" +
 		"server {\n" +
 		listen +
 		env.http2Directive +
@@ -480,17 +513,7 @@ func buildPanelProxyConf(opt PanelProxyOptions, certFile, keyFile string, env ng
 		"    ssl_protocols       TLSv1.2 TLSv1.3;\n" +
 		"    ssl_session_cache   shared:SSL:10m;\n" +
 		"    ssl_session_timeout 1d;\n" +
-		"\n" +
-		redirect +
-		"    location " + webPath + " {\n" +
-		"        proxy_pass http://" + upstreamAddr(opt.Listen, opt.Port) + ";\n" +
-		"        # 面板校验 Host 必须等于设置里的域名,少了这行会对每个请求回 403\n" +
-		"        proxy_set_header Host              $host;\n" +
-		"        proxy_set_header X-Real-IP         $remote_addr;\n" +
-		"        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;\n" +
-		"        proxy_set_header X-Forwarded-Proto $scheme;\n" +
-		"        proxy_read_timeout 300s;\n" +
-		"    }\n" +
+		locations.String() +
 		"}\n"
 }
 
@@ -536,10 +559,10 @@ func nginxProxiesPort(conf string, port int) bool {
 	return false
 }
 
-// panelProxyConfPath 是本域名对应的反代配置文件路径。名字里带域名,
-// 换域名时生成新文件、旧的由调用方清掉,永远不碰用户自己写的配置。
-func panelProxyConfPath(domain string) string {
-	return filepath.Join(nginxConfDir, nginxPanelConfPrefix+domain+".conf")
+// proxyConfPath 是本域名对应的反代配置文件路径。名字里带域名,
+// 换域名时生成新文件、旧的由 SyncVhosts 清掉,永远不碰用户自己写的配置。
+func proxyConfPath(domain string) string {
+	return filepath.Join(nginxConfDir, nginxProxyConfPrefix+domain+".conf")
 }
 
 // confIsEffective 判断这份文件是否真的被 nginx 读进了生效配置。
@@ -550,13 +573,13 @@ func confIsEffective(effectiveConf, confPath string) bool {
 	return strings.Contains(effectiveConf, "# configuration file "+confPath+":")
 }
 
-// EnsurePanelProxy 自动生成面板的 nginx 反向代理配置并确认它真的生效。
+// EnsureVhost 为一个域名生成 nginx 反向代理配置并确认它真的生效。
 //
 // 全过程「验证通过才算成功」:nginx -t 不过、和用户已有配置撞 server_name、reload 失败、
 // 或者块压根没进入生效配置,都会删掉文件、把 nginx 恢复原状,再带着 nginx 自己的输出报错。
-// 调用方必须在这里成功之后才把面板切成明文 HTTP —— 顺序反了就会出现
-// 「面板不再终结 TLS,前面又没人接管」的窗口,而关掉开关的入口正在那个打不开的页面里。
-func (a *AcmeService) EnsurePanelProxy(opt PanelProxyOptions) (*PanelProxyResult, error) {
+// 调用方必须在这里成功之后才把面板/订阅切成明文 HTTP —— 顺序反了就会出现
+// 「服务不再终结 TLS,前面又没人接管」的窗口,而关掉开关的入口正在那个打不开的页面里。
+func (a *AcmeService) EnsureVhost(opt VhostOptions) (*VhostResult, error) {
 	if runtime.GOOS == "windows" {
 		return nil, common.NewError("Windows 不支持自动生成 nginx 配置")
 	}
@@ -567,8 +590,13 @@ func (a *AcmeService) EnsurePanelProxy(opt PanelProxyOptions) (*PanelProxyResult
 	if !validDomain(opt.Domain) {
 		return nil, common.NewErrorf("域名含非法字符: %q", opt.Domain)
 	}
-	if opt.Port <= 0 {
-		return nil, common.NewErrorf("面板端口无效: %d", opt.Port)
+	if len(opt.Endpoints) == 0 {
+		return nil, common.NewErrorf("%s 没有需要反代的服务", opt.Domain)
+	}
+	for _, ep := range opt.Endpoints {
+		if ep.Port <= 0 {
+			return nil, common.NewErrorf("%s 的端口无效: %d", ep.Name, ep.Port)
+		}
 	}
 
 	status := a.DetectNginx()
@@ -583,12 +611,12 @@ func (a *AcmeService) EnsurePanelProxy(opt PanelProxyOptions) (*PanelProxyResult
 			"(Alpine 通常是 /etc/nginx/http.d,源码编译的 nginx 可能没有此目录)", nginxConfDir)
 	}
 
-	certFile, keyFile, err := resolvePanelCert(opt)
+	certFile, keyFile, err := resolveDomainCert(opt.Domain, opt.CertFile, opt.KeyFile)
 	if err != nil {
 		return nil, err
 	}
 
-	confPath := panelProxyConfPath(opt.Domain)
+	confPath := proxyConfPath(opt.Domain)
 	// 覆盖前留个底,失败时要原样还回去(重复生成是常态:改端口、改路径都会走到这里)
 	previous, readErr := os.ReadFile(confPath)
 	hadPrevious := readErr == nil
@@ -602,22 +630,19 @@ func (a *AcmeService) EnsurePanelProxy(opt PanelProxyOptions) (*PanelProxyResult
 		_, _ = runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx")
 	}
 
-	webPath := opt.WebPath
-	if !strings.HasSuffix(webPath, "/") {
-		webPath += "/"
+	result := &VhostResult{Domain: opt.Domain, ConfFile: confPath, CertFile: certFile}
+	for _, ep := range opt.Endpoints {
+		result.URLs = append(result.URLs, "https://"+opt.Domain+normalizeProxyPath(ep.Path))
 	}
-	result := &PanelProxyResult{
-		ConfFile: confPath,
-		URL:      "https://" + opt.Domain + webPath,
-		CertFile: certFile,
-	}
+	// 复验用第一个端点的端口即可:整份配置是一起写进去的,一个 location 在、其余就在
+	probePort := opt.Endpoints[0].Port
 
-	newContent := buildPanelProxyConf(opt, certFile, keyFile, detectNginxEnv())
+	newContent := buildVhostConf(opt, certFile, keyFile, detectNginxEnv())
 	// 调用方每次保存设置都会走到这里(这样「开关开着但配置丢了」的老实例也能自愈)。
 	// 内容一模一样、而且确实已经在生效配置里,就什么都不用做——否则改个时区都要 reload 一次 nginx。
 	if hadPrevious && string(previous) == newContent {
 		if effective, err := runCmd(cmdDetectTO, "/root", "nginx", "-T"); err == nil &&
-			confIsEffective(effective, confPath) && nginxProxiesPort(effective, opt.Port) {
+			confIsEffective(effective, confPath) && nginxProxiesPort(effective, probePort) {
 			return result, nil
 		}
 	}
@@ -636,8 +661,8 @@ func (a *AcmeService) EnsurePanelProxy(opt PanelProxyOptions) (*PanelProxyResult
 	if strings.Contains(out, "conflicting server name") && strings.Contains(out, opt.Domain) {
 		restore()
 		return nil, common.NewErrorf("nginx 里已经有 %s 的 443 配置了,自动生成的会被忽略;"+
-			"已回滚。请直接在你已有的那份配置里把 %s 反代到 http://%s,并加上 proxy_set_header Host $host;",
-			opt.Domain, opt.WebPath, upstreamAddr(opt.Listen, opt.Port))
+			"已回滚。请在你已有的那份配置里把 %s 反代到 http://%s,并加上 proxy_set_header Host $host;",
+			opt.Domain, normalizeProxyPath(opt.Endpoints[0].Path), upstreamAddr(opt.Endpoints[0].Listen, opt.Endpoints[0].Port))
 	}
 	if out, err := runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx"); err != nil {
 		restore()
@@ -647,42 +672,68 @@ func (a *AcmeService) EnsurePanelProxy(opt PanelProxyOptions) (*PanelProxyResult
 	// 都常见),上面每一步都会「成功」,而文件根本没被解析。这一步把它变成明确的失败。
 	// 两个判据都要:文件确实被读了(confIsEffective),且里面的反代端口确实是面板的。
 	if effective, err := runCmd(cmdDetectTO, "/root", "nginx", "-T"); err != nil ||
-		!confIsEffective(effective, confPath) || !nginxProxiesPort(effective, opt.Port) {
+		!confIsEffective(effective, confPath) || !nginxProxiesPort(effective, probePort) {
 		restore()
 		return nil, common.NewErrorf("已写入 %s,但它没有出现在 nginx 的生效配置里,"+
 			"本机 nginx.conf 可能没有 include %s/*.conf;已回滚",
 			confPath, nginxConfDir)
 	}
 
-	logger.Info("已生成面板反向代理配置:", confPath)
+	logger.Info("已生成反向代理配置:", confPath)
 	return result, nil
 }
 
-// RemovePanelProxy 删掉自动生成的反代配置。关掉反代模式时必须调用:面板会变回自己
-// 终结 TLS,而那份配置还在把 443 的明文 HTTP 请求转给一个已经在说 TLS 的端口,结果是 502。
-// 只删自己生成的文件,用户手写的配置一律不碰。
-func (a *AcmeService) RemovePanelProxy(domain string) error {
+// SyncVhosts 让 nginx 里「我们生成的那些反代配置」与传入的期望状态一致:
+// specs 里的每个域名各生成一份,而以前生成过、现在不在 specs 里的一律删掉。
+//
+// 删除这一步是必须的,漏了会留下两种坏状态:关掉反代后 443 还在把明文请求转给一个
+// 已经改回 TLS 的端口(502),换域名后旧域名的块还赖在 nginx 里。
+// 清理只扫 s-ui-proxy-* 前缀,碰不到 ACME 验证块,更碰不到用户自己写的配置。
+func (a *AcmeService) SyncVhosts(specs []VhostOptions) ([]*VhostResult, error) {
 	if runtime.GOOS == "windows" {
-		return nil
+		if len(specs) == 0 {
+			return nil, nil
+		}
+		return nil, common.NewError("Windows 不支持自动生成 nginx 配置")
 	}
-	domain = strings.TrimSpace(domain)
-	if domain == "" || !validDomain(domain) {
-		return nil
+
+	wanted := make(map[string]bool, len(specs))
+	for _, s := range specs {
+		wanted[strings.TrimSpace(s.Domain)] = true
 	}
-	confPath := panelProxyConfPath(domain)
-	if _, err := os.Stat(confPath); err != nil {
-		return nil // 没生成过,无事可做
+
+	// 先删多余的:生成新配置前腾掉旧域名,免得两份配置在 nginx 里短暂同时存在
+	removed := 0
+	if entries, err := filepath.Glob(filepath.Join(nginxConfDir, nginxProxyConfPrefix+"*.conf")); err == nil {
+		for _, p := range entries {
+			domain := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), nginxProxyConfPrefix), ".conf")
+			if wanted[domain] {
+				continue
+			}
+			if err := os.Remove(p); err != nil {
+				logger.Warning("删除失效的反代配置失败 ", p, ": ", err)
+				continue
+			}
+			logger.Info("已删除不再需要的反向代理配置:", p)
+			removed++
+		}
 	}
-	if err := os.Remove(confPath); err != nil {
-		return common.NewErrorf("删除 %s 失败: %v", confPath, err)
+	// 只有删除、没有新增时也要 reload,否则 nginx 内存里还留着那个块
+	if removed > 0 && len(specs) == 0 {
+		if out, err := runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx"); err != nil {
+			logger.Warning("已删除反代配置,但 reload nginx 失败(重启 nginx 即可生效):", out)
+		}
 	}
-	// reload 失败不算致命:文件已经删了,nginx 下次重载自然就忘了这个块
-	if out, err := runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx"); err != nil {
-		logger.Warning("已删除 ", confPath, ",但 reload nginx 失败(重启 nginx 即可生效):", out)
-	} else {
-		logger.Info("已删除面板反向代理配置:", confPath)
+
+	var results []*VhostResult
+	for _, spec := range specs {
+		res, err := a.EnsureVhost(spec)
+		if err != nil {
+			return results, err
+		}
+		results = append(results, res)
 	}
-	return nil
+	return results, nil
 }
 
 // ensureAcmeSh 确保 acme.sh 可用,返回其可执行路径与对应 HOME;缺失时自动安装。

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -107,7 +108,12 @@ func (s *Server) Start() (err error) {
 	}
 
 	scheme := "http"
-	if certMode == "acme" {
+	nginxMode, _ := s.SettingService.GetSubNginx()
+	if runtime.GOOS != "windows" && nginxMode {
+		// 反向代理终结 TLS:订阅服务自身只跑 HTTP,不加载任何证书。
+		// 与 web.go 一样放在最前面短路——它一开,证书字段就全都不该再看。
+		scheme = "http (behind nginx)"
+	} else if certMode == "acme" {
 		// Auto-issue/renew via Let's Encrypt (HTTP-01); fall back to HTTP on
 		// any failure so a bad domain or blocked port 80 never breaks the sub server.
 		domain, _ := s.SettingService.GetSubDomain()

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shenaba/2s-ui/config"
@@ -481,53 +482,110 @@ func (a *ApiService) DetectNginx(c *gin.Context) {
 	jsonObj(c, acme.DetectNginx(), nil)
 }
 
-// SetupNginxProxy 按当前表单值生成面板的 nginx 反向代理配置(enable=false 时删除它)。
-// 前端在【保存设置之前】调用:只有这里成功了,把面板切成明文 HTTP 才是安全的。
-// 参数取表单值、缺席才回退读库——开关和端口/路径常常是同一次改动里一起改的,
-// 读库会拿到还没保存的旧值,生成出一份指向错误端口的配置。
-func (a *ApiService) SetupNginxProxy(c *gin.Context) {
-	var acme service.AcmeService
+// proxyForm 是前端传来的一侧(面板或订阅)的反代输入。
+// 每个字段都可能缺席,缺席就回退读库——但开关、端口、路径常常是同一次改动里一起改的,
+// 所以【表单值优先】:读库会拿到还没保存的旧值,生成出一份指向错误端口的配置。
+type proxyForm struct {
+	enabled bool
+	domain  string
+	path    string
+	listen  string
+	port    int
+	cert    string
+	key     string
+}
 
-	domain := c.Request.FormValue("domain")
-	if domain == "" {
-		domain, _ = a.SettingService.GetWebDomain()
-	}
+func (a *ApiService) readProxyForm(c *gin.Context, prefix string, scope string) proxyForm {
+	get := func(name string) string { return c.Request.FormValue(prefix + name) }
 
-	if c.Request.FormValue("enable") == "false" {
-		if err := acme.RemovePanelProxy(domain); err != nil {
-			pureJsonMsg(c, false, err.Error())
-			return
+	f := proxyForm{enabled: get("Nginx") == "true"}
+
+	if f.domain = get("Domain"); f.domain == "" {
+		if scope == "web" {
+			f.domain, _ = a.SettingService.GetWebDomain()
+		} else {
+			f.domain, _ = a.SettingService.GetSubDomain()
 		}
-		pureJsonMsg(c, true, "")
-		return
 	}
-
-	opt := service.PanelProxyOptions{Domain: domain}
-
-	if v := c.Request.FormValue("port"); v != "" {
-		opt.Port, _ = strconv.Atoi(v)
+	if v := get("Port"); v != "" {
+		f.port, _ = strconv.Atoi(v)
 	}
-	if opt.Port <= 0 {
-		opt.Port, _ = a.SettingService.GetPort()
+	if f.port <= 0 {
+		if scope == "web" {
+			f.port, _ = a.SettingService.GetPort()
+		} else {
+			f.port, _ = a.SettingService.GetSubPort()
+		}
 	}
-	if opt.WebPath = c.Request.FormValue("webPath"); opt.WebPath == "" {
-		opt.WebPath, _ = a.SettingService.GetWebPath()
+	if f.path = get("Path"); f.path == "" {
+		if scope == "web" {
+			f.path, _ = a.SettingService.GetWebPath()
+		} else {
+			f.path, _ = a.SettingService.GetSubPath()
+		}
 	}
 	// 监听地址允许为空(= 0.0.0.0),没法用空值区分「没传」和「传了空」,
 	// 所以用一个独立字段表示表单确实带了这一项。
-	if c.Request.FormValue("listenSet") == "true" {
-		opt.Listen = c.Request.FormValue("listen")
+	if get("ListenSet") == "true" {
+		f.listen = get("Listen")
+	} else if scope == "web" {
+		f.listen, _ = a.SettingService.GetListen()
 	} else {
-		opt.Listen, _ = a.SettingService.GetListen()
+		f.listen, _ = a.SettingService.GetSubListen()
 	}
-	if opt.CertFile = c.Request.FormValue("certFile"); opt.CertFile == "" {
-		opt.CertFile, _ = a.SettingService.GetCertFile()
+	if f.cert = get("CertFile"); f.cert == "" {
+		if scope == "web" {
+			f.cert, _ = a.SettingService.GetCertFile()
+		} else {
+			f.cert, _ = a.SettingService.GetSubCertFile()
+		}
 	}
-	if opt.KeyFile = c.Request.FormValue("keyFile"); opt.KeyFile == "" {
-		opt.KeyFile, _ = a.SettingService.GetKeyFile()
+	if f.key = get("KeyFile"); f.key == "" {
+		if scope == "web" {
+			f.key, _ = a.SettingService.GetKeyFile()
+		} else {
+			f.key, _ = a.SettingService.GetSubKeyFile()
+		}
 	}
+	return f
+}
 
-	res, err := acme.EnsurePanelProxy(opt)
+// SyncNginxProxy 按当前表单值,让 nginx 里自动生成的那些反代配置与设置保持一致。
+// 前端在【保存设置之前】调用:只有这里成功了,把面板/订阅切成明文 HTTP 才是安全的。
+//
+// 按【域名】而不是按服务聚合:面板和订阅共用一个域名是常见配置,各生成一份 server 块
+// 会被 nginx 判 conflicting server name 而忽略掉后一个,于是其中一个静默失联。
+func (a *ApiService) SyncNginxProxy(c *gin.Context) {
+	var acme service.AcmeService
+
+	web := a.readProxyForm(c, "web", "web")
+	sub := a.readProxyForm(c, "sub", "sub")
+
+	// 同域名的端点合进同一份 vhost;顺序固定(面板在前)好让配置内容可比对,
+	// 这样内容没变时 EnsureVhost 能直接短路、不白 reload 一次 nginx。
+	var specs []service.VhostOptions
+	byDomain := map[string]int{}
+	add := func(f proxyForm, name string) {
+		if !f.enabled || strings.TrimSpace(f.domain) == "" {
+			return
+		}
+		ep := service.ProxyEndpoint{Name: name, Path: f.path, Listen: f.listen, Port: f.port}
+		if i, ok := byDomain[f.domain]; ok {
+			specs[i].Endpoints = append(specs[i].Endpoints, ep)
+			return
+		}
+		byDomain[f.domain] = len(specs)
+		specs = append(specs, service.VhostOptions{
+			Domain:    f.domain,
+			CertFile:  f.cert,
+			KeyFile:   f.key,
+			Endpoints: []service.ProxyEndpoint{ep},
+		})
+	}
+	add(web, "panel")
+	add(sub, "subscription")
+
+	res, err := acme.SyncVhosts(specs)
 	if err != nil {
 		pureJsonMsg(c, false, err.Error())
 		return
@@ -540,21 +598,19 @@ func (a *ApiService) IssueCert(c *gin.Context) {
 	email := c.Request.FormValue("email")
 	method := c.Request.FormValue("method")
 	force := c.Request.FormValue("force") == "true"
-	// webNginx=true 时反向代理(nginx)是证书消费方,续期后需要它 reload——由这里读
-	// 设置传入,AcmeService 自身不读库(见其结构体注释)。
-	// webNginx 只描述【面板侧】:订阅证书由 sub 服务经 certReloader 自行热加载,不该
-	// 继承面板的 nginx reloadcmd。scope 缺省按 web 处理,保持既有调用方的行为不变。
+	// 反向代理(nginx)是证书消费方时,续期后需要它 reload——由这里读设置传入,
+	// AcmeService 自身不读库(见其结构体注释)。面板和订阅各有各的开关,分别取。
 	//
 	// 取值以前端表单为准、缺省才回退读库:前端是按【表单】上的开关决定申请后走哪条
 	// 收尾流程的,而开关改了没保存时库里还是旧值,两边据此分岔会装上一条对不上号的
 	// reloadcmd。字段缺席时回退读库,直接调 API 的场景行为不变。
 	behindProxy := false
-	if c.Request.FormValue("scope") != "sub" {
-		if v := c.Request.FormValue("behindProxy"); v != "" {
-			behindProxy = v == "true"
-		} else {
-			behindProxy, _ = a.SettingService.GetWebNginx()
-		}
+	if v := c.Request.FormValue("behindProxy"); v != "" {
+		behindProxy = v == "true"
+	} else if c.Request.FormValue("scope") == "sub" {
+		behindProxy, _ = a.SettingService.GetSubNginx()
+	} else {
+		behindProxy, _ = a.SettingService.GetWebNginx()
 	}
 	var acme service.AcmeService
 	res, err := acme.IssueWeb(domain, email, method, force, behindProxy)

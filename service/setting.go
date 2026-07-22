@@ -65,6 +65,7 @@ var defaultValueMap = map[string]string{
 	"subCertFile":        "",
 	"subKeyFile":         "",
 	"subCertMode":        "",
+	"subNginx":           "",
 	"subAcmeEmail":       "",
 	"subUpdates":         "12",
 	"subEncode":          "true",
@@ -363,6 +364,17 @@ func (s *SettingService) GetSubCertMode() (string, error) {
 	return s.getString("subCertMode")
 }
 
+// GetSubNginx 是订阅侧的「由反向代理终结 TLS」,语义与 webNginx 对称:
+// 开着时订阅服务只跑明文 HTTP,TLS 交给前面的 nginx。
+// 空字符串表示尚未设置,按 false 处理(避免 ParseBool("") 报错)。
+func (s *SettingService) GetSubNginx() (bool, error) {
+	v, err := s.getString("subNginx")
+	if err != nil || v == "" {
+		return false, nil
+	}
+	return strconv.ParseBool(v)
+}
+
 func (s *SettingService) GetSubAcmeEmail() (string, error) {
 	return s.getString("subAcmeEmail")
 }
@@ -464,11 +476,12 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 	webAcme := settings["webCertMode"] == "acme"
 	subAcme := settings["subCertMode"] == "acme"
 	webNginx := settings["webNginx"] == "true"
+	subNginx := settings["subNginx"] == "true"
 	for key, obj := range settings {
 		// Secure file existence check
 		if obj != "" &&
 			(((key == "webCertFile" || key == "webKeyFile") && !webAcme && !webNginx) ||
-				((key == "subCertFile" || key == "subKeyFile") && !subAcme)) {
+				((key == "subCertFile" || key == "subKeyFile") && !subAcme && !subNginx)) {
 			err = s.fileExists(obj)
 			if err != nil {
 				return common.NewError(" -> ", obj, " is not exists")

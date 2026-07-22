@@ -130,12 +130,15 @@
           <Ico name="refresh" :size="15" /> {{ $t('setting.forceRenew') }}
         </Btn>
       </div>
-      <SRow :label="$t('setting.sslKey')">
-        <input class="input mono" v-model="settings.subKeyFile" placeholder="/path/key.pem" />
-      </SRow>
-      <SRow :label="$t('setting.sslCert')">
-        <input class="input mono" v-model="settings.subCertFile" placeholder="/path/cert.pem" />
-      </SRow>
+      <ToggleRow v-model="subBehindProxy" :label="$t('setting.behindProxy')" :desc="subBehindProxyDesc" />
+      <template v-if="settings.subNginx !== 'true'">
+        <SRow :label="$t('setting.sslKey')">
+          <input class="input mono" v-model="settings.subKeyFile" placeholder="/path/key.pem" />
+        </SRow>
+        <SRow :label="$t('setting.sslCert')">
+          <input class="input mono" v-model="settings.subCertFile" placeholder="/path/cert.pem" />
+        </SRow>
+      </template>
       <SRow :label="$t('setting.path')">
         <input class="input mono" v-model="settings.subPath" />
       </SRow>
@@ -361,6 +364,7 @@ const settings = ref({
   subCertFile: "",
   subKeyFile: "",
   subCertMode: "",
+  subNginx: "",
   subAcmeEmail: "",
   subUpdates: "12",
   subEncode: "true",
@@ -401,63 +405,68 @@ const setData = (data: any) => {
   oldSettings.value = { ...settings.value }
 }
 
-// nginx 那份配置里写死了这些值,任何一个变了都得重新生成并重启面板
-const proxyInputs = ['webDomain', 'webPort', 'webPath', 'webListen', 'webCertFile', 'webKeyFile']
+// nginx 那份 vhost 里写死了这些值,任何一个变了都得重新生成并重启对应的服务
+const proxyInputs = [
+  'webNginx', 'webDomain', 'webPort', 'webPath', 'webListen', 'webCertFile', 'webKeyFile',
+  'subNginx', 'subDomain', 'subPort', 'subPath', 'subListen', 'subCertFile', 'subKeyFile',
+]
 
 const save = async () => {
   const now = settings.value as Record<string, any>
   const before = oldSettings.value
-  const on = now.webNginx === 'true'
-  const wasOn = before.webNginx === 'true'
-  const domainBefore = before.webDomain
+  const webOn = now.webNginx === 'true'
+  const subOn = now.subNginx === 'true'
+  const webWasOn = before.webNginx === 'true'
+  const subWasOn = before.subNginx === 'true'
 
-  // 只要反代开着就同步一次 nginx——不止是刚打开的那一次。改了端口/路径/域名要跟着改,
-  // 而「开关开着、配置却不在」的实例(升级上来的,或者配置被手工删过)也能靠这一步自愈。
-  // 后端在内容没变且已生效时会直接返回,不会白 reload 一次 nginx。
-  if (on) {
+  // 一次调用把两侧都交给后端:它按域名聚合(同域名合并成一份 vhost 的两个 location),
+  // 并删掉不再需要的旧配置。任何一侧开着就得同步——不止是刚打开的那一次,改端口/路径/
+  // 域名要跟着改,而「开关开着、配置却不在」的实例(升级上来的、或被手工删过)也靠这步自愈。
+  // 内容没变且已生效时后端直接返回,不会白 reload 一次 nginx。
+  if (webOn || subOn || webWasOn || subWasOn) {
     loading.value = true
-    const r = await HttpUtils.post('api/setupNginxProxy', {
-      enable: 'true',
-      domain: now.webDomain,
-      port: now.webPort,
-      webPath: now.webPath,
-      listen: now.webListen,
-      listenSet: 'true',
-      certFile: now.webCertFile,
-      keyFile: now.webKeyFile,
+    const r = await HttpUtils.post('api/syncNginxProxy', {
+      webNginx: now.webNginx, webDomain: now.webDomain, webPort: now.webPort,
+      webPath: now.webPath, webListen: now.webListen, webListenSet: 'true',
+      webCertFile: now.webCertFile, webKeyFile: now.webKeyFile,
+      subNginx: now.subNginx, subDomain: now.subDomain, subPort: now.subPort,
+      subPath: now.subPath, subListen: now.subListen, subListenSet: 'true',
+      subCertFile: now.subCertFile, subKeyFile: now.subKeyFile,
     })
     loading.value = false
-    // 生成失败就【不保存】:面板继续自己终结 TLS,访问方式不变。
-    // 反过来先存后配的话,面板已经改跑明文 HTTP 而 nginx 没接住,人就进不来了。
+    // 生成失败就【不保存】:服务继续自己终结 TLS,访问方式不变。
+    // 反过来先存后配的话,服务已经改跑明文 HTTP 而 nginx 没接住,人就进不来了。
     if (!r.success) return
-    if (r.obj?.url) {
-      // 对外地址现在由 nginx 那份配置决定,面板自己推断不出来(它只知道内网的 http://ip:端口)。
-      // 顺手填好,重启后的跳转就落在真正能打开的地址上。用户手填过就不动。
-      if (!now.webURI) settings.value.webURI = r.obj.url
+    const vhosts: any[] = Array.isArray(r.obj) ? r.obj : []
+    if (vhosts.length) {
       push.success({
         title: i18n.global.t('setting.proxyGenerated'),
         duration: 9000,
-        message: i18n.global.t('setting.proxyGeneratedHint', { url: r.obj.url, conf: r.obj.confFile }),
+        message: vhosts.map(v => i18n.global.t('setting.proxyGeneratedHint', {
+          url: (v.urls || []).join('  '), conf: v.confFile,
+        })).join('\n'),
       })
     }
   }
 
-  // 换域名或关掉反代,旧域名那份配置就该清掉:关掉时它还在把 443 的明文请求转给一个
-  // 已经改回 TLS 的端口(结果是 502),换域名时它则再没人引用。必须赶在下面可能发生的
-  // 页面跳转之前做完。
-  if (wasOn && domainBefore && (!on || domainBefore !== now.webDomain)) {
-    await HttpUtils.post('api/setupNginxProxy', { enable: 'false', domain: domainBefore })
-  }
-  // 关掉反代后 https://域名/路径 就没人监听了。若对外地址正是开启时自动填的那个,
-  // 清空它,让跳转按面板自身的域名/端口重新推断;用户自己填的照旧不动。
-  if (!on && wasOn && now.webURI === 'https://' + domainBefore + before.webPath) {
+  // 对外地址现在由 nginx 那份 vhost 决定,服务自己推断不出来(它只知道内网的 http://ip:端口)。
+  // 顺手填好,重启后的跳转就落在真正能打开的地址上;用户手填过就不动。
+  // 关掉反代时反过来:若当前值正是我们填的那个,清空它,让跳转按服务自身的域名/端口重推。
+  if (webOn && !now.webURI && now.webDomain) {
+    settings.value.webURI = 'https://' + now.webDomain + normalizePath(now.webPath)
+  } else if (!webOn && webWasOn && now.webURI === 'https://' + before.webDomain + normalizePath(before.webPath)) {
     settings.value.webURI = ''
   }
+  if (subOn && !now.subURI && now.subDomain) {
+    settings.value.subURI = 'https://' + now.subDomain + normalizePath(now.subPath)
+  } else if (!subOn && subWasOn && now.subURI === 'https://' + before.subDomain + normalizePath(before.subPath)) {
+    settings.value.subURI = ''
+  }
 
-  // 面板只在启动时读 webNginx / 端口 / 监听地址,所以这些改动必须带一次重启:
-  // 开启后不重启,面板还在原端口上说 TLS,而 nginx 已经用明文 HTTP 连它 —— 443 全站 502;
+  // 两个服务都只在启动时读各自的 Nginx 开关/端口/监听地址,所以这些改动必须带一次重启:
+  // 开启后不重启,服务还在原端口上说 TLS,而 nginx 已经用明文 HTTP 连它 —— 443 全站 502;
   // 关闭后不重启则反过来。saveAndRestart 会保存、重启、探活,再跳到新地址。
-  if (on !== wasOn || (on && proxyInputs.some(k => now[k] !== before[k]))) {
+  if (proxyInputs.some(k => now[k] !== before[k])) {
     loading.value = true
     push.success({
       title: i18n.global.t('success'),
@@ -480,6 +489,16 @@ const save = async () => {
     setData(msg.obj.settings)
   }
   loading.value = false
+}
+
+// 路径规整成前后都带斜杠,与后端 normalizeProxyPath 一致——两边拼出的对外地址必须逐字
+// 相同,否则「这个 URI 是不是我们自动填的」判不出来,关掉反代时就清不掉那个死地址。
+const normalizePath = (p: string) => {
+  let s = (p ?? '').trim()
+  if (s === '') s = '/'
+  if (!s.startsWith('/')) s = '/' + s
+  if (!s.endsWith('/')) s += '/'
+  return s
 }
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
@@ -551,6 +570,19 @@ const loopbackListens = ['127.0.0.1', 'localhost', '::1', '[::1]']
 const behindProxyDesc = computed(() => {
   const base = i18n.global.t('setting.behindProxyHint')
   if (!webBehindProxy.value || loopbackListens.includes(settings.value.webListen.trim())) return base
+  return base + ' ' + i18n.global.t('setting.behindProxyListenWarn')
+})
+
+// 订阅侧的反代开关,与面板侧对称(沿用 subNginx 键,sub.go 据此只跑明文 HTTP)
+const subBehindProxy = computed({
+  get: () => settings.value.subNginx == "true",
+  set: (v: boolean) => { settings.value.subNginx = v ? "true" : "false" }
+})
+
+// 与面板侧同理:订阅跑明文 HTTP 时,监听地址不是回环就等于把明文端口直接暴露到公网
+const subBehindProxyDesc = computed(() => {
+  const base = i18n.global.t('setting.behindProxyHint')
+  if (!subBehindProxy.value || loopbackListens.includes(settings.value.subListen.trim())) return base
   return base + ' ' + i18n.global.t('setting.behindProxyListenWarn')
 })
 
