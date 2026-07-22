@@ -29,7 +29,9 @@
     <!-- page tabs + actions -->
     <div class="head-row">
       <Tabs v-model="tab" page :mb="0" :tabs="tabItems" style="border-bottom: none; flex: 1 1 auto; min-width: 0;" />
-      <div class="head-actions">
+      <!-- 证书页的每个操作都立即生效，没有待保存的表单，摆着保存/重启只会让人以为
+           申请完证书还得再点一下 -->
+      <div v-if="tab !== 'certs'" class="head-actions">
         <Btn variant="primary" sm :loading="loading" :disabled="!stateChange" @click="save">
           <Ico name="check" :size="15" /> {{ $t('actions.save') }}
         </Btn>
@@ -51,8 +53,11 @@
       </div>
     </div>
 
+    <!-- ===================== Domains & certificates ===================== -->
+    <CertsPanel v-if="tab === 'certs'" />
+
     <!-- ===================== Interface ===================== -->
-    <SettingsGroup v-if="tab === 'interface'" grid>
+    <SettingsGroup v-else-if="tab === 'interface'" grid>
       <SRow :label="$t('setting.addr')">
         <input class="input mono" v-model="settings.webListen" placeholder="0.0.0.0" />
       </SRow>
@@ -327,6 +332,7 @@ import ChipSelect from '@/components/ui/ChipSelect.vue'
 import SettingsGroup from '@/components/ui/SettingsGroup.vue'
 import SRow from '@/components/ui/SRow.vue'
 import ToggleRow from '@/components/ui/ToggleRow.vue'
+import CertsPanel from '@/components/settings/CertsPanel.vue'
 
 const tab = ref('interface')
 const loading = ref(false)
@@ -336,6 +342,7 @@ const jsonEditor = ref(false)
 const clashEditor = ref(false)
 
 const tabItems = computed((): [string, string][] => [
+  ['certs', i18n.global.t('setting.certs')],
   ['interface', i18n.global.t('setting.interface')],
   ['sub', i18n.global.t('setting.sub')],
   ['jsonSub', i18n.global.t('setting.jsonSub')],

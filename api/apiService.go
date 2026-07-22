@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"runtime"
 	"strconv"
 	"strings"
@@ -477,6 +478,43 @@ func (a *ApiService) TestAcme(c *gin.Context) {
 	pureJsonMsg(c, true, "")
 }
 
+// GetCerts 列出 acme.sh 维护的证书,供「域名与证书」页面展示。
+func (a *ApiService) GetCerts(c *gin.Context) {
+	var acme service.AcmeService
+	certs, err := acme.ListCerts()
+	jsonObj(c, certs, err)
+}
+
+// DeleteCert 删除一张证书。面板或订阅正在用它时拒绝——那两个服务重启时会去读这两个
+// 文件,删掉就起不来了,而此时用户多半已经离开这个页面,很难把两件事联系起来。
+func (a *ApiService) DeleteCert(c *gin.Context) {
+	domain := strings.TrimSpace(c.Request.FormValue("domain"))
+	if domain == "" {
+		pureJsonMsg(c, false, "domain is required")
+		return
+	}
+
+	var inUse []string
+	if d, _ := a.SettingService.GetWebDomain(); d == domain {
+		inUse = append(inUse, "面板")
+	}
+	if d, _ := a.SettingService.GetSubDomain(); d == domain {
+		inUse = append(inUse, "订阅")
+	}
+	if len(inUse) > 0 {
+		pureJsonMsg(c, false, fmt.Sprintf("%s正在使用 %s 的证书;请先在对应设置里换成别的域名,再删除这张证书",
+			strings.Join(inUse, "和"), domain))
+		return
+	}
+
+	var acme service.AcmeService
+	if err := acme.RemoveCert(domain); err != nil {
+		pureJsonMsg(c, false, err.Error())
+		return
+	}
+	pureJsonMsg(c, true, "")
+}
+
 func (a *ApiService) DetectNginx(c *gin.Context) {
 	var acme service.AcmeService
 	jsonObj(c, acme.DetectNginx(), nil)
@@ -599,18 +637,20 @@ func (a *ApiService) IssueCert(c *gin.Context) {
 	method := c.Request.FormValue("method")
 	force := c.Request.FormValue("force") == "true"
 	// 反向代理(nginx)是证书消费方时,续期后需要它 reload——由这里读设置传入,
-	// AcmeService 自身不读库(见其结构体注释)。面板和订阅各有各的开关,分别取。
+	// AcmeService 自身不读库(见其结构体注释)。
 	//
-	// 取值以前端表单为准、缺省才回退读库:前端是按【表单】上的开关决定申请后走哪条
-	// 收尾流程的,而开关改了没保存时库里还是旧值,两边据此分岔会装上一条对不上号的
-	// reloadcmd。字段缺席时回退读库,直接调 API 的场景行为不变。
+	// 判据是【这个域名有没有服务在反代后面用它】,而不是「谁发起的申请」:证书是按域名
+	// 存在的,面板和订阅可能共用一张,从证书页申请时也压根没有 scope 可言。
+	// 表单显式传了就以表单为准——开关改了还没保存时库里是旧值,让前端说了算。
 	behindProxy := false
 	if v := c.Request.FormValue("behindProxy"); v != "" {
 		behindProxy = v == "true"
-	} else if c.Request.FormValue("scope") == "sub" {
-		behindProxy, _ = a.SettingService.GetSubNginx()
 	} else {
-		behindProxy, _ = a.SettingService.GetWebNginx()
+		webDomain, _ := a.SettingService.GetWebDomain()
+		subDomain, _ := a.SettingService.GetSubDomain()
+		webNginx, _ := a.SettingService.GetWebNginx()
+		subNginx, _ := a.SettingService.GetSubNginx()
+		behindProxy = (webNginx && domain == webDomain) || (subNginx && domain == subDomain)
 	}
 	var acme service.AcmeService
 	res, err := acme.IssueWeb(domain, email, method, force, behindProxy)

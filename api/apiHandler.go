@@ -64,6 +64,8 @@ func (a *APIHandler) postHandler(c *gin.Context) {
 		a.ApiService.IssueCert(c)
 	case "syncNginxProxy":
 		a.ApiService.SyncNginxProxy(c)
+	case "deleteCert":
+		a.ApiService.DeleteCert(c)
 	case "importdb":
 		a.ApiService.ImportDb(c)
 	case "addToken":
@@ -123,6 +125,8 @@ func (a *APIHandler) getHandler(c *gin.Context) {
 		a.ApiService.GetNodeInbounds(c)
 	case "detectNginx":
 		a.ApiService.DetectNginx(c)
+	case "certs":
+		a.ApiService.GetCerts(c)
 	case "updateInfo":
 		a.ApiService.UpdateInfo(c)
 	case "updateStatus":

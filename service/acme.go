@@ -2,11 +2,15 @@ package service
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -918,15 +922,190 @@ func (a *AcmeService) buildReloadCmd(method string, behindProxy bool) string {
 	return "systemctl try-reload-or-restart nginx"
 }
 
-// ListCerts 返回 acme.sh 已管理的证书列表,供前端展示、避免重复申请触发 LE 限速。
-func (a *AcmeService) ListCerts() (string, error) {
-	if runtime.GOOS == "windows" {
-		return "", common.NewError("Windows 不支持 acme.sh")
+// ===== 证书清单 =====
+
+// CertInfo 是「域名与证书」页面上的一条记录。
+// 时间统一用 unix 秒回给前端,由前端按浏览器时区渲染并算剩余天数——服务器时区不一定
+// 是用户的,后端算好天数反而会差一天。
+type CertInfo struct {
+	Domain    string `json:"domain"`
+	CertFile  string `json:"certFile"`  // 摆出来供复制:建入站 TLS 时要填进 certificate_path
+	KeyFile   string `json:"keyFile"`
+	CA        string `json:"ca"`
+	KeyType   string `json:"keyType"`
+	NotAfter  int64  `json:"notAfter"`  // 0 表示证书文件读不到
+	NextRenew int64  `json:"nextRenew"` // 0 表示不适用(手动登记的证书)
+	Managed   bool   `json:"managed"`   // true = acme.sh 维护并自动续期
+}
+
+// parseAcmeConf 解析 acme.sh 的域名 conf(纯 KEY='VALUE' 行)。
+// 不用解析 `acme.sh --list` 的表格输出:那是空格对齐的,Profile 一列为空时字段会整体
+// 错位,拿 CA 当创建时间。这个文件是 acme.sh 自己 source 的,格式稳定得多。
+func parseAcmeConf(content string) map[string]string {
+	kv := map[string]string{}
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		eq := strings.IndexByte(line, '=')
+		if eq <= 0 || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key := strings.TrimSpace(line[:eq])
+		val := strings.TrimSpace(line[eq+1:])
+		val = strings.TrimPrefix(val, "'")
+		val = strings.TrimSuffix(val, "'")
+		kv[key] = val
 	}
+	return kv
+}
+
+// certNotAfter 读证书文件的到期时间。取第一段 PEM 即叶子证书——fullchain 里后面
+// 跟着的是中间 CA,它的有效期比叶子长得多,拿错了会把「快过期」显示成「还早」。
+func certNotAfter(path string) int64 {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		return 0
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return 0
+	}
+	return cert.NotAfter.Unix()
+}
+
+// caName 把 acme.sh 记的 CA 目录 URL 变成人看的名字。
+func caName(apiURL string) string {
+	switch {
+	case apiURL == "":
+		return ""
+	case strings.Contains(apiURL, "letsencrypt"):
+		return "Let's Encrypt"
+	case strings.Contains(apiURL, "zerossl"):
+		return "ZeroSSL"
+	case strings.Contains(apiURL, "buypass"):
+		return "Buypass"
+	// Google 的 ACME 端点是 dv.acme-v02.api.pki.goog,串里没有 "google" 这个词
+	case strings.Contains(apiURL, "pki.goog"):
+		return "Google Trust Services"
+	case strings.Contains(apiURL, "ssl.com"):
+		return "SSL.com"
+	}
+	if u, err := url.Parse(apiURL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return apiURL
+}
+
+// ListCerts 列出 acme.sh 维护的证书。直接读它的家目录,不调 `acme.sh --list`。
+// 找不到 acme.sh 时返回空列表而不是错误:那只是还没申请过证书,页面该显示空态。
+func (a *AcmeService) ListCerts() ([]CertInfo, error) {
+	if runtime.GOOS == "windows" {
+		return []CertInfo{}, nil
+	}
+	bin, _ := resolveAcmeSh()
+	if bin == "" {
+		return []CertInfo{}, nil
+	}
+	// 注意别用 resolveAcmeSh 返回的第二个值:那是给子进程当 HOME 用的上级目录(/root),
+	// 证书目录在 acme.sh 自己的家目录里(/root/.acme.sh),也就是可执行文件所在目录。
+	dataDir := filepath.Dir(bin)
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		return []CertInfo{}, nil
+	}
+
+	certs := []CertInfo{}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		// 证书目录名是 <域名> 或 <域名>_ecc;ca/deploy/dnsapi/notify 这些内部目录
+		// 里没有同名的 .conf,下面读文件时自然被滤掉,不用维护一份黑名单。
+		domain := strings.TrimSuffix(e.Name(), "_ecc")
+		raw, err := os.ReadFile(filepath.Join(dataDir, e.Name(), domain+".conf"))
+		if err != nil {
+			continue
+		}
+		kv := parseAcmeConf(string(raw))
+		if kv["Le_Domain"] != "" {
+			domain = kv["Le_Domain"]
+		}
+
+		info := CertInfo{
+			Domain:  domain,
+			CA:      caName(kv["Le_API"]),
+			KeyType: kv["Le_Keylength"],
+			Managed: true,
+		}
+		// 优先用 acme.sh 记录的安装路径:那才是面板/nginx/sing-box 实际在读的文件。
+		// 没装过就退回 acme.sh 自己的副本,至少能显示到期时间。
+		info.CertFile = kv["Le_RealFullChainPath"]
+		info.KeyFile = kv["Le_RealKeyPath"]
+		if info.CertFile == "" {
+			info.CertFile = filepath.Join(dataDir, e.Name(), "fullchain.cer")
+		}
+		if info.KeyFile == "" {
+			info.KeyFile = filepath.Join(dataDir, e.Name(), domain+".key")
+		}
+		if n, err := strconv.ParseInt(kv["Le_NextRenewTime"], 10, 64); err == nil {
+			info.NextRenew = n
+		}
+		info.NotAfter = certNotAfter(info.CertFile)
+		certs = append(certs, info)
+	}
+
+	sort.Slice(certs, func(i, j int) bool { return certs[i].Domain < certs[j].Domain })
+	return certs, nil
+}
+
+// RemoveCert 删除一张证书:先让 acme.sh 忘掉它(不再续期),再删掉安装出去的文件副本。
+//
+// 调用方必须先确认没有服务在用这个域名——面板/订阅正用着的证书被删掉,下次重启就起不来。
+// 那个检查放在调用方(它才读得到设置),这里只管删。
+// 入站 TLS 是否手填了这两个路径不做检查:那要遍历所有 TLS 配置解析 JSON、还要处理软链接
+// 和相对路径,代价和收益不成正比,由前端在确认框里提示。
+func (a *AcmeService) RemoveCert(domain string) error {
+	if runtime.GOOS == "windows" {
+		return common.NewError("Windows 不支持 acme.sh")
+	}
+	domain = strings.TrimSpace(domain)
+	if domain == "" || !validDomain(domain) {
+		return common.NewErrorf("域名无效: %q", domain)
+	}
+
 	bin, home := resolveAcmeSh()
 	if bin == "" {
-		return "", nil
+		return common.NewError("未安装 acme.sh,无法删除证书")
 	}
-	out, _ := runCmd(cmdDetectTO, home, bin, "--list")
-	return out, nil
+	// --remove 只是让 acme.sh 停止续期并移除它的记录,不会碰安装出去的文件
+	if out, err := runCmd(cmdDetectTO, home, bin, "--remove", "-d", domain); err != nil {
+		return common.NewErrorf("acme.sh 移除记录失败:\n%s", out)
+	}
+	// acme.sh 会把证书目录留在原地(它自己的文档也这么说),这里一并清掉,
+	// 否则列表里那条会因为目录还在而阴魂不散。
+	// 目录在 acme.sh 的家目录下(可执行文件所在处),不是 home 那个上级目录。
+	dataDir := filepath.Dir(bin)
+	for _, dir := range []string{
+		filepath.Join(dataDir, domain),
+		filepath.Join(dataDir, domain+"_ecc"),
+	} {
+		if st, err := os.Stat(dir); err == nil && st.IsDir() {
+			if err := os.RemoveAll(dir); err != nil {
+				logger.Warning("已从 acme.sh 移除 ", domain, ",但删除目录失败 ", dir, ": ", err)
+			}
+		}
+	}
+	// 安装到 /root/cert/<域名>/ 的那份也删掉:留着会让人以为证书还在正常轮换,
+	// 实际上已经没人续期了。用户自己指定到别处的路径不碰(不在 certBaseDir 下)。
+	installed := filepath.Join(certBaseDir, domain)
+	if st, err := os.Stat(installed); err == nil && st.IsDir() {
+		if err := os.RemoveAll(installed); err != nil {
+			logger.Warning("删除已安装的证书目录失败 ", installed, ": ", err)
+		}
+	}
+	logger.Info("已删除证书:", domain)
+	return nil
 }
