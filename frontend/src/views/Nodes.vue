@@ -83,7 +83,6 @@ import EntityCard, { EntityRow } from '@/components/ui/EntityCard.vue'
 import NodeDrawer from '@/layouts/drawers/node/NodeDrawer.vue'
 import NodeImportModal from '@/layouts/drawers/node/NodeImportModal.vue'
 import HttpUtils from '@/plugins/httputil'
-import { push } from 'notivue'
 
 const { t } = useI18n({ useScope: 'global' })
 const dataStore = Data()
@@ -188,7 +187,6 @@ const reconcile = async (n: Node) => {
   const msg = await HttpUtils.post('api/reconcileNode', { id: n.id })
   reconciling.value = 0
   if (msg.success) {
-    push.success({ message: t('node.syncOk') })
     dataStore.loadData()
   }
 }
