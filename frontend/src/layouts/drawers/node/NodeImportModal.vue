@@ -34,18 +34,14 @@
 
 <script lang="ts" setup>
 import { ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'
 import HttpUtils from '@/plugins/httputil'
-import { push } from 'notivue'
 import Modal from '@/components/ui/Modal.vue'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Chip from '@/components/ui/Chip.vue'
 import Check from '@/components/ui/Check.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
-
-const { t } = useI18n({ useScope: 'global' })
 
 const props = defineProps<{
   visible: boolean
@@ -84,7 +80,6 @@ const doImport = async () => {
   })
   importing.value = false
   if (msg.success) {
-    push.success({ message: t('node.importOk') })
     Data().loadData()
     emit('close')
   }
