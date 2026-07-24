@@ -21,7 +21,7 @@
       <!-- 证书页的每个操作都立即生效，没有待保存的表单，摆着保存/重启只会让人以为
            申请完证书还得再点一下 -->
       <div v-if="tab !== 'certs'" class="head-actions">
-        <Btn variant="primary" sm :loading="loading" :disabled="!stateChange" @click="save">
+        <Btn variant="primary" sm :loading="loading" :disabled="!stateChange || proxyBlocked" @click="save">
           <Ico name="check" :size="15" /> {{ $t('actions.save') }}
         </Btn>
         <Pop :min-width="210">
@@ -724,6 +724,18 @@ const subUpdates = computed({
 
 const stateChange = computed(() => {
   return !FindDiff.deepCompare(settings.value, oldSettings.value)
+})
+
+// 反代开着、域名却没证书 = 这次保存必然失败(后端生成不出 vhost)。与其让用户点下去、
+// 后端写了一半再回滚,不如从源头禁用保存;域名框下的 certNote 已经把原因和「去申请」
+// 摆出来了。清单没成功加载时不拦(certsLoaded 为 false),交给后端判,避免一次查询
+// 故障把保存彻底锁死。关反代时不受影响:missing 只在开关仍开着时成立。
+const proxyBlocked = computed(() => {
+  if (!certsLoaded()) return false
+  const missing = (on: boolean, domain: string) =>
+    on && !!(domain ?? '').trim() && !findCert(domain)
+  return missing(webBehindProxy.value, settings.value.webDomain) ||
+    missing(subBehindProxy.value, settings.value.subDomain)
 })
 
 /* ===================================================================

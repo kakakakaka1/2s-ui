@@ -281,6 +281,7 @@ export default {
     issueCert: "Issue Certificate (acme.sh)",
     issueCertOk: "Certificate issued successfully",
     forceRenew: "Force Renew",
+    forceRenewConfirm: "Force renewal re-issues the certificate now and counts against Let's Encrypt's rate limit (about 5 duplicate certs per week). Continue?",
     webUri: "Panel URI",
     webUriProxyHint: "Required behind a proxy: the panel cannot infer its public address, and the redirect after a restart relies on this",
     sessionAge: "Session Maximum Age",

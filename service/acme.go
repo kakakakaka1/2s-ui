@@ -738,12 +738,46 @@ func (a *AcmeService) SyncVhosts(specs []VhostOptions) ([]*VhostResult, error) {
 	// 证书)时旧配置已经被删,而调用方失败时是【不保存设置】的——磁盘上的反代被销毁、
 	// 数据库里还是旧配置,正在服务的域名就此断掉,且要等到下一次 reload 才暴露。
 	// 同域名的更新由 EnsureVhost 原地覆盖 + 失败回滚,不依赖先删。
+	//
+	// EnsureVhost 只回滚它自己那个域名;而批次里排在前面的域名一旦成功就已经写盘 +
+	// reload。后面任一域名失败时,调用方是【不保存设置】的,那些先生效的 vhost 就成了
+	// 「库里没记、nginx 却在转发」的孤儿(典型:面板有证书、订阅没有,面板那份先生效,
+	// save 却因订阅失败整体中止,443 上多出一份没人管的反代)。所以逐个记下前一状态,
+	// 失败时把这一批已应用的一起还原,让磁盘和「未保存」的语义对齐。
+	type appliedVhost struct {
+		path        string
+		prev        []byte
+		hadPrevious bool
+	}
+	var applied []appliedVhost
+	rollbackApplied := func() {
+		if len(applied) == 0 {
+			return
+		}
+		for _, v := range applied {
+			if v.hadPrevious {
+				_ = os.WriteFile(v.path, v.prev, 0644)
+			} else {
+				_ = os.Remove(v.path)
+			}
+		}
+		if out, err := runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx"); err != nil {
+			logger.Warning("回滚本批反代配置后 reload nginx 失败(重启 nginx 即可生效):", out)
+		}
+	}
+
 	var results []*VhostResult
 	for _, spec := range specs {
+		// 路径口径与 EnsureVhost 内部一致(只 TrimSpace,不额外 ToLower)
+		confPath := proxyConfPath(strings.TrimSpace(spec.Domain))
+		prev, readErr := os.ReadFile(confPath)
 		res, err := a.EnsureVhost(spec)
 		if err != nil {
-			return results, err
+			// 失败的这个域名 EnsureVhost 已自行回滚;这里还原它之前【已成功】的那些
+			rollbackApplied()
+			return nil, err
 		}
+		applied = append(applied, appliedVhost{path: confPath, prev: prev, hadPrevious: readErr == nil})
 		results = append(results, res)
 	}
 

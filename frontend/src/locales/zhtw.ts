@@ -281,6 +281,7 @@ export default {
     issueCert: "申請憑證 (acme.sh)",
     issueCertOk: "憑證申請成功",
     forceRenew: "強制續期",
+    forceRenewConfirm: "強制續期會立即重新簽發憑證，並佔用 Let's Encrypt 限速額度（同網域約 5 張/週）。確定繼續？",
     webUri: "面板 URI",
     webUriProxyHint: "反向代理模式下必填:面板推斷不出對外位址,重啟後的跳轉依賴此項",
     sessionAge: "會話最大連接數",

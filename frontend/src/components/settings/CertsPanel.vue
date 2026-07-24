@@ -91,10 +91,23 @@
 
       <div class="cert-acts">
         <!-- 通配符证书是 DNS-01 签的,面板的 standalone/nginx 验证续不了它,按钮点了
-             必报错,不如不摆 -->
-        <Btn v-if="c.managed && !c.domain.startsWith('*.')" variant="subtle" sm :loading="busy" @click="renew(c.domain)">
-          <Ico name="refresh" :size="15" /> {{ $t('setting.forceRenew') }}
-        </Btn>
+             必报错,不如不摆。强制续期会立即重签、占用 Let's Encrypt 限速额度(约 5 张/
+             周),点前用 Pop 气泡确认一下防误点——不用重弹窗,保持每行紧凑。 -->
+        <Pop v-if="c.managed && !c.domain.startsWith('*.')" :min-width="264">
+          <template #trigger="{ toggle }">
+            <Btn variant="subtle" sm :loading="busy" @click="toggle">
+              <Ico name="refresh" :size="15" /> {{ $t('setting.forceRenew') }}
+            </Btn>
+          </template>
+          <template #default="{ close }">
+            <div style="padding: 8px 10px 4px; font-size: 13px; font-weight: 700;">{{ $t('setting.forceRenew') }}</div>
+            <div style="padding: 0 10px 8px; font-size: 12.5px; color: var(--text-3); line-height: 1.55;">{{ $t('setting.forceRenewConfirm') }}</div>
+            <div style="display: flex; gap: 6px; padding: 2px;">
+              <Btn sm style="flex: 1; color: var(--amber);" @click="close(); renew(c.domain);">{{ $t('yes') }}</Btn>
+              <Btn variant="subtle" sm style="flex: 1;" @click="close()">{{ $t('no') }}</Btn>
+            </div>
+          </template>
+        </Pop>
         <Btn v-else variant="subtle" sm :disabled="busy" @click="editManual(c)">
           <Ico name="edit" :size="15" /> {{ $t('setting.certEditPaths') }}
         </Btn>
@@ -144,6 +157,7 @@ import Ico from '@/components/ui/Ico.vue'
 import IconBtn from '@/components/ui/IconBtn.vue'
 import Chip from '@/components/ui/Chip.vue'
 import Modal from '@/components/ui/Modal.vue'
+import Pop from '@/components/ui/Pop.vue'
 import Select from '@/components/ui/Select.vue'
 import SRow from '@/components/ui/SRow.vue'
 import SettingsGroup from '@/components/ui/SettingsGroup.vue'
