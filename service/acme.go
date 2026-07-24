@@ -205,6 +205,16 @@ func validDomain(d string) bool {
 	return true
 }
 
+// validCertDomain 在 validDomain 基础上放行通配符(*.example.com):acme.sh 里可能躺着
+// DNS-01 签的通配符证书,它们必须能被列出、登记和删除,否则就是页面上一行永远管不了的
+// 僵尸。但 server_name / webDomain / 申请入口仍用 validDomain——通配符在那些位置不成立。
+func validCertDomain(d string) bool {
+	if strings.HasPrefix(d, "*.") {
+		return validDomain(d[2:])
+	}
+	return validDomain(d)
+}
+
 // DetectNginx 检测 nginx 是否安装并运行,以及 80 端口是否被占用。Windows 直接返回零值。
 func (a *AcmeService) DetectNginx() NginxStatus {
 	status := NginxStatus{}
@@ -703,32 +713,31 @@ func (a *AcmeService) SyncVhosts(specs []VhostOptions) ([]*VhostResult, error) {
 
 	wanted := make(map[string]bool, len(specs))
 	for _, s := range specs {
-		wanted[strings.TrimSpace(s.Domain)] = true
+		wanted[strings.ToLower(strings.TrimSpace(s.Domain))] = true
 	}
 
-	// 先删多余的:生成新配置前腾掉旧域名,免得两份配置在 nginx 里短暂同时存在
+	// 大小写改名的残留要先清:同一个域名若还留着一份大小写不同的旧 conf,nginx 会把
+	// 两份判成 conflicting server name,新生成的那份被静默忽略。这个域名马上就要重新
+	// 生成,先删是安全的。
 	removed := 0
-	if entries, err := filepath.Glob(filepath.Join(nginxConfDir, nginxProxyConfPrefix+"*.conf")); err == nil {
-		for _, p := range entries {
-			domain := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), nginxProxyConfPrefix), ".conf")
-			if wanted[domain] {
-				continue
-			}
-			if err := os.Remove(p); err != nil {
-				logger.Warning("删除失效的反代配置失败 ", p, ": ", err)
-				continue
-			}
-			logger.Info("已删除不再需要的反向代理配置:", p)
-			removed++
-		}
+	list := func() []string {
+		entries, _ := filepath.Glob(filepath.Join(nginxConfDir, nginxProxyConfPrefix+"*.conf"))
+		return entries
 	}
-	// 只有删除、没有新增时也要 reload,否则 nginx 内存里还留着那个块
-	if removed > 0 && len(specs) == 0 {
-		if out, err := runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx"); err != nil {
-			logger.Warning("已删除反代配置,但 reload nginx 失败(重启 nginx 即可生效):", out)
+	for _, p := range list() {
+		domain := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), nginxProxyConfPrefix), ".conf")
+		if wanted[strings.ToLower(domain)] && p != proxyConfPath(strings.ToLower(domain)) {
+			if err := os.Remove(p); err == nil {
+				logger.Info("已删除大小写不一致的旧反代配置:", p)
+				removed++
+			}
 		}
 	}
 
+	// 先生成,全部成功后再删多余的。反过来的话,生成失败(典型:换成的新域名还没有
+	// 证书)时旧配置已经被删,而调用方失败时是【不保存设置】的——磁盘上的反代被销毁、
+	// 数据库里还是旧配置,正在服务的域名就此断掉,且要等到下一次 reload 才暴露。
+	// 同域名的更新由 EnsureVhost 原地覆盖 + 失败回滚,不依赖先删。
 	var results []*VhostResult
 	for _, spec := range specs {
 		res, err := a.EnsureVhost(spec)
@@ -736,6 +745,26 @@ func (a *AcmeService) SyncVhosts(specs []VhostOptions) ([]*VhostResult, error) {
 			return results, err
 		}
 		results = append(results, res)
+	}
+
+	for _, p := range list() {
+		domain := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), nginxProxyConfPrefix), ".conf")
+		if wanted[strings.ToLower(domain)] {
+			continue
+		}
+		if err := os.Remove(p); err != nil {
+			logger.Warning("删除失效的反代配置失败 ", p, ": ", err)
+			continue
+		}
+		logger.Info("已删除不再需要的反向代理配置:", p)
+		removed++
+	}
+	// 有删除就必须 reload,不能指望上面的 EnsureVhost 顺带做:内容没变时它会短路返回、
+	// 根本不 reload,被删掉的 server 块就一直留在 nginx 内存里继续转发。
+	if removed > 0 {
+		if out, err := runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx"); err != nil {
+			logger.Warning("已删除反代配置,但 reload nginx 失败(重启 nginx 即可生效):", out)
+		}
 	}
 	return results, nil
 }
@@ -958,22 +987,50 @@ func parseAcmeConf(content string) map[string]string {
 	return kv
 }
 
-// certNotAfter 读证书文件的到期时间。取第一段 PEM 即叶子证书——fullchain 里后面
-// 跟着的是中间 CA,它的有效期比叶子长得多,拿错了会把「快过期」显示成「还早」。
-func certNotAfter(path string) int64 {
+// readLeafCert 解析证书文件的第一段 PEM,也就是叶子证书。fullchain 里后面跟着的是
+// 中间 CA,它的有效期比叶子长得多、Issuer 也是上一级,拿错了会把「快过期」显示成
+// 「还早」。读不到或解析失败一律返回 nil,由调用方降级显示。
+func readLeafCert(path string) *x509.Certificate {
+	if path == "" {
+		return nil
+	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return 0
+		return nil
 	}
 	block, _ := pem.Decode(raw)
 	if block == nil {
-		return 0
+		return nil
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return 0
+		return nil
 	}
-	return cert.NotAfter.Unix()
+	return cert
+}
+
+// certNotAfter 读证书文件的到期时间,0 表示读不到。
+func certNotAfter(path string) int64 {
+	if cert := readLeafCert(path); cert != nil {
+		return cert.NotAfter.Unix()
+	}
+	return 0
+}
+
+// certIssuer 读签发者名字,给手动登记的证书当 CA 显示。acme.sh 那边不用它:
+// 有 Le_API 可查,比 Issuer CN 准(同一家 CA 的 CN 会随中间证书轮换而变)。
+// 收解析好的叶子证书而不是路径:调用方本来就要解析一次,别为两个字段读两遍文件。
+func certIssuer(cert *x509.Certificate) string {
+	if cert == nil {
+		return ""
+	}
+	if cn := strings.TrimSpace(cert.Issuer.CommonName); cn != "" {
+		return cn
+	}
+	if len(cert.Issuer.Organization) > 0 {
+		return strings.TrimSpace(cert.Issuer.Organization[0])
+	}
+	return ""
 }
 
 // caName 把 acme.sh 记的 CA 目录 URL 变成人看的名字。
@@ -1017,7 +1074,15 @@ func (a *AcmeService) ListCerts() ([]CertInfo, error) {
 		return []CertInfo{}, nil
 	}
 
-	certs := []CertInfo{}
+	// 同一个域名可能有两个目录(<域名> 与 <域名>_ecc:先手工签过 RSA、再由面板签
+	// ec-256 就会这样),必须按域名去重。两条同名记录会让前端 v-for 撞 key,而
+	// sort.Slice 对相等键不稳定,findCert 取到哪条随每次刷新变——webCertFile 会在
+	// 两个路径之间来回改写。留 NotAfter 较新的那份:那才是还有人在续期的。
+	type candidate struct {
+		info CertInfo
+		ecc  bool
+	}
+	byDomain := map[string]candidate{}
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
@@ -1035,7 +1100,10 @@ func (a *AcmeService) ListCerts() ([]CertInfo, error) {
 		}
 
 		info := CertInfo{
-			Domain:  domain,
+			// 对外统一小写:DNS 不分大小写,而下游(这里的去重、前端 findCert、删除
+			// 守卫)全是精确比对,大小写混着会让同一个域名分裂成两条真相。
+			// 文件路径仍用目录里的原样写法,大小写敏感的文件系统上不能改。
+			Domain:  strings.ToLower(domain),
 			CA:      caName(kv["Le_API"]),
 			KeyType: kv["Le_Keylength"],
 			Managed: true,
@@ -1054,11 +1122,31 @@ func (a *AcmeService) ListCerts() ([]CertInfo, error) {
 			info.NextRenew = n
 		}
 		info.NotAfter = certNotAfter(info.CertFile)
-		certs = append(certs, info)
+
+		cur := candidate{info: info, ecc: strings.HasSuffix(e.Name(), "_ecc")}
+		if prev, ok := byDomain[info.Domain]; ok {
+			// 不比旧的新就不换;打平时留 _ecc——面板自己签发的默认就是 ec-256
+			if cur.info.NotAfter < prev.info.NotAfter ||
+				(cur.info.NotAfter == prev.info.NotAfter && !cur.ecc) {
+				continue
+			}
+		}
+		byDomain[info.Domain] = cur
 	}
 
+	certs := make([]CertInfo, 0, len(byDomain))
+	for _, c := range byDomain {
+		certs = append(certs, c.info)
+	}
 	sort.Slice(certs, func(i, j int) bool { return certs[i].Domain < certs[j].Domain })
 	return certs, nil
+}
+
+// ManagedCertDir 返回面板为该域名安装证书的目录。RemoveCert 会把它整个删掉,
+// 所以「设置里的证书路径落在这个目录下」也算正在使用(删除守卫要靠它兜住
+// 域名与路径分岔的情形)。
+func ManagedCertDir(domain string) string {
+	return filepath.Join(certBaseDir, domain)
 }
 
 // RemoveCert 删除一张证书:先让 acme.sh 忘掉它(不再续期),再删掉安装出去的文件副本。
@@ -1072,7 +1160,9 @@ func (a *AcmeService) RemoveCert(domain string) error {
 		return common.NewError("Windows 不支持 acme.sh")
 	}
 	domain = strings.TrimSpace(domain)
-	if domain == "" || !validDomain(domain) {
+	// 放行通配符:DNS-01 签的通配符证书也得能删,否则列表里那行永远管不了。
+	// 域名只进 exec 的参数切片和 filepath.Join,不经过 shell,字面 '*' 是安全的。
+	if domain == "" || !validCertDomain(domain) {
 		return common.NewErrorf("域名无效: %q", domain)
 	}
 

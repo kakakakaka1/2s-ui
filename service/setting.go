@@ -423,11 +423,14 @@ func (s *SettingService) GetFinalSubURI(host string) (string, error) {
 	if SubURI != "" {
 		return SubURI, nil
 	}
-	// TLS 判定必须与 sub.go 的实际行为一致:acme 模式,或证书/私钥【任一】非空即尝试
-	// TLS。早先这里要求两者都填,只填一个时 sub 服务已经在跑 https,本函数生成的订阅
-	// 链接却还是 http——而这是真正发给客户端的地址。判定与 sui uri 同源。
+	// TLS 判定必须与 sub.go 的实际行为一致【且按同样的优先级】:subNginx 最先短路——
+	// 订阅自身跑明文,对外由 nginx 在 443 说 https,链接里既不能是 http 也不能带订阅
+	// 自身的内网端口;其后才是 acme 模式,或证书/私钥【任一】非空即尝试 TLS。早先这里
+	// 要求两者都填,只填一个时 sub 服务已经在跑 https,本函数生成的订阅链接却还是
+	// http——而这是真正发给客户端的地址。判定与 sui uri 同源。
+	subNginx := runtime.GOOS != "windows" && (*allSetting)["subNginx"] == "true"
 	protocol := "http"
-	if (*allSetting)["subCertMode"] == "acme" ||
+	if subNginx || (*allSetting)["subCertMode"] == "acme" ||
 		(*allSetting)["subKeyFile"] != "" || (*allSetting)["subCertFile"] != "" {
 		protocol = "https"
 	}
@@ -438,7 +441,7 @@ func (s *SettingService) GetFinalSubURI(host string) (string, error) {
 	// "80"/"443" 比,永远不相等,省略逻辑是死代码,链接一直带着 :80 / :443。
 	// 判定顺序与前端 buildURL 保持一致。
 	port := (*allSetting)["subPort"]
-	if port == "" || (protocol == "http" && port == "80") || (protocol == "https" && port == "443") {
+	if subNginx || port == "" || (protocol == "http" && port == "80") || (protocol == "https" && port == "443") {
 		port = ""
 	} else {
 		port = ":" + port
@@ -486,6 +489,13 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 			if err != nil {
 				return common.NewError(" -> ", obj, " is not exists")
 			}
+		}
+
+		// 域名会进 nginx 的 server_name、Host 校验和证书目录名,通配符在这些位置全都
+		// 不成立——DomainValidator 按 Host 逐字比对,「*.example.com」永远匹配不上,
+		// 面板会整个 403,而 sui setting 没有改域名的 flag,只能重置或改库才能救回。
+		if (key == "webDomain" || key == "subDomain") && strings.Contains(obj, "*") {
+			return common.NewErrorf("%s 不能是通配符域名: %q;请填一个具体的主机名(通配符证书对具体主机名同样生效)", key, obj)
 		}
 
 		// Correct Pathes start and ends with `/`

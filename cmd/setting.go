@@ -259,10 +259,17 @@ func getPanelURI() {
 	subCert, _ := settingService.GetSubCertFile()
 	subKey, _ := settingService.GetSubKeyFile()
 	subCertMode, _ := settingService.GetSubCertMode()
+	subNginx, _ := settingService.GetSubNginx()
 
 	fmt.Println()
 	fmt.Println("Subscription:")
-	// 同上,对齐 sub.go 的判定
+	// 反代模式下同面板侧:推断出的是订阅自身的内网地址,不是发给客户端的那个
+	if subNginx && subURI == "" {
+		fmt.Println("  Note: TLS is terminated by a reverse proxy, so the address below is")
+		fmt.Println("        the sub server's own, not the public one. Set \"Sub URI\" in the")
+		fmt.Println("        panel settings to have this command report the public address.")
+	}
+	// 同上,对齐 sub.go 的判定【优先级】:subNginx 最先短路,订阅只跑明文 HTTP
 	printAddresses(subURI, subDomain, subListen, subPath, subPort,
-		subCertMode == "acme" || subCert != "" || subKey != "")
+		!subNginx && (subCertMode == "acme" || subCert != "" || subKey != ""))
 }

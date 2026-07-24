@@ -14,17 +14,6 @@
     @close="clashEditor = false"
   />
 
-  <!-- 强制续期确认：--force 会立即重签并占用 Let's Encrypt 限速额度，先确认 -->
-  <Modal :open="forceConfirm.visible" :title="$t('setting.forceRenew')" :width="420" @close="forceConfirm.visible = false">
-    <div style="padding: 18px; font-size: 13.5px; line-height: 1.6;">{{ $t('setting.forceRenewConfirm') }}</div>
-    <template #footer>
-      <Btn @click="forceConfirm.visible = false">{{ $t('no') }}</Btn>
-      <Btn style="color: var(--amber);" :loading="loading" @click="doForceRenew">
-        <Ico name="refresh" :size="15" /> {{ $t('yes') }}
-      </Btn>
-    </template>
-  </Modal>
-
   <div class="page-stack-lg fade-up" style="max-width: 1040px;">
     <!-- page tabs + actions -->
     <div class="head-row">
@@ -54,49 +43,29 @@
     </div>
 
     <!-- ===================== Domains & certificates ===================== -->
-    <CertsPanel v-if="tab === 'certs'" />
+    <CertsPanel v-if="tab === 'certs'" :initial-domain="issueDomain" :proxied-domains="proxiedDomains" />
 
     <!-- ===================== Interface ===================== -->
     <SettingsGroup v-else-if="tab === 'interface'" grid>
+      <!-- 域名决定用哪份证书:选中的域名有证书就自动用它,证书路径不再手填 -->
+      <SRow :label="$t('setting.domain')" :hint="$t('setting.domainHint')">
+        <DomainInput v-model="settings.webDomain" placeholder="panel.example.com" @issue="goIssue" />
+        <div v-if="webCertNote" class="fieldnote" :class="webCertNote.kind">
+          <span>{{ webCertNote.text }}</span>
+          <a v-if="webCertNote.offerIssue" role="button" tabindex="0"
+             @click="goIssue(settings.webDomain)" @keyup.enter="goIssue(settings.webDomain)">{{ $t('setting.certGoIssue') }}</a>
+        </div>
+      </SRow>
+      <SRow :label="$t('setting.webPath')">
+        <input class="input mono" v-model="settings.webPath" />
+      </SRow>
       <SRow :label="$t('setting.addr')">
         <input class="input mono" v-model="settings.webListen" placeholder="0.0.0.0" />
       </SRow>
       <SRow :label="$t('setting.port')">
         <input class="input mono" type="number" min="1" v-model.number="webPort" />
       </SRow>
-      <SRow :label="$t('setting.webPath')">
-        <input class="input mono" v-model="settings.webPath" />
-      </SRow>
-      <SRow :label="$t('setting.domain')">
-        <input class="input mono" v-model="settings.webDomain" placeholder="panel.example.com" />
-      </SRow>
-      <SRow :label="$t('setting.acmeMethod')" :hint="acmeMethodHint">
-        <Select v-model="settings.webAcmeMethod">
-          <option value="auto">{{ $t('setting.acmeMethodAuto') }}</option>
-          <option value="standalone">{{ $t('setting.acmeMethodStandalone') }}</option>
-          <option value="nginx">{{ $t('setting.acmeMethodNginx') }}</option>
-        </Select>
-      </SRow>
-      <SRow :label="$t('setting.acmeEmail')" :hint="$t('setting.acmeHint')">
-        <input class="input mono" v-model="settings.webAcmeEmail" placeholder="you@example.com" />
-      </SRow>
-      <div class="srow-btn sg-span">
-        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.webDomain" @click="issueCert('web')">
-          <Ico name="shield" :size="15" /> {{ $t('setting.issueCert') }}
-        </Btn>
-        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.webDomain" @click="askForceRenew('web')">
-          <Ico name="refresh" :size="15" /> {{ $t('setting.forceRenew') }}
-        </Btn>
-      </div>
       <ToggleRow v-model="webBehindProxy" :label="$t('setting.behindProxy')" :desc="behindProxyDesc" />
-      <template v-if="settings.webNginx !== 'true'">
-        <SRow :label="$t('setting.sslKey')">
-          <input class="input mono" v-model="settings.webKeyFile" placeholder="/path/key.pem" />
-        </SRow>
-        <SRow :label="$t('setting.sslCert')">
-          <input class="input mono" v-model="settings.webCertFile" placeholder="/path/cert.pem" />
-        </SRow>
-      </template>
       <SRow :label="$t('setting.webUri')" :hint="webUriHint">
         <input class="input mono" v-model="settings.webURI" placeholder="https://panel.example.com/app/" />
       </SRow>
@@ -113,45 +82,33 @@
 
     <!-- ===================== Subscription ===================== -->
     <SettingsGroup v-else-if="tab === 'sub'" grid>
-      <ToggleRow v-model="subEncode" :label="$t('setting.subEncode')" />
-      <ToggleRow v-model="subShowInfo" :label="$t('setting.subInfo')" />
+      <!-- 订阅链接会发给客户端,很多人不想让它暴露面板域名——这里可以填另一个域名,
+           后端会为它单独生成一份 vhost;与面板同域名时则合并成一份、两个 location -->
+      <SRow :label="$t('setting.domain')" :hint="$t('setting.subDomainHint')">
+        <DomainInput v-model="settings.subDomain" placeholder="sub.example.com" @issue="goIssue" />
+        <div v-if="subCertNote" class="fieldnote" :class="subCertNote.kind">
+          <span>{{ subCertNote.text }}</span>
+          <a v-if="subCertNote.offerIssue" role="button" tabindex="0"
+             @click="goIssue(settings.subDomain)" @keyup.enter="goIssue(settings.subDomain)">{{ $t('setting.certGoIssue') }}</a>
+        </div>
+      </SRow>
+      <SRow :label="$t('setting.path')">
+        <input class="input mono" v-model="settings.subPath" />
+      </SRow>
       <SRow :label="$t('setting.addr')">
         <input class="input mono" v-model="settings.subListen" placeholder="0.0.0.0" />
       </SRow>
       <SRow :label="$t('setting.port')">
         <input class="input mono" type="number" min="1" v-model.number="subPort" />
       </SRow>
-      <SRow :label="$t('setting.domain')">
-        <input class="input mono" v-model="settings.subDomain" placeholder="sub.example.com" />
-      </SRow>
-      <SRow :label="$t('setting.acmeEmail')" :hint="$t('setting.acmeHint')">
-        <input class="input mono" v-model="settings.subAcmeEmail" placeholder="you@example.com" />
-      </SRow>
-      <div class="srow-btn sg-span">
-        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.subDomain" @click="issueCert('sub')">
-          <Ico name="shield" :size="15" /> {{ $t('setting.issueCert') }}
-        </Btn>
-        <Btn variant="subtle" sm :loading="loading" :disabled="!settings.subDomain" @click="askForceRenew('sub')">
-          <Ico name="refresh" :size="15" /> {{ $t('setting.forceRenew') }}
-        </Btn>
-      </div>
       <ToggleRow v-model="subBehindProxy" :label="$t('setting.behindProxy')" :desc="subBehindProxyDesc" />
-      <template v-if="settings.subNginx !== 'true'">
-        <SRow :label="$t('setting.sslKey')">
-          <input class="input mono" v-model="settings.subKeyFile" placeholder="/path/key.pem" />
-        </SRow>
-        <SRow :label="$t('setting.sslCert')">
-          <input class="input mono" v-model="settings.subCertFile" placeholder="/path/cert.pem" />
-        </SRow>
-      </template>
-      <SRow :label="$t('setting.path')">
-        <input class="input mono" v-model="settings.subPath" />
-      </SRow>
-      <SRow :label="$t('setting.update')" :hint="$t('date.h')">
-        <input class="input mono" type="number" min="0" v-model.number="subUpdates" />
-      </SRow>
       <SRow :label="$t('setting.subUri')">
         <input class="input mono" v-model="settings.subURI" placeholder="https://sub.example.com/sub/" />
+      </SRow>
+      <ToggleRow v-model="subEncode" :label="$t('setting.subEncode')" />
+      <ToggleRow v-model="subShowInfo" :label="$t('setting.subInfo')" />
+      <SRow :label="$t('setting.update')" :hint="$t('date.h')">
+        <input class="input mono" type="number" min="0" v-model.number="subUpdates" />
       </SRow>
     </SettingsGroup>
 
@@ -324,7 +281,6 @@ import Tabs from '@/components/ui/Tabs.vue'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Pop from '@/components/ui/Pop.vue'
-import Modal from '@/components/ui/Modal.vue'
 import Toggle from '@/components/ui/Toggle.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import Field from '@/components/ui/Field.vue'
@@ -332,7 +288,9 @@ import ChipSelect from '@/components/ui/ChipSelect.vue'
 import SettingsGroup from '@/components/ui/SettingsGroup.vue'
 import SRow from '@/components/ui/SRow.vue'
 import ToggleRow from '@/components/ui/ToggleRow.vue'
+import DomainInput from '@/components/ui/DomainInput.vue'
 import CertsPanel from '@/components/settings/CertsPanel.vue'
+import { loadCerts, certsLoaded, findCert, daysLeft } from '@/plugins/certs'
 
 const tab = ref('interface')
 const loading = ref(false)
@@ -385,8 +343,12 @@ const settings = ref({
 
 onMounted(async () => {
   loading.value = true
+  // 证书清单在前:setData 要拿它把 webCertFile/webKeyFile 派生成与域名一致的值,
+  // 且必须发生在 oldSettings 快照之前——反过来的话,派生落在快照之后,刚打开设置页
+  // 就凭空多出「未保存改动」,而 webCertFile 在 proxyInputs 里,随手保存个时区都会
+  // 触发整个面板重启。
+  await loadCerts()
   await loadData()
-  await detectNginx()
   loading.value = false
 })
 
@@ -409,6 +371,9 @@ const setData = (data: any) => {
     push.warning({ message: i18n.global.t('setting.acmeMigrated'), duration: 8000 })
   }
   loadSubJsonExt()
+  // 证书路径是域名的派生量,在快照【之前】规整成一致状态:证书页「编辑路径」之后,
+  // 这里跟着换,面板下次重启读的才是证书页展示的那份文件
+  syncCertsFromList()
   oldSettings.value = { ...settings.value }
 }
 
@@ -419,6 +384,9 @@ const proxyInputs = [
 ]
 
 const save = async () => {
+  // 保存前按当前域名把证书路径重新派生一次:域名 watch 只盯域名变化,证书清单的
+  // 变化(刚在证书页申请/登记/改过路径)不在它眼里,不补这一步会把旧路径存进库
+  syncCertsFromList()
   const now = settings.value as Record<string, any>
   const before = oldSettings.value
   const webOn = now.webNginx === 'true'
@@ -432,13 +400,15 @@ const save = async () => {
   // 内容没变且已生效时后端直接返回,不会白 reload 一次 nginx。
   if (webOn || subOn || webWasOn || subWasOn) {
     loading.value = true
+    // CertSet 告诉后端「证书路径这两项表单确实带了,空串就是空」:域名没有证书时
+    // 必须让 vhost 生成失败、把用户拦在这里,不能回退读库拿上一个域名的证书凑数
     const r = await HttpUtils.post('api/syncNginxProxy', {
       webNginx: now.webNginx, webDomain: now.webDomain, webPort: now.webPort,
       webPath: now.webPath, webListen: now.webListen, webListenSet: 'true',
-      webCertFile: now.webCertFile, webKeyFile: now.webKeyFile,
+      webCertFile: now.webCertFile, webKeyFile: now.webKeyFile, webCertSet: 'true',
       subNginx: now.subNginx, subDomain: now.subDomain, subPort: now.subPort,
       subPath: now.subPath, subListen: now.subListen, subListenSet: 'true',
-      subCertFile: now.subCertFile, subKeyFile: now.subKeyFile,
+      subCertFile: now.subCertFile, subKeyFile: now.subKeyFile, subCertSet: 'true',
     })
     loading.value = false
     // 生成失败就【不保存】:服务继续自己终结 TLS,访问方式不变。
@@ -457,16 +427,20 @@ const save = async () => {
   }
 
   // 对外地址现在由 nginx 那份 vhost 决定,服务自己推断不出来(它只知道内网的 http://ip:端口)。
-  // 顺手填好,重启后的跳转就落在真正能打开的地址上;用户手填过就不动。
+  // 顺手填好,重启后的跳转就落在真正能打开的地址上;用户手填过就不动——但「我们自动填的」
+  // 要跟着域名/路径走:反代开着改域名时,旧地址的 vhost 恰恰在这次保存里被删掉,不跟的话
+  // 保存后的跳转和发给客户端的订阅链接就都指向一个已经没人服务的地址,还会一直存在库里。
   // 关掉反代时反过来:若当前值正是我们填的那个,清空它,让跳转按服务自身的域名/端口重推。
-  if (webOn && !now.webURI && now.webDomain) {
+  const webAuto = 'https://' + before.webDomain + normalizePath(before.webPath)
+  if (webOn && now.webDomain && (!now.webURI || now.webURI === webAuto)) {
     settings.value.webURI = 'https://' + now.webDomain + normalizePath(now.webPath)
-  } else if (!webOn && webWasOn && now.webURI === 'https://' + before.webDomain + normalizePath(before.webPath)) {
+  } else if (!webOn && webWasOn && now.webURI === webAuto) {
     settings.value.webURI = ''
   }
-  if (subOn && !now.subURI && now.subDomain) {
+  const subAuto = 'https://' + before.subDomain + normalizePath(before.subPath)
+  if (subOn && now.subDomain && (!now.subURI || now.subURI === subAuto)) {
     settings.value.subURI = 'https://' + now.subDomain + normalizePath(now.subPath)
-  } else if (!subOn && subWasOn && now.subURI === 'https://' + before.subDomain + normalizePath(before.subPath)) {
+  } else if (!subOn && subWasOn && now.subURI === subAuto) {
     settings.value.subURI = ''
   }
 
@@ -519,18 +493,21 @@ const restartApp = async () => {
     // 没填则 replace("") 原地打转。
     let url = settings.value.webURI
     if (url === "") {
-      // 判定优先级必须跟 web.go 一致:webNginx 最先短路,面板只跑 HTTP、根本不看证书
-      // 字段。漏掉这层会真跳错——反代模式下证书路径输入框是隐藏的,用户没途径清掉旧值,
-      // 残留路径会让这里拼出 https,而面板实际在跑 http。
-      const isTLS = settings.value.webNginx !== "true" &&
-        (settings.value.webCertMode === "acme" || settings.value.webCertFile !== "" || settings.value.webKeyFile !== "")
-      url = buildURL(settings.value.webDomain, settings.value.webPort.toString(), isTLS, settings.value.webPath)
+      url = buildURL(settings.value.webDomain, settings.value.webPort.toString(), panelIsTLS(), settings.value.webPath)
     }
     await sleep(3000)
     window.location.replace(url)
   }
   loading.value = false
 }
+
+// 面板重启后会在 http 还是 https 上。判定优先级必须跟 web.go 一致:webNginx 最先
+// 短路,面板只跑 HTTP、根本不看证书字段;否则有证书路径就是 HTTPS。
+// 跳转地址靠它拼,判错就把人送到一个打不开的地址上——而那时面板已经重启完了,
+// 没有第二次机会。
+const panelIsTLS = () =>
+  settings.value.webNginx !== "true" &&
+  (settings.value.webCertMode === "acme" || settings.value.webCertFile !== "" || settings.value.webKeyFile !== "")
 
 const buildURL = (host: string, port: string, isTLS: boolean, path: string) => {
   if (!host || host.length == 0) host = window.location.hostname
@@ -545,24 +522,6 @@ const buildURL = (host: string, port: string, isTLS: boolean, path: string) => {
   }
 
   return `${protocol}//${host}${port}${path}settings`
-}
-
-const detectedNginx = ref({ installed: false, active: false, port80Busy: false })
-
-// 「自动」将走哪条路的实时提示,判定顺序与后端 resolveMethod 严格一致:
-// 80 空闲→standalone(即使 nginx 在跑);被占且 nginx 在跑→借用 nginx;否则预警
-const acmeMethodHint = computed(() => {
-  if (!detectedNginx.value.port80Busy) return i18n.global.t('setting.acmeHintFree')
-  if (detectedNginx.value.active) return i18n.global.t('setting.acmeHintNginx')
-  return i18n.global.t('setting.acmeHint80Busy')
-})
-
-// 页面加载时检测环境,只用于展示;不再像旧版那样把检测结果写回 webNginx
-const detectNginx = async () => {
-  const r = await HttpUtils.get('api/detectNginx')
-  if (r.success && r.obj) {
-    detectedNginx.value = r.obj
-  }
 }
 
 // 高级选项:由反向代理终结 TLS(面板保持 HTTP)。沿用 webNginx 键,web.go 对它的语义不变
@@ -599,85 +558,87 @@ const webUriHint = computed(() => {
   return webBehindProxy.value ? i18n.global.t('setting.webUriProxyHint') : ''
 })
 
-// 强制续期前先确认:--force 会立即重签,反复点会撞 Let's Encrypt「重复证书」限速(约 5 张/周)
-const forceConfirm = ref<{ visible: boolean; scope: 'web' | 'sub' }>({ visible: false, scope: 'web' })
-const askForceRenew = (scope: 'web' | 'sub') => { forceConfirm.value = { visible: true, scope } }
-const doForceRenew = async () => {
-  await issueCert(forceConfirm.value.scope, true)
-  forceConfirm.value.visible = false
-}
-
-// 用 acme.sh 申请证书:验证方式由后端解析(auto:80 空闲→standalone;被占且 nginx 在跑→借用 nginx)
-// force=true 时加 --force 强制续期(域名已有未到期证书时 acme.sh 默认跳过)
-// 成功后(非反代模式)自动回填证书路径→保存→重启面板→跳转 https,全程无需手动操作
-const issueCert = async (scope: 'web' | 'sub' = 'web', force = false) => {
-  const isWeb = scope === 'web'
-  const domain = isWeb ? settings.value.webDomain : settings.value.subDomain
-  if (!domain) return
-  loading.value = true
-  const r = await HttpUtils.post('api/issueCert', {
-    domain,
-    email: isWeb ? settings.value.webAcmeEmail : settings.value.subAcmeEmail,
-    // 订阅侧无验证方式下拉,恒为自动
-    method: isWeb ? settings.value.webAcmeMethod : 'auto',
-    force: force ? 'true' : 'false',
-    // 后端据此决定是否套用面板的反代设置(webNginx),订阅侧不继承
-    scope,
-    // 反代开关按【表单】上传:下面挑收尾流程用的也是表单值,开关改了没保存时库里还是
-    // 旧值,让后端自己读库会与这里分岔(装上一条对不上号的 reloadcmd)。订阅侧不带。
-    ...(isWeb ? { behindProxy: settings.value.webNginx === 'true' ? 'true' : 'false' } : {}),
-  })
-  if (!r.success || !r.obj) {
-    loading.value = false
-    return
-  }
-  const via = i18n.global.t('setting.issuedVia', { method: r.obj.method })
-  if (isWeb && settings.value.webNginx === 'true') {
-    // 反代模式:证书供反向代理使用,面板不回填、保持 HTTP。
-    // 证书+私钥两个路径都报出来,写 nginx vhost 时 ssl_certificate / ssl_certificate_key 直接照抄
-    let message = via + ' ' + i18n.global.t('setting.certForProxy', { cert: r.obj.certFile, key: r.obj.keyFile })
-    // 后端只在确实检测到 nginx 时才配 reloadcmd。Caddy / Traefik / HAProxy 等拿不到
-    // 重载钩子:续期只覆盖磁盘文件,代理仍用内存里的旧证书,到期才暴雷——必须明说。
-    if (!r.obj.reloadCmd) {
-      message += ' ' + i18n.global.t('setting.proxyRenewHint')
-    }
-    push.success({
-      title: i18n.global.t('success'),
-      duration: 10000,
-      message,
-    })
-    loading.value = false
-    return
-  }
-  if (isWeb) {
-    settings.value.webCertFile = r.obj.certFile
-    settings.value.webKeyFile = r.obj.keyFile
-    settings.value.webCertMode = ''
+// ===== 域名 ↔ 证书 =====
+//
+// 证书路径不再手填:选中的域名有证书就用它那两个文件,没有就留空(服务跑 HTTP)。
+// webCertFile / webKeyFile 仍是面板启动时真正读的字段(web.go 未变),只是它们的
+// 值现在由这里派生——「域名与证书」页是唯一的证书来源。
+const syncCert = (side: 'web' | 'sub') => {
+  const domain = side === 'web' ? settings.value.webDomain : settings.value.subDomain
+  // 域名为空时一概不动。存量里有「不填域名、直接手填证书路径」的跑法(面板跑 HTTPS
+  // 但不校验 Host),那种配置在这个页面上无从表达,清空等于把人家的 HTTPS 静默降级。
+  if (!(domain ?? '').trim()) return
+  const c = findCert(domain)
+  if (side === 'web') {
+    settings.value.webCertFile = c?.certFile ?? ''
+    settings.value.webKeyFile = c?.keyFile ?? ''
   } else {
-    settings.value.subCertFile = r.obj.certFile
-    settings.value.subKeyFile = r.obj.keyFile
-    settings.value.subCertMode = ''
+    settings.value.subCertFile = c?.certFile ?? ''
+    settings.value.subKeyFile = c?.keyFile ?? ''
   }
-  if (FindDiff.deepCompare(settings.value, oldSettings.value)) {
-    // 设置无变化(典型:强制续期,路径早已配好):证书由热加载生效,无需保存或重启
-    push.success({
-      title: i18n.global.t('success'),
-      duration: 5000,
-      message: via + ' ' + i18n.global.t('setting.issueCertOk'),
-    })
-    loading.value = false
-    return
-  }
-  push.success({
-    title: i18n.global.t('success'),
-    duration: 8000,
-    message: via + ' ' + i18n.global.t('setting.issueCertRestarting'),
-  })
-  await saveAndRestart(isWeb)
-  loading.value = false
 }
 
-// 申请成功后的自动收尾:保存设置→重启面板→探活→跳转(web 切 https 地址,sub 留在原页)。
+// 两侧一起派生。清单没有【成功】加载过就一概不动:一次失败的 api/certs 留下的是
+// 空清单,拿空清单派生等于把面板正在用的证书路径全部抹掉,保存重启后 HTTPS 就没了。
+// setData(快照前)和 save(入库前)各调一次,证书清单的变化(申请/登记/编辑路径)
+// 在这两个时点被收拢,平时不需要额外的 watch。
+const syncCertsFromList = () => {
+  if (!certsLoaded()) return
+  syncCert('web')
+  syncCert('sub')
+}
+
+// 改域名 = 换证书,两个方向都要跟(选到没证书的域名就得清空,否则会拿着上一个
+// 域名的证书去跑 HTTPS,浏览器直接报 name mismatch)。
+watch(() => settings.value.webDomain, () => { if (certsLoaded()) syncCert('web') })
+watch(() => settings.value.subDomain, () => { if (certsLoaded()) syncCert('sub') })
+
+type CertNote = { text: string; kind: 'ok' | 'warn' | 'mute'; offerIssue: boolean }
+
+// 域名框下面那行回执。反代开着却没证书是【保存必失败】的组合(生成不出 vhost),
+// 与其等后端报错不如当场说清楚。
+const certNote = (domain: string, behindProxy: boolean): CertNote | null => {
+  const d = (domain ?? '').trim()
+  if (!d) return null
+  // 清单拿不到时宁可闭嘴:此时说「还没有证书」是把一次查询故障当成事实陈述
+  if (!certsLoaded()) return null
+  const c = findCert(d)
+  if (!c) {
+    return behindProxy
+      ? { text: i18n.global.t('setting.certNoteMissingProxy'), kind: 'warn', offerIssue: true }
+      : { text: i18n.global.t('setting.certNoteMissing'), kind: 'mute', offerIssue: true }
+  }
+  if (!c.notAfter) return { text: i18n.global.t('setting.certNoteUnreadable'), kind: 'warn', offerIssue: false }
+  const days = daysLeft(c.notAfter)
+  if (days < 0) return { text: i18n.global.t('setting.certNoteExpired'), kind: 'warn', offerIssue: false }
+  return { text: i18n.global.t('setting.certNoteOk', { days }), kind: days <= 14 ? 'warn' : 'ok', offerIssue: false }
+}
+
+const webCertNote = computed(() => certNote(settings.value.webDomain, webBehindProxy.value))
+const subCertNote = computed(() => certNote(settings.value.subDomain, subBehindProxy.value))
+
+// 「去申请」:切到证书页并把域名带过去,省得再输一遍
+const issueDomain = ref('')
+const goIssue = (domain: string) => {
+  issueDomain.value = (domain ?? '').trim()
+  tab.value = 'certs'
+}
+// 离开证书页就清掉:不清的话,之后任何一次直接点开证书页,申请表单里都还预填着
+// 上次「去申请」留下的域名,一不留神就为早已不想要的主机签发、白烧一次 LE 配额
+watch(tab, (t) => {
+  if (t !== 'certs') issueDomain.value = ''
+})
+
+// 表单当前值里开着反代的域名——证书页申请/续期时要据此上传 behindProxy,
+// 决定 acme.sh 装不装续期后的 nginx 重载钩子
+const proxiedDomains = computed(() => {
+  const out: string[] = []
+  if (settings.value.webNginx === 'true' && settings.value.webDomain.trim()) out.push(settings.value.webDomain.trim())
+  if (settings.value.subNginx === 'true' && settings.value.subDomain.trim()) out.push(settings.value.subDomain.trim())
+  return out
+})
+
+// 需要重启才生效的改动的自动收尾:保存设置→重启面板→探活→跳转(sub 留在原页)。
 // 注意:保存的是整页 settings,用户其它尚未保存的改动会随本次保存一并生效。
 const saveAndRestart = async (isWeb: boolean) => {
   const saveMsg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(settings.value) })
@@ -693,8 +654,11 @@ const saveAndRestart = async (isWeb: boolean) => {
   await fetch('api/restartApp', { method: 'POST', credentials: 'same-origin' }).catch(() => {})
   // 取值顺序必须与 restartApp 一致:填了 webURI 就用它。它不是反代专用——NAT 端口
   // 映射、非标准对外端口、前面挂 CDN 的用户都会填,无条件推断会把他们跳到错地址。
+  // 协议同样要推,不能写死 https:这个函数早先只在「证书申请成功」后被调用,那时必然
+  // 有证书;如今保存设置也走这条路,而域名换成一个没有证书的就会让面板退回 HTTP——
+  // 写死 https 会把人跳到打不开的地址,且面板已经重启完,没有第二次机会。
   const target = isWeb
-    ? (settings.value.webURI || buildURL(settings.value.webDomain, settings.value.webPort.toString(), true, settings.value.webPath))
+    ? (settings.value.webURI || buildURL(settings.value.webDomain, settings.value.webPort.toString(), panelIsTLS(), settings.value.webPath))
     : window.location.href
   await sleep(3000)
   await waitReachable(target)
@@ -1330,9 +1294,27 @@ const saveClashEditor = (data: string) => {
 @media (max-width: 820px) {
   .head-actions { margin-inline-start: 0; padding-bottom: 10px; }
 }
-.srow-btn {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 13px 0; border-bottom: 1px solid var(--line);
+/* 域名框下面的证书回执:有证书/没证书/快过期，当场说清楚，不必等保存报错 */
+.fieldnote {
+  margin-top: 7px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.fieldnote::before {
+  content: "";
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; flex: none; margin-top: 5px;
+}
+.fieldnote.ok { color: var(--emerald); }
+.fieldnote.warn { color: var(--amber); }
+.fieldnote.mute { color: var(--text-3); }
+.fieldnote a {
+  color: inherit; font-weight: 700; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
 }
 .sub-label {
   font-size: 12px; font-weight: 700; color: var(--text-3);

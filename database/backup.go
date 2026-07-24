@@ -59,6 +59,7 @@ func GetDb(exclude string) ([]byte, error) {
 		&model.Stats{},
 		&model.Client{},
 		&model.Changes{},
+		&model.Cert{},
 	)
 	if err != nil {
 		return nil, err
@@ -66,6 +67,7 @@ func GetDb(exclude string) ([]byte, error) {
 
 	var settings []model.Setting
 	var tls []model.Tls
+	var certs []model.Cert
 	var inbound []model.Inbound
 	var outbound []model.Outbound
 	var endpoint []model.Endpoint
@@ -121,6 +123,14 @@ func GetDb(exclude string) ([]byte, error) {
 		return nil, err
 	} else if len(clients) > 0 {
 		if err := backupDb.Save(clients).Error; err != nil {
+			return nil, err
+		}
+	}
+	// 手动登记的证书记录也要带走,漏了它们会在恢复后从证书页静默消失
+	if err := db.Model(&model.Cert{}).Scan(&certs).Error; err != nil {
+		return nil, err
+	} else if len(certs) > 0 {
+		if err := backupDb.Save(certs).Error; err != nil {
 			return nil, err
 		}
 	}
