@@ -143,6 +143,13 @@ export default {
     restartApp: "Перезапустить приложение",
     restartSb: "Перезапустить Singbox",
     apply: "Применить",
+    cancel: "Отмена",
+    reconcileNode: "Синхронизация узла",
+    adoptInbounds: "Импорт входящих",
+    resetTraffic: "Сброс трафика",
+    updatePanel: "Обновление панели",
+    reset: "Сбросить",
+    adopt: "Принять",
   },
   login: {
     title: "Вход",

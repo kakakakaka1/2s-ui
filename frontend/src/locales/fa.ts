@@ -142,6 +142,13 @@ export default {
     close: "بستن",
     restartApp: "ریستارت پنل",
     restartSb: "ریستارت سینگ‌باکس",
+    cancel: "لغو",
+    reconcileNode: "همگام‌سازی نود",
+    adoptInbounds: "ورود درون‌آیی‌ها",
+    resetTraffic: "بازنشانی ترافیک",
+    updatePanel: "به‌روزرسانی پنل",
+    reset: "بازنشانی",
+    adopt: "پذیرش",
   },
   login: {
     title: "ورود",

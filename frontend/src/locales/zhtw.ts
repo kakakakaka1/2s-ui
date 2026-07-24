@@ -142,6 +142,13 @@ export default {
     close: "關閉",
     restartApp: "重啟面板",
     restartSb: "重啟 Singbox",
+    cancel: "取消",
+    reconcileNode: "同步節點",
+    adoptInbounds: "匯入入站",
+    resetTraffic: "重置流量",
+    updatePanel: "更新面板",
+    reset: "重置",
+    adopt: "採納",
   },
   login: {
     title: "登錄",

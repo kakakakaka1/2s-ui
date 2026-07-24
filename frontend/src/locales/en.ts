@@ -142,6 +142,13 @@ export default {
     close: "Close",
     restartApp: "Restart App",
     restartSb: "Restart Singbox",
+    cancel: "Cancel",
+    reconcileNode: "Sync node",
+    adoptInbounds: "Import inbounds",
+    resetTraffic: "Reset traffic",
+    updatePanel: "Update panel",
+    reset: "Reset",
+    adopt: "Adopt",
   },
   login: {
     title: "Login",

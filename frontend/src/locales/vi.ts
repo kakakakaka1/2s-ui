@@ -142,6 +142,13 @@ export default {
     close: "Đóng",
     restartApp: "Khởi động lại ứng dụng",
     restartSb: "Khởi động lại Singbox",
+    cancel: "Hủy",
+    reconcileNode: "Đồng bộ node",
+    adoptInbounds: "Nhập inbound",
+    resetTraffic: "Đặt lại lưu lượng",
+    updatePanel: "Cập nhật ứng dụng",
+    reset: "Đặt lại",
+    adopt: "Nhận",
   },
   login: {
     title: "Đăng nhập",
