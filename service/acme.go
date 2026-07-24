@@ -2,11 +2,16 @@ package service
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -200,6 +205,16 @@ func validDomain(d string) bool {
 	return true
 }
 
+// validCertDomain 在 validDomain 基础上放行通配符(*.example.com):acme.sh 里可能躺着
+// DNS-01 签的通配符证书,它们必须能被列出、登记和删除,否则就是页面上一行永远管不了的
+// 僵尸。但 server_name / webDomain / 申请入口仍用 validDomain——通配符在那些位置不成立。
+func validCertDomain(d string) bool {
+	if strings.HasPrefix(d, "*.") {
+		return validDomain(d[2:])
+	}
+	return validDomain(d)
+}
+
 // DetectNginx 检测 nginx 是否安装并运行,以及 80 端口是否被占用。Windows 直接返回零值。
 func (a *AcmeService) DetectNginx() NginxStatus {
 	status := NginxStatus{}
@@ -331,6 +346,461 @@ func (a *AcmeService) ensureNginxServerBlock(domain string) error {
 	}
 	logger.Info("已生成 nginx 验证配置:", confPath)
 	return nil
+}
+
+// ===== 反向代理 vhost:由面板自动生成、自动校验、失败自动回滚 =====
+
+// 生成的文件是 s-ui-proxy-<域名>.conf。前缀刻意和 ACME 验证块的 s-ui-acme- 区分开:
+// 清理不再需要的配置时要能 glob 出「我们生成的反代」,又绝不能扫到验证块——
+// 那个删掉证书就续不了期了。
+const nginxProxyConfPrefix = "s-ui-proxy-"
+
+// ProxyEndpoint 是一个域名下的一条反代规则:把 Path 交给本机的某个端口。
+// 面板和订阅各算一条;两者共用域名时会落进同一个 server 块的两个 location——
+// 各生成一份 server 块会被 nginx 判 conflicting server name 而忽略掉后一个。
+type ProxyEndpoint struct {
+	Name   string // 只用于配置里的注释和日志:panel / sub
+	Path   string // 形如 /app/
+	Listen string // 上游监听地址,空表示 0.0.0.0
+	Port   int
+}
+
+// VhostOptions 描述一个域名要生成的整份配置。
+type VhostOptions struct {
+	Domain    string
+	CertFile  string // 设置里手填的证书,仅当 /root/cert/<域名>/ 下那份不存在时才用
+	KeyFile   string
+	Endpoints []ProxyEndpoint
+}
+
+// VhostResult 回给前端展示:生成了哪个文件、每个端点的对外地址是什么。
+type VhostResult struct {
+	Domain   string   `json:"domain"`
+	ConfFile string   `json:"confFile"`
+	CertFile string   `json:"certFile"`
+	URLs     []string `json:"urls"`
+}
+
+func fileReadable(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
+}
+
+// nginxVersion 解析 `nginx -v` 的版本号(输出形如 "nginx version: nginx/1.22.1")。
+// 取不到时返回 0,0,0,调用方据此走最保守的分支。
+func nginxVersion() (major, minor, patch int) {
+	out, err := runCmd(cmdDetectTO, "/root", "nginx", "-v")
+	if err != nil {
+		return 0, 0, 0
+	}
+	i := strings.LastIndex(out, "/")
+	if i < 0 {
+		return 0, 0, 0
+	}
+	fields := strings.Fields(out[i+1:])
+	if len(fields) == 0 {
+		return 0, 0, 0
+	}
+	nums := strings.SplitN(fields[0], ".", 3)
+	get := func(idx int) int {
+		if idx >= len(nums) {
+			return 0
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(nums[idx]))
+		if err != nil {
+			return 0
+		}
+		return n
+	}
+	return get(0), get(1), get(2)
+}
+
+// nginxEnv 是生成配置时需要的本机 nginx 事实,由 EnsurePanelProxy 探测后传入,
+// 好让 buildPanelProxyConf 保持纯函数、能脱离 nginx 直接验证输出。
+type nginxEnv struct {
+	http2Listen    string // 加在 listen 后面的 http2 参数(老语法)
+	http2Directive string // 独立的 http2 指令行(1.25.1+ 新语法)
+	ipv6           bool
+}
+
+// http2LinesFor 按 nginx 版本给出开启 HTTP/2 的正确写法:
+//   - 1.25.1 起 `listen ... http2` 被废弃,改用独立的 `http2 on;`
+//   - 更早的版本只认 listen 上的 http2 参数
+//
+// 版本探测失败(major==0)时两者都不写:HTTP/1.1 对一个管理面板完全够用,
+// 而写错语法会让 nginx -t 直接失败——宁可少个特性,也不能让自动生成失败。
+func http2LinesFor(major, minor, patch int) (listenSuffix, directive string) {
+	if major == 0 {
+		return "", ""
+	}
+	if major > 1 || (major == 1 && (minor > 25 || (minor == 25 && patch >= 1))) {
+		return "", "    http2 on;\n"
+	}
+	return " http2", ""
+}
+
+func detectNginxEnv() nginxEnv {
+	env := nginxEnv{ipv6: ipv6Available()}
+	env.http2Listen, env.http2Directive = http2LinesFor(nginxVersion())
+	return env
+}
+
+// resolveDomainCert 挑选喂给 nginx 的证书:优先面板自己用 acme.sh 申请的那份
+// (/root/cert/{域名}/),它的路径固定、续期时被原地覆盖;没有才回退到手填的路径。
+func resolveDomainCert(domain, certFile, keyFile string) (string, string, error) {
+	autoCert := filepath.Join(certBaseDir, domain, "fullchain.pem")
+	autoKey := filepath.Join(certBaseDir, domain, "privkey.pem")
+	if fileReadable(autoCert) && fileReadable(autoKey) {
+		return autoCert, autoKey, nil
+	}
+	if fileReadable(certFile) && fileReadable(keyFile) {
+		return certFile, keyFile, nil
+	}
+	return "", "", common.NewErrorf("找不到 %s 的证书:请先为它申请证书,"+
+		"或登记一份已有的证书文件。(已查 %s 与设置里填写的证书路径)", domain, filepath.Dir(autoCert))
+}
+
+// upstreamAddr 是 nginx 要回连的面板地址。面板监听 0.0.0.0/空时回连 127.0.0.1;
+// 绑了具体地址就必须照着连,否则 nginx 连不上自己面板。
+func upstreamAddr(listen string, port int) string {
+	host := strings.TrimSpace(listen)
+	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+		host = "127.0.0.1"
+	} else if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]" // 裸 IPv6 要加方括号才能跟端口拼
+	}
+	return host + ":" + strconv.Itoa(port)
+}
+
+// normalizeProxyPath 把路径规整成前后都有斜杠的形式(location 前缀匹配要靠它)。
+func normalizeProxyPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		p = "/"
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	if !strings.HasSuffix(p, "/") {
+		p += "/"
+	}
+	return p
+}
+
+// buildVhostConf 拼出一个域名的整份配置:一个 server 块,每个端点一个 location。
+// 纯函数(本机事实全从 env 传入),好在没有 nginx 的机器上也能验证输出。
+func buildVhostConf(opt VhostOptions, certFile, keyFile string, env nginxEnv) string {
+	listen := "    listen 443 ssl" + env.http2Listen + ";\n"
+	if env.ipv6 {
+		listen += "    listen [::]:443 ssl" + env.http2Listen + ";\n"
+	}
+
+	var locations strings.Builder
+	for _, ep := range opt.Endpoints {
+		path := normalizeProxyPath(ep.Path)
+		locations.WriteString("\n    # " + ep.Name + "\n")
+		// 手输对外地址时几乎一定会漏掉尾斜杠,而 location /app/ 是前缀匹配、配不上 /app。
+		// 补一条精确跳转,省掉一个必然会踩的 404。路径就是 / 时无需(也不能)加。
+		if trimmed := strings.TrimSuffix(path, "/"); trimmed != "" {
+			locations.WriteString("    location = " + trimmed + " { return 301 " + path + "; }\n")
+		}
+		locations.WriteString("    location " + path + " {\n" +
+			"        proxy_pass http://" + upstreamAddr(ep.Listen, ep.Port) + ";\n" +
+			"        # 面板/订阅都校验 Host 必须等于设置里的域名,少了这行会对每个请求回 403\n" +
+			"        proxy_set_header Host              $host;\n" +
+			"        proxy_set_header X-Real-IP         $remote_addr;\n" +
+			"        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;\n" +
+			"        proxy_set_header X-Forwarded-Proto $scheme;\n" +
+			"        proxy_read_timeout 300s;\n" +
+			"    }\n")
+	}
+
+	return "# Generated by s-ui for " + opt.Domain + " - do not edit.\n" +
+		"# The panel rewrites this file whenever the reverse-proxy settings are saved.\n" +
+		"server {\n" +
+		listen +
+		env.http2Directive +
+		"    server_name " + opt.Domain + ";\n" +
+		"\n" +
+		"    ssl_certificate     " + certFile + ";\n" +
+		"    ssl_certificate_key " + keyFile + ";\n" +
+		"    ssl_protocols       TLSv1.2 TLSv1.3;\n" +
+		"    ssl_session_cache   shared:SSL:10m;\n" +
+		"    ssl_session_timeout 1d;\n" +
+		locations.String() +
+		"}\n"
+}
+
+// nginx 的语句分隔符:块的 { } 与语句结尾的 ; 一律切开,好让
+// `location / { proxy_pass http://127.0.0.1:2095; }` 这种把整块写在一行的紧凑写法
+// 也能被按语句解析(只看行首指令会把它读成一条 location 指令,直接漏掉)。
+var nginxStmtSplitter = strings.NewReplacer("{", "\n", "}", "\n", ";", "\n")
+
+// nginxProxiesPort 判断 nginx 的生效配置里是否存在指向本机 port 的反向代理。
+// 认两种写法:直接 `proxy_pass http://127.0.0.1:PORT`,以及 upstream 块里的
+// `server 127.0.0.1:PORT`。用于生成配置后的复验:确认写出去的东西真的被 nginx 读进去了。
+func nginxProxiesPort(conf string, port int) bool {
+	if port <= 0 {
+		return false
+	}
+	// 注释是到行尾为止的,必须先按行剥掉,再打散成语句
+	var sb strings.Builder
+	sb.Grow(len(conf))
+	for _, line := range strings.Split(conf, "\n") {
+		if i := strings.IndexByte(line, '#'); i >= 0 {
+			line = line[:i]
+		}
+		sb.WriteString(line)
+		sb.WriteByte('\n')
+	}
+
+	suffix := ":" + strconv.Itoa(port)
+	for _, stmt := range strings.Split(nginxStmtSplitter.Replace(sb.String()), "\n") {
+		fields := strings.Fields(stmt)
+		// 指令名要精确相等:server_name / proxy_pass_header 这些同前缀指令不能命中,
+		// 块开头的 `server {` 切出来只剩一个字段,也在这里被滤掉。
+		if len(fields) < 2 || (fields[0] != "proxy_pass" && fields[0] != "server") {
+			continue
+		}
+		for _, f := range fields[1:] {
+			// 端口在末尾(host:port),或后面跟着路径(proxy_pass http://host:port/x)。
+			// 用 HasSuffix 而不是 Contains,否则 :20950 会被 :2095 命中。
+			if strings.HasSuffix(f, suffix) || strings.Contains(f, suffix+"/") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// proxyConfPath 是本域名对应的反代配置文件路径。名字里带域名,
+// 换域名时生成新文件、旧的由 SyncVhosts 清掉,永远不碰用户自己写的配置。
+func proxyConfPath(domain string) string {
+	return filepath.Join(nginxConfDir, nginxProxyConfPrefix+domain+".conf")
+}
+
+// confIsEffective 判断这份文件是否真的被 nginx 读进了生效配置。
+// 判据是 nginx -T 自己打的 "# configuration file <路径>:" 行——由 nginx 声明它读了谁,
+// 比在输出里找 proxy_pass 可靠:用户自己另有一份反代到同一端口时,只按端口找会把
+// 「我们的文件根本没被 include」误判成成功。
+func confIsEffective(effectiveConf, confPath string) bool {
+	return strings.Contains(effectiveConf, "# configuration file "+confPath+":")
+}
+
+// EnsureVhost 为一个域名生成 nginx 反向代理配置并确认它真的生效。
+//
+// 全过程「验证通过才算成功」:nginx -t 不过、和用户已有配置撞 server_name、reload 失败、
+// 或者块压根没进入生效配置,都会删掉文件、把 nginx 恢复原状,再带着 nginx 自己的输出报错。
+// 调用方必须在这里成功之后才把面板/订阅切成明文 HTTP —— 顺序反了就会出现
+// 「服务不再终结 TLS,前面又没人接管」的窗口,而关掉开关的入口正在那个打不开的页面里。
+func (a *AcmeService) EnsureVhost(opt VhostOptions) (*VhostResult, error) {
+	if runtime.GOOS == "windows" {
+		return nil, common.NewError("Windows 不支持自动生成 nginx 配置")
+	}
+	opt.Domain = strings.TrimSpace(opt.Domain)
+	if opt.Domain == "" {
+		return nil, common.NewError("请先填写「域名」:反向代理需要它作为 server_name")
+	}
+	if !validDomain(opt.Domain) {
+		return nil, common.NewErrorf("域名含非法字符: %q", opt.Domain)
+	}
+	if len(opt.Endpoints) == 0 {
+		return nil, common.NewErrorf("%s 没有需要反代的服务", opt.Domain)
+	}
+	for _, ep := range opt.Endpoints {
+		if ep.Port <= 0 {
+			return nil, common.NewErrorf("%s 的端口无效: %d", ep.Name, ep.Port)
+		}
+	}
+
+	status := a.DetectNginx()
+	if !status.Installed {
+		return nil, common.NewError("未检测到 nginx,无法自动生成反向代理配置;请先安装 nginx(apt install nginx)后重试")
+	}
+	if !status.Active {
+		return nil, common.NewError("nginx 已安装但没有运行,无法确认配置是否生效;请先启动它(systemctl start nginx)后重试")
+	}
+	if st, err := os.Stat(nginxConfDir); err != nil || !st.IsDir() {
+		return nil, common.NewErrorf("nginx 配置目录 %s 不存在,无法自动生成"+
+			"(Alpine 通常是 /etc/nginx/http.d,源码编译的 nginx 可能没有此目录)", nginxConfDir)
+	}
+
+	certFile, keyFile, err := resolveDomainCert(opt.Domain, opt.CertFile, opt.KeyFile)
+	if err != nil {
+		return nil, err
+	}
+
+	confPath := proxyConfPath(opt.Domain)
+	// 覆盖前留个底,失败时要原样还回去(重复生成是常态:改端口、改路径都会走到这里)
+	previous, readErr := os.ReadFile(confPath)
+	hadPrevious := readErr == nil
+	restore := func() {
+		if hadPrevious {
+			_ = os.WriteFile(confPath, previous, 0644)
+		} else {
+			_ = os.Remove(confPath)
+		}
+		// 上面那次 reload 可能已经把坏配置读进内存了,光改文件不够,必须再 reload 一次
+		_, _ = runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx")
+	}
+
+	result := &VhostResult{Domain: opt.Domain, ConfFile: confPath, CertFile: certFile}
+	for _, ep := range opt.Endpoints {
+		result.URLs = append(result.URLs, "https://"+opt.Domain+normalizeProxyPath(ep.Path))
+	}
+	// 复验用第一个端点的端口即可:整份配置是一起写进去的,一个 location 在、其余就在
+	probePort := opt.Endpoints[0].Port
+
+	newContent := buildVhostConf(opt, certFile, keyFile, detectNginxEnv())
+	// 调用方每次保存设置都会走到这里(这样「开关开着但配置丢了」的老实例也能自愈)。
+	// 内容一模一样、而且确实已经在生效配置里,就什么都不用做——否则改个时区都要 reload 一次 nginx。
+	if hadPrevious && string(previous) == newContent {
+		if effective, err := runCmd(cmdDetectTO, "/root", "nginx", "-T"); err == nil &&
+			confIsEffective(effective, confPath) && nginxProxiesPort(effective, probePort) {
+			return result, nil
+		}
+	}
+
+	if err := os.WriteFile(confPath, []byte(newContent), 0644); err != nil {
+		return nil, common.NewErrorf("写入 nginx 配置失败 %s: %v", confPath, err)
+	}
+
+	out, err := runCmd(cmdDetectTO, "/root", "nginx", "-t")
+	if err != nil {
+		restore()
+		return nil, common.NewErrorf("生成的 nginx 配置未通过 nginx -t,已回滚:\n%s", out)
+	}
+	// 用户自己已经为这个域名配过 443 的话,nginx 会忽略后出现的那个块(也就是我们的),
+	// 只留一句 warn。不复验就会「成功」得毫无意义:文件在、nginx 正常、面板照样打不开。
+	if strings.Contains(out, "conflicting server name") && strings.Contains(out, opt.Domain) {
+		restore()
+		return nil, common.NewErrorf("nginx 里已经有 %s 的 443 配置了,自动生成的会被忽略;"+
+			"已回滚。请在你已有的那份配置里把 %s 反代到 http://%s,并加上 proxy_set_header Host $host;",
+			opt.Domain, normalizeProxyPath(opt.Endpoints[0].Path), upstreamAddr(opt.Endpoints[0].Listen, opt.Endpoints[0].Port))
+	}
+	if out, err := runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx"); err != nil {
+		restore()
+		return nil, common.NewErrorf("reload nginx 失败(443 端口可能被别的程序占用),已回滚:\n%s", out)
+	}
+	// 复验:若本机 nginx.conf 没有 include conf.d/*.conf(源码编译、openresty、手写配置
+	// 都常见),上面每一步都会「成功」,而文件根本没被解析。这一步把它变成明确的失败。
+	// 两个判据都要:文件确实被读了(confIsEffective),且里面的反代端口确实是面板的。
+	if effective, err := runCmd(cmdDetectTO, "/root", "nginx", "-T"); err != nil ||
+		!confIsEffective(effective, confPath) || !nginxProxiesPort(effective, probePort) {
+		restore()
+		return nil, common.NewErrorf("已写入 %s,但它没有出现在 nginx 的生效配置里,"+
+			"本机 nginx.conf 可能没有 include %s/*.conf;已回滚",
+			confPath, nginxConfDir)
+	}
+
+	logger.Info("已生成反向代理配置:", confPath)
+	return result, nil
+}
+
+// SyncVhosts 让 nginx 里「我们生成的那些反代配置」与传入的期望状态一致:
+// specs 里的每个域名各生成一份,而以前生成过、现在不在 specs 里的一律删掉。
+//
+// 删除这一步是必须的,漏了会留下两种坏状态:关掉反代后 443 还在把明文请求转给一个
+// 已经改回 TLS 的端口(502),换域名后旧域名的块还赖在 nginx 里。
+// 清理只扫 s-ui-proxy-* 前缀,碰不到 ACME 验证块,更碰不到用户自己写的配置。
+func (a *AcmeService) SyncVhosts(specs []VhostOptions) ([]*VhostResult, error) {
+	if runtime.GOOS == "windows" {
+		if len(specs) == 0 {
+			return nil, nil
+		}
+		return nil, common.NewError("Windows 不支持自动生成 nginx 配置")
+	}
+
+	wanted := make(map[string]bool, len(specs))
+	for _, s := range specs {
+		wanted[strings.ToLower(strings.TrimSpace(s.Domain))] = true
+	}
+
+	// 大小写改名的残留要先清:同一个域名若还留着一份大小写不同的旧 conf,nginx 会把
+	// 两份判成 conflicting server name,新生成的那份被静默忽略。这个域名马上就要重新
+	// 生成,先删是安全的。
+	removed := 0
+	list := func() []string {
+		entries, _ := filepath.Glob(filepath.Join(nginxConfDir, nginxProxyConfPrefix+"*.conf"))
+		return entries
+	}
+	for _, p := range list() {
+		domain := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), nginxProxyConfPrefix), ".conf")
+		if wanted[strings.ToLower(domain)] && p != proxyConfPath(strings.ToLower(domain)) {
+			if err := os.Remove(p); err == nil {
+				logger.Info("已删除大小写不一致的旧反代配置:", p)
+				removed++
+			}
+		}
+	}
+
+	// 先生成,全部成功后再删多余的。反过来的话,生成失败(典型:换成的新域名还没有
+	// 证书)时旧配置已经被删,而调用方失败时是【不保存设置】的——磁盘上的反代被销毁、
+	// 数据库里还是旧配置,正在服务的域名就此断掉,且要等到下一次 reload 才暴露。
+	// 同域名的更新由 EnsureVhost 原地覆盖 + 失败回滚,不依赖先删。
+	//
+	// EnsureVhost 只回滚它自己那个域名;而批次里排在前面的域名一旦成功就已经写盘 +
+	// reload。后面任一域名失败时,调用方是【不保存设置】的,那些先生效的 vhost 就成了
+	// 「库里没记、nginx 却在转发」的孤儿(典型:面板有证书、订阅没有,面板那份先生效,
+	// save 却因订阅失败整体中止,443 上多出一份没人管的反代)。所以逐个记下前一状态,
+	// 失败时把这一批已应用的一起还原,让磁盘和「未保存」的语义对齐。
+	type appliedVhost struct {
+		path        string
+		prev        []byte
+		hadPrevious bool
+	}
+	var applied []appliedVhost
+	rollbackApplied := func() {
+		if len(applied) == 0 {
+			return
+		}
+		for _, v := range applied {
+			if v.hadPrevious {
+				_ = os.WriteFile(v.path, v.prev, 0644)
+			} else {
+				_ = os.Remove(v.path)
+			}
+		}
+		if out, err := runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx"); err != nil {
+			logger.Warning("回滚本批反代配置后 reload nginx 失败(重启 nginx 即可生效):", out)
+		}
+	}
+
+	var results []*VhostResult
+	for _, spec := range specs {
+		// 路径口径与 EnsureVhost 内部一致(只 TrimSpace,不额外 ToLower)
+		confPath := proxyConfPath(strings.TrimSpace(spec.Domain))
+		prev, readErr := os.ReadFile(confPath)
+		res, err := a.EnsureVhost(spec)
+		if err != nil {
+			// 失败的这个域名 EnsureVhost 已自行回滚;这里还原它之前【已成功】的那些
+			rollbackApplied()
+			return nil, err
+		}
+		applied = append(applied, appliedVhost{path: confPath, prev: prev, hadPrevious: readErr == nil})
+		results = append(results, res)
+	}
+
+	for _, p := range list() {
+		domain := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), nginxProxyConfPrefix), ".conf")
+		if wanted[strings.ToLower(domain)] {
+			continue
+		}
+		if err := os.Remove(p); err != nil {
+			logger.Warning("删除失效的反代配置失败 ", p, ": ", err)
+			continue
+		}
+		logger.Info("已删除不再需要的反向代理配置:", p)
+		removed++
+	}
+	// 有删除就必须 reload,不能指望上面的 EnsureVhost 顺带做:内容没变时它会短路返回、
+	// 根本不 reload,被删掉的 server 块就一直留在 nginx 内存里继续转发。
+	if removed > 0 {
+		if out, err := runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx"); err != nil {
+			logger.Warning("已删除反代配置,但 reload nginx 失败(重启 nginx 即可生效):", out)
+		}
+	}
+	return results, nil
 }
 
 // ensureAcmeSh 确保 acme.sh 可用,返回其可执行路径与对应 HOME;缺失时自动安装。
@@ -515,15 +985,251 @@ func (a *AcmeService) buildReloadCmd(method string, behindProxy bool) string {
 	return "systemctl try-reload-or-restart nginx"
 }
 
-// ListCerts 返回 acme.sh 已管理的证书列表,供前端展示、避免重复申请触发 LE 限速。
-func (a *AcmeService) ListCerts() (string, error) {
-	if runtime.GOOS == "windows" {
-		return "", common.NewError("Windows 不支持 acme.sh")
+// ===== 证书清单 =====
+
+// CertInfo 是「域名与证书」页面上的一条记录。
+// 时间统一用 unix 秒回给前端,由前端按浏览器时区渲染并算剩余天数——服务器时区不一定
+// 是用户的,后端算好天数反而会差一天。
+type CertInfo struct {
+	Domain    string `json:"domain"`
+	CertFile  string `json:"certFile"`  // 摆出来供复制:建入站 TLS 时要填进 certificate_path
+	KeyFile   string `json:"keyFile"`
+	CA        string `json:"ca"`
+	KeyType   string `json:"keyType"`
+	NotAfter  int64  `json:"notAfter"`  // 0 表示证书文件读不到
+	NextRenew int64  `json:"nextRenew"` // 0 表示不适用(手动登记的证书)
+	Managed   bool   `json:"managed"`   // true = acme.sh 维护并自动续期
+}
+
+// parseAcmeConf 解析 acme.sh 的域名 conf(纯 KEY='VALUE' 行)。
+// 不用解析 `acme.sh --list` 的表格输出:那是空格对齐的,Profile 一列为空时字段会整体
+// 错位,拿 CA 当创建时间。这个文件是 acme.sh 自己 source 的,格式稳定得多。
+func parseAcmeConf(content string) map[string]string {
+	kv := map[string]string{}
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		eq := strings.IndexByte(line, '=')
+		if eq <= 0 || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key := strings.TrimSpace(line[:eq])
+		val := strings.TrimSpace(line[eq+1:])
+		val = strings.TrimPrefix(val, "'")
+		val = strings.TrimSuffix(val, "'")
+		kv[key] = val
 	}
+	return kv
+}
+
+// readLeafCert 解析证书文件的第一段 PEM,也就是叶子证书。fullchain 里后面跟着的是
+// 中间 CA,它的有效期比叶子长得多、Issuer 也是上一级,拿错了会把「快过期」显示成
+// 「还早」。读不到或解析失败一律返回 nil,由调用方降级显示。
+func readLeafCert(path string) *x509.Certificate {
+	if path == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		return nil
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil
+	}
+	return cert
+}
+
+// certNotAfter 读证书文件的到期时间,0 表示读不到。
+func certNotAfter(path string) int64 {
+	if cert := readLeafCert(path); cert != nil {
+		return cert.NotAfter.Unix()
+	}
+	return 0
+}
+
+// certIssuer 读签发者名字,给手动登记的证书当 CA 显示。acme.sh 那边不用它:
+// 有 Le_API 可查,比 Issuer CN 准(同一家 CA 的 CN 会随中间证书轮换而变)。
+// 收解析好的叶子证书而不是路径:调用方本来就要解析一次,别为两个字段读两遍文件。
+func certIssuer(cert *x509.Certificate) string {
+	if cert == nil {
+		return ""
+	}
+	if cn := strings.TrimSpace(cert.Issuer.CommonName); cn != "" {
+		return cn
+	}
+	if len(cert.Issuer.Organization) > 0 {
+		return strings.TrimSpace(cert.Issuer.Organization[0])
+	}
+	return ""
+}
+
+// caName 把 acme.sh 记的 CA 目录 URL 变成人看的名字。
+func caName(apiURL string) string {
+	switch {
+	case apiURL == "":
+		return ""
+	case strings.Contains(apiURL, "letsencrypt"):
+		return "Let's Encrypt"
+	case strings.Contains(apiURL, "zerossl"):
+		return "ZeroSSL"
+	case strings.Contains(apiURL, "buypass"):
+		return "Buypass"
+	// Google 的 ACME 端点是 dv.acme-v02.api.pki.goog,串里没有 "google" 这个词
+	case strings.Contains(apiURL, "pki.goog"):
+		return "Google Trust Services"
+	case strings.Contains(apiURL, "ssl.com"):
+		return "SSL.com"
+	}
+	if u, err := url.Parse(apiURL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return apiURL
+}
+
+// ListCerts 列出 acme.sh 维护的证书。直接读它的家目录,不调 `acme.sh --list`。
+// 找不到 acme.sh 时返回空列表而不是错误:那只是还没申请过证书,页面该显示空态。
+func (a *AcmeService) ListCerts() ([]CertInfo, error) {
+	if runtime.GOOS == "windows" {
+		return []CertInfo{}, nil
+	}
+	bin, _ := resolveAcmeSh()
+	if bin == "" {
+		return []CertInfo{}, nil
+	}
+	// 注意别用 resolveAcmeSh 返回的第二个值:那是给子进程当 HOME 用的上级目录(/root),
+	// 证书目录在 acme.sh 自己的家目录里(/root/.acme.sh),也就是可执行文件所在目录。
+	dataDir := filepath.Dir(bin)
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		return []CertInfo{}, nil
+	}
+
+	// 同一个域名可能有两个目录(<域名> 与 <域名>_ecc:先手工签过 RSA、再由面板签
+	// ec-256 就会这样),必须按域名去重。两条同名记录会让前端 v-for 撞 key,而
+	// sort.Slice 对相等键不稳定,findCert 取到哪条随每次刷新变——webCertFile 会在
+	// 两个路径之间来回改写。留 NotAfter 较新的那份:那才是还有人在续期的。
+	type candidate struct {
+		info CertInfo
+		ecc  bool
+	}
+	byDomain := map[string]candidate{}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		// 证书目录名是 <域名> 或 <域名>_ecc;ca/deploy/dnsapi/notify 这些内部目录
+		// 里没有同名的 .conf,下面读文件时自然被滤掉,不用维护一份黑名单。
+		domain := strings.TrimSuffix(e.Name(), "_ecc")
+		raw, err := os.ReadFile(filepath.Join(dataDir, e.Name(), domain+".conf"))
+		if err != nil {
+			continue
+		}
+		kv := parseAcmeConf(string(raw))
+		if kv["Le_Domain"] != "" {
+			domain = kv["Le_Domain"]
+		}
+
+		info := CertInfo{
+			// 对外统一小写:DNS 不分大小写,而下游(这里的去重、前端 findCert、删除
+			// 守卫)全是精确比对,大小写混着会让同一个域名分裂成两条真相。
+			// 文件路径仍用目录里的原样写法,大小写敏感的文件系统上不能改。
+			Domain:  strings.ToLower(domain),
+			CA:      caName(kv["Le_API"]),
+			KeyType: kv["Le_Keylength"],
+			Managed: true,
+		}
+		// 优先用 acme.sh 记录的安装路径:那才是面板/nginx/sing-box 实际在读的文件。
+		// 没装过就退回 acme.sh 自己的副本,至少能显示到期时间。
+		info.CertFile = kv["Le_RealFullChainPath"]
+		info.KeyFile = kv["Le_RealKeyPath"]
+		if info.CertFile == "" {
+			info.CertFile = filepath.Join(dataDir, e.Name(), "fullchain.cer")
+		}
+		if info.KeyFile == "" {
+			info.KeyFile = filepath.Join(dataDir, e.Name(), domain+".key")
+		}
+		if n, err := strconv.ParseInt(kv["Le_NextRenewTime"], 10, 64); err == nil {
+			info.NextRenew = n
+		}
+		info.NotAfter = certNotAfter(info.CertFile)
+
+		cur := candidate{info: info, ecc: strings.HasSuffix(e.Name(), "_ecc")}
+		if prev, ok := byDomain[info.Domain]; ok {
+			// 不比旧的新就不换;打平时留 _ecc——面板自己签发的默认就是 ec-256
+			if cur.info.NotAfter < prev.info.NotAfter ||
+				(cur.info.NotAfter == prev.info.NotAfter && !cur.ecc) {
+				continue
+			}
+		}
+		byDomain[info.Domain] = cur
+	}
+
+	certs := make([]CertInfo, 0, len(byDomain))
+	for _, c := range byDomain {
+		certs = append(certs, c.info)
+	}
+	sort.Slice(certs, func(i, j int) bool { return certs[i].Domain < certs[j].Domain })
+	return certs, nil
+}
+
+// ManagedCertDir 返回面板为该域名安装证书的目录。RemoveCert 会把它整个删掉,
+// 所以「设置里的证书路径落在这个目录下」也算正在使用(删除守卫要靠它兜住
+// 域名与路径分岔的情形)。
+func ManagedCertDir(domain string) string {
+	return filepath.Join(certBaseDir, domain)
+}
+
+// RemoveCert 删除一张证书:先让 acme.sh 忘掉它(不再续期),再删掉安装出去的文件副本。
+//
+// 调用方必须先确认没有服务在用这个域名——面板/订阅正用着的证书被删掉,下次重启就起不来。
+// 那个检查放在调用方(它才读得到设置),这里只管删。
+// 入站 TLS 是否手填了这两个路径不做检查:那要遍历所有 TLS 配置解析 JSON、还要处理软链接
+// 和相对路径,代价和收益不成正比,由前端在确认框里提示。
+func (a *AcmeService) RemoveCert(domain string) error {
+	if runtime.GOOS == "windows" {
+		return common.NewError("Windows 不支持 acme.sh")
+	}
+	domain = strings.TrimSpace(domain)
+	// 放行通配符:DNS-01 签的通配符证书也得能删,否则列表里那行永远管不了。
+	// 域名只进 exec 的参数切片和 filepath.Join,不经过 shell,字面 '*' 是安全的。
+	if domain == "" || !validCertDomain(domain) {
+		return common.NewErrorf("域名无效: %q", domain)
+	}
+
 	bin, home := resolveAcmeSh()
 	if bin == "" {
-		return "", nil
+		return common.NewError("未安装 acme.sh,无法删除证书")
 	}
-	out, _ := runCmd(cmdDetectTO, home, bin, "--list")
-	return out, nil
+	// --remove 只是让 acme.sh 停止续期并移除它的记录,不会碰安装出去的文件
+	if out, err := runCmd(cmdDetectTO, home, bin, "--remove", "-d", domain); err != nil {
+		return common.NewErrorf("acme.sh 移除记录失败:\n%s", out)
+	}
+	// acme.sh 会把证书目录留在原地(它自己的文档也这么说),这里一并清掉,
+	// 否则列表里那条会因为目录还在而阴魂不散。
+	// 目录在 acme.sh 的家目录下(可执行文件所在处),不是 home 那个上级目录。
+	dataDir := filepath.Dir(bin)
+	for _, dir := range []string{
+		filepath.Join(dataDir, domain),
+		filepath.Join(dataDir, domain+"_ecc"),
+	} {
+		if st, err := os.Stat(dir); err == nil && st.IsDir() {
+			if err := os.RemoveAll(dir); err != nil {
+				logger.Warning("已从 acme.sh 移除 ", domain, ",但删除目录失败 ", dir, ": ", err)
+			}
+		}
+	}
+	// 安装到 /root/cert/<域名>/ 的那份也删掉:留着会让人以为证书还在正常轮换,
+	// 实际上已经没人续期了。用户自己指定到别处的路径不碰(不在 certBaseDir 下)。
+	installed := filepath.Join(certBaseDir, domain)
+	if st, err := os.Stat(installed); err == nil && st.IsDir() {
+		if err := os.RemoveAll(installed); err != nil {
+			logger.Warning("删除已安装的证书目录失败 ", installed, ": ", err)
+		}
+	}
+	logger.Info("已删除证书:", domain)
+	return nil
 }

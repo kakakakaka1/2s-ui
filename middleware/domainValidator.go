@@ -15,7 +15,9 @@ func DomainValidator(domain string) gin.HandlerFunc {
 			host, _, _ = net.SplitHostPort(c.Request.Host)
 		}
 
-		if host != domain {
+		// 域名大小写不敏感(network/tls.go 的 SNI 校验也用 EqualFold)。精确比对会在
+		// 设置里存了大小写混杂的域名时把整个面板 403 掉——TLS 握手反而成功,极难定位。
+		if !strings.EqualFold(host, domain) {
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}

@@ -42,6 +42,11 @@ func (a *APP) Init() error {
 	// Init Setting
 	a.SettingService.GetAllSetting()
 
+	// 升级上来的实例:把手填在设置里的证书路径归档成一条可管理的证书记录。
+	// 幂等,且不改设置本身,所以每次启动跑一遍是安全的。
+	var certService service.CertService
+	certService.ArchiveLegacy()
+
 	a.core = core.NewCore()
 
 	a.cronJob = cronjob.NewCronJob()

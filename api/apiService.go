@@ -2,8 +2,11 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shenaba/2s-ui/config"
@@ -476,9 +479,251 @@ func (a *ApiService) TestAcme(c *gin.Context) {
 	pureJsonMsg(c, true, "")
 }
 
+// GetCerts 列出「域名与证书」页面上的全部证书:acme.sh 托管的 + 手动登记的。
+func (a *ApiService) GetCerts(c *gin.Context) {
+	var certSvc service.CertService
+	certs, err := certSvc.List()
+	jsonObj(c, certs, err)
+}
+
+// SaveManualCert 登记或改写一份自带的证书(Cloudflare 源证书、公司内部 CA 签发的
+// 那类)。acme.sh 已经在管这个域名时拒绝:两份记录指向同一域名,页面上说不清到底
+// 哪份在生效,而且用户多半是想改路径、其实该去续期。
+func (a *ApiService) SaveManualCert(c *gin.Context) {
+	domain := strings.TrimSpace(c.Request.FormValue("domain"))
+	certFile := strings.TrimSpace(c.Request.FormValue("certFile"))
+	keyFile := strings.TrimSpace(c.Request.FormValue("keyFile"))
+
+	var certSvc service.CertService
+	// 查不动清单时必须失败而不是当「不存在」放行:否则一次 DB 故障就能绕过下面的
+	// acme.sh 守卫,登记出一条被 List 永远隐藏的重复记录
+	existing, found, err := certSvc.FindByDomain(domain)
+	if err != nil {
+		pureJsonMsg(c, false, err.Error())
+		return
+	}
+	if found && existing.Managed {
+		pureJsonMsg(c, false, fmt.Sprintf("%s 的证书已由 acme.sh 自动续期,无需手动登记", domain))
+		return
+	}
+	if err := certSvc.SaveManual(domain, certFile, keyFile); err != nil {
+		pureJsonMsg(c, false, err.Error())
+		return
+	}
+	pureJsonMsg(c, true, "")
+}
+
+// DeleteCert 删除一张证书。面板或订阅正在用它时拒绝——那两个服务重启时会去读这两个
+// 文件,删掉就起不来了,而此时用户多半已经离开这个页面,很难把两件事联系起来。
+//
+// 手动登记的只从库里移除登记,绝不碰文件本身:那是用户自己的证书,多半还被别的服务
+// 用着。只有 acme.sh 托管的才走 RemoveCert(停止续期 + 删它自己产出的副本)。
+func (a *ApiService) DeleteCert(c *gin.Context) {
+	domain := strings.ToLower(strings.TrimSpace(c.Request.FormValue("domain")))
+	if domain == "" {
+		pureJsonMsg(c, false, "domain is required")
+		return
+	}
+
+	var certSvc service.CertService
+	// 先看它在不在 acme.sh 手里:两边都有登记时(升级归档后又申请了证书)以 acme.sh
+	// 为准,否则只删掉库里那条,acme.sh 还在后台给它续期,页面上却已经看不见了。
+	// 查不动清单时必须失败而不是当「不存在」:否则 acme.sh 托管的会被当成手动记录,
+	// DeleteManual 删了个寂寞还报成功,acme.sh 照旧续期、那行刷新后又回来了。
+	info, found, err := certSvc.FindByDomain(domain)
+	if err != nil {
+		pureJsonMsg(c, false, err.Error())
+		return
+	}
+
+	// 占用检查两条都要:域名匹配是常规情形;路径匹配兜住「域名已经改走(或清空)、
+	// 证书路径还留在设置里」的分岔——真正让服务下次重启起不来的是路径指向的文件被删,
+	// 不是域名对不对得上。RemoveCert 会把 /root/cert/<域名>/ 整个目录删掉,所以设置
+	// 里的路径落在该目录下也算占用。
+	webDomain, _ := a.SettingService.GetWebDomain()
+	subDomain, _ := a.SettingService.GetSubDomain()
+	webCert, _ := a.SettingService.GetCertFile()
+	webKey, _ := a.SettingService.GetKeyFile()
+	subCert, _ := a.SettingService.GetSubCertFile()
+	subKey, _ := a.SettingService.GetSubKeyFile()
+	// Clean 之后再比:设置里的路径可能与登记的写法只差分隔符或多余的 ./
+	managedDir := filepath.Clean(service.ManagedCertDir(domain)) + string(filepath.Separator)
+	usesFiles := func(paths ...string) bool {
+		for _, p := range paths {
+			if p == "" {
+				continue
+			}
+			p = filepath.Clean(p)
+			if found && (p == filepath.Clean(info.CertFile) || p == filepath.Clean(info.KeyFile)) {
+				return true
+			}
+			if strings.HasPrefix(p, managedDir) {
+				return true
+			}
+		}
+		return false
+	}
+	var inUse []string
+	if strings.EqualFold(webDomain, domain) || usesFiles(webCert, webKey) {
+		inUse = append(inUse, "面板")
+	}
+	if strings.EqualFold(subDomain, domain) || usesFiles(subCert, subKey) {
+		inUse = append(inUse, "订阅")
+	}
+	if len(inUse) > 0 {
+		pureJsonMsg(c, false, fmt.Sprintf("%s正在使用 %s 的证书;请先在对应设置里换成别的域名,再删除这张证书",
+			strings.Join(inUse, "和"), domain))
+		return
+	}
+
+	if found && info.Managed {
+		var acme service.AcmeService
+		if err := acme.RemoveCert(domain); err != nil {
+			pureJsonMsg(c, false, err.Error())
+			return
+		}
+		// 归档时留下的那条同名手动记录一并清掉,免得删完 acme.sh 那份后它又冒出来,
+		// 指着一个刚被删掉的文件。对不存在的行本就是 no-op,不必先查。
+		if err := certSvc.DeleteManual(domain); err != nil {
+			logger.Warning("已删除 acme.sh 证书 ", domain, ",但清理登记记录失败: ", err)
+		}
+		pureJsonMsg(c, true, "")
+		return
+	}
+
+	if err := certSvc.DeleteManual(domain); err != nil {
+		pureJsonMsg(c, false, err.Error())
+		return
+	}
+	pureJsonMsg(c, true, "")
+}
+
 func (a *ApiService) DetectNginx(c *gin.Context) {
 	var acme service.AcmeService
 	jsonObj(c, acme.DetectNginx(), nil)
+}
+
+// proxyForm 是前端传来的一侧(面板或订阅)的反代输入。
+// 每个字段都可能缺席,缺席就回退读库——但开关、端口、路径常常是同一次改动里一起改的,
+// 所以【表单值优先】:读库会拿到还没保存的旧值,生成出一份指向错误端口的配置。
+type proxyForm struct {
+	enabled bool
+	domain  string
+	path    string
+	listen  string
+	port    int
+	cert    string
+	key     string
+}
+
+func (a *ApiService) readProxyForm(c *gin.Context, prefix string, scope string) proxyForm {
+	get := func(name string) string { return c.Request.FormValue(prefix + name) }
+
+	f := proxyForm{enabled: get("Nginx") == "true"}
+
+	if f.domain = get("Domain"); f.domain == "" {
+		if scope == "web" {
+			f.domain, _ = a.SettingService.GetWebDomain()
+		} else {
+			f.domain, _ = a.SettingService.GetSubDomain()
+		}
+	}
+	if v := get("Port"); v != "" {
+		f.port, _ = strconv.Atoi(v)
+	}
+	if f.port <= 0 {
+		if scope == "web" {
+			f.port, _ = a.SettingService.GetPort()
+		} else {
+			f.port, _ = a.SettingService.GetSubPort()
+		}
+	}
+	if f.path = get("Path"); f.path == "" {
+		if scope == "web" {
+			f.path, _ = a.SettingService.GetWebPath()
+		} else {
+			f.path, _ = a.SettingService.GetSubPath()
+		}
+	}
+	// 监听地址允许为空(= 0.0.0.0),没法用空值区分「没传」和「传了空」,
+	// 所以用一个独立字段表示表单确实带了这一项。
+	if get("ListenSet") == "true" {
+		f.listen = get("Listen")
+	} else if scope == "web" {
+		f.listen, _ = a.SettingService.GetListen()
+	} else {
+		f.listen, _ = a.SettingService.GetSubListen()
+	}
+	// 证书路径的空值是有含义的(= 这个域名没有证书,vhost 生成该失败、让用户先去申请),
+	// 不能当「没传」回退读库:回退读到的是上一个域名的证书,会给新域名生成一份用旧证书
+	// 的 vhost——nginx -t 照样通过,保存照样继续,面板重启成明文后浏览器却因证书名不
+	// 匹配进不去。与 ListenSet 同理,用独立标志表示表单确实带了这两项。
+	if get("CertSet") == "true" {
+		f.cert = get("CertFile")
+		f.key = get("KeyFile")
+	} else {
+		if f.cert = get("CertFile"); f.cert == "" {
+			if scope == "web" {
+				f.cert, _ = a.SettingService.GetCertFile()
+			} else {
+				f.cert, _ = a.SettingService.GetSubCertFile()
+			}
+		}
+		if f.key = get("KeyFile"); f.key == "" {
+			if scope == "web" {
+				f.key, _ = a.SettingService.GetKeyFile()
+			} else {
+				f.key, _ = a.SettingService.GetSubKeyFile()
+			}
+		}
+	}
+	// 域名统一小写:nginx 的 server_name 不分大小写,大小写不同的同一域名若各生成
+	// 一份 vhost,后一份会被判 conflicting server name 静默忽略,一侧就失联了。
+	f.domain = strings.ToLower(strings.TrimSpace(f.domain))
+	return f
+}
+
+// SyncNginxProxy 按当前表单值,让 nginx 里自动生成的那些反代配置与设置保持一致。
+// 前端在【保存设置之前】调用:只有这里成功了,把面板/订阅切成明文 HTTP 才是安全的。
+//
+// 按【域名】而不是按服务聚合:面板和订阅共用一个域名是常见配置,各生成一份 server 块
+// 会被 nginx 判 conflicting server name 而忽略掉后一个,于是其中一个静默失联。
+func (a *ApiService) SyncNginxProxy(c *gin.Context) {
+	var acme service.AcmeService
+
+	web := a.readProxyForm(c, "web", "web")
+	sub := a.readProxyForm(c, "sub", "sub")
+
+	// 同域名的端点合进同一份 vhost;顺序固定(面板在前)好让配置内容可比对,
+	// 这样内容没变时 EnsureVhost 能直接短路、不白 reload 一次 nginx。
+	var specs []service.VhostOptions
+	byDomain := map[string]int{}
+	add := func(f proxyForm, name string) {
+		if !f.enabled || strings.TrimSpace(f.domain) == "" {
+			return
+		}
+		ep := service.ProxyEndpoint{Name: name, Path: f.path, Listen: f.listen, Port: f.port}
+		if i, ok := byDomain[f.domain]; ok {
+			specs[i].Endpoints = append(specs[i].Endpoints, ep)
+			return
+		}
+		byDomain[f.domain] = len(specs)
+		specs = append(specs, service.VhostOptions{
+			Domain:    f.domain,
+			CertFile:  f.cert,
+			KeyFile:   f.key,
+			Endpoints: []service.ProxyEndpoint{ep},
+		})
+	}
+	add(web, "panel")
+	add(sub, "subscription")
+
+	res, err := acme.SyncVhosts(specs)
+	if err != nil {
+		pureJsonMsg(c, false, err.Error())
+		return
+	}
+	jsonMsgObj(c, "", res, nil)
 }
 
 func (a *ApiService) IssueCert(c *gin.Context) {
@@ -486,21 +731,23 @@ func (a *ApiService) IssueCert(c *gin.Context) {
 	email := c.Request.FormValue("email")
 	method := c.Request.FormValue("method")
 	force := c.Request.FormValue("force") == "true"
-	// webNginx=true 时反向代理(nginx)是证书消费方,续期后需要它 reload——由这里读
-	// 设置传入,AcmeService 自身不读库(见其结构体注释)。
-	// webNginx 只描述【面板侧】:订阅证书由 sub 服务经 certReloader 自行热加载,不该
-	// 继承面板的 nginx reloadcmd。scope 缺省按 web 处理,保持既有调用方的行为不变。
+	// 反向代理(nginx)是证书消费方时,续期后需要它 reload——由这里读设置传入,
+	// AcmeService 自身不读库(见其结构体注释)。
 	//
-	// 取值以前端表单为准、缺省才回退读库:前端是按【表单】上的开关决定申请后走哪条
-	// 收尾流程的,而开关改了没保存时库里还是旧值,两边据此分岔会装上一条对不上号的
-	// reloadcmd。字段缺席时回退读库,直接调 API 的场景行为不变。
+	// 判据是【这个域名有没有服务在反代后面用它】,而不是「谁发起的申请」:证书是按域名
+	// 存在的,面板和订阅可能共用一张,从证书页申请时也压根没有 scope 可言。
+	// 表单显式传了就以表单为准——开关改了还没保存时库里是旧值,让前端说了算。
 	behindProxy := false
-	if c.Request.FormValue("scope") != "sub" {
-		if v := c.Request.FormValue("behindProxy"); v != "" {
-			behindProxy = v == "true"
-		} else {
-			behindProxy, _ = a.SettingService.GetWebNginx()
-		}
+	if v := c.Request.FormValue("behindProxy"); v != "" {
+		behindProxy = v == "true"
+	} else {
+		webDomain, _ := a.SettingService.GetWebDomain()
+		subDomain, _ := a.SettingService.GetSubDomain()
+		webNginx, _ := a.SettingService.GetWebNginx()
+		subNginx, _ := a.SettingService.GetSubNginx()
+		// EqualFold:域名大小写不敏感,存量设置里可能存着大小写混杂的值
+		behindProxy = (webNginx && strings.EqualFold(domain, webDomain)) ||
+			(subNginx && strings.EqualFold(domain, subDomain))
 	}
 	var acme service.AcmeService
 	res, err := acme.IssueWeb(domain, email, method, force, behindProxy)
