@@ -22,8 +22,10 @@ function _handleMsg(msg: any): void {
       return
     }
     if (msg.success) {
+      const key = 'actions.' + msg.msg
+      const label = i18n.global.te(key) ? i18n.global.t(key) : msg.msg
       push.success({
-        message: i18n.global.t('success') + ": " + i18n.global.t('actions.' + msg.msg),
+        message: i18n.global.t('success') + ": " + label,
       })
     } else {
       push.error({

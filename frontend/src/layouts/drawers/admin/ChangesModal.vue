@@ -45,7 +45,7 @@
                 <td class="mono" dir="ltr" style="padding: 9px 16px; white-space: nowrap;">{{ dateFormatted(item.dateTime) }}</td>
                 <td style="padding: 9px 16px;">{{ item.actor }}</td>
                 <td style="padding: 9px 16px;">{{ item.key }}</td>
-                <td style="padding: 9px 16px;"><Chip>{{ $t('actions.' + item.action) }}</Chip></td>
+                <td style="padding: 9px 16px;"><Chip>{{ $te('actions.' + item.action) ? $t('actions.' + item.action) : item.action }}</Chip></td>
                 <td style="padding: 9px 10px; color: var(--text-3);">
                   <Ico
                     name="chevronDown"
