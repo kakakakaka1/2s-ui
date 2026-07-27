@@ -26,7 +26,10 @@
 | 高级流量路由界面 | :heavy_check_mark: |
 | 客户端、流量与系统状态 | :heavy_check_mark: |
 | 订阅链接（link/json/clash + info） | :heavy_check_mark: |
+| **多节点集群（跨服务器共享用户）** ✨ | :heavy_check_mark: |
 | **域名自动申请证书（ACME / Let's Encrypt）** ✨ | :heavy_check_mark: |
+| **自动生成 nginx 反向代理** ✨ | :heavy_check_mark: |
+| **面板内一键更新** ✨ | :heavy_check_mark: |
 | 深色/浅色主题 | :heavy_check_mark: |
 | API 接口 | :heavy_check_mark: |
 
@@ -55,6 +58,17 @@
 - 用户名/密码：admin
 
 ## 安装或升级到最新版本
+
+### 在面板内更新（仅限升级）
+
+每次加载页面时，**浏览器**会检查 GitHub 上的新版本，并在侧边栏的版本标签上提示 ——
+这一步在客户端完成，所以面板所在的服务器不用能访问 GitHub 也会显示提示。安装则在服务端：
+在 Linux 上（裸机需 systemd，Docker 也可以）点一下，面板就会下载新版本，用官方发布的
+`SHA256SUMS` 校验，先试跑一次新二进制，再原地替换并重启。不用 SSH，也不用跑安装脚本。
+
+> Windows 上运行中的 `.exe` 无法自我替换，版本标签只会跳转到 release 页面。
+> Docker 里新二进制写在容器可写层：`docker restart` 后仍在，但重建容器会退回镜像
+> 自带的版本——想长期生效请拉取新镜像。
 
 ### Linux/macOS
 ```sh
@@ -204,18 +218,48 @@ go build -o sui main.go
 ## 功能
 
 - 支持的协议：
-  - 通用协议：Mixed, SOCKS, HTTP, HTTPS, Direct, Redirect, TProxy
-  - V2Ray 系列：VLESS, VMess, Trojan, Shadowsocks
-  - 其他协议：ShadowTLS, Hysteria, Hysteria2, Naive, TUIC
+  - 通用协议：Mixed, SOCKS, HTTP/HTTPS, Direct, Tun, Redirect, TProxy
+  - V2Ray 系列：VLESS, VMess, Trojan, Shadowsocks（支持 `plugin` / `plugin_opts`）
+  - 其他协议：ShadowTLS, Hysteria, Hysteria2, Naive¹, TUIC, AnyTLS
+  - 仅出站：Tor, SSH, Selector, URLTest
+  - Endpoints：WireGuard、WARP、Tailscale——可单个测延迟，也可一键测全部
+
+  <sup>1</sup> Naive 依赖 cronet 工具链，并非所有平台都能编译：官方 Linux 发布版只在
+  amd64、arm64、armv7 和 386 上带这个协议。在 armv6、armv5、s390x 上使用 Naive 出站会提示
+  该二进制未编译此协议。
+
 - 支持 XTLS 协议
 - 提供高级流量路由界面，支持 PROXY Protocol、External、Transparent Proxy、SSL Certificate 和 Port
 - 提供高级入站和出站配置界面
-- 支持客户端流量限制和到期时间
+- 支持客户端流量限制和到期时间；可直接在列表中启用或禁用客户端
+- **用户热更新** —— 在 VLESS、VMess、Trojan、Shadowsocks、AnyTLS、Hysteria、Hysteria2
+  和 TUIC 上，增删改客户端时原地更新入站的用户表，不再重建监听器，其余用户不会掉线 ——
+  这对 QUIC 系协议尤其重要，重建监听器会断掉它们的全部会话。其他入站类型仍是重启
+- 出站表单支持 Hysteria 端口跳跃
 - 展示在线客户端、入站、出站、流量统计和系统状态监控
 - 订阅服务支持添加外部链接和订阅
+- **多节点集群** —— 监控其他 2S-UI 面板、跨节点共享用户，并把各节点线路合并进同一条订阅（见下文）
 - 支持通过自备域名和 SSL 证书，为 Web 面板和订阅服务启用 HTTPS
 - **域名自动申请证书** —— 只需填写域名，2S-UI 即自动签发并自动续期免费的 Let's Encrypt 证书（无需 certbot，无需定时任务）
+- **自动生成 nginx 反向代理** —— 把面板放到反代后面时，2S-UI 自动写好并校验 vhost
+- **面板内一键更新** —— 基于校验和验证的 GitHub Release
 - 支持深色/浅色主题
+
+## 多节点集群
+
+一个面板可以管理其余面板。在 **节点**（Nodes）页面填上远程 2S-UI 实例的地址和 API Token，
+主控面板就会：
+
+- **监控它** —— 5 秒一次心跳，报告每个节点为在线、离线或内核已停止（面板可达但
+  sing-box 未运行）。
+- **与它共享用户** —— 主控上引用了该节点入站的客户端会被下发到节点并持续同步，
+  各节点的流量也会汇总回主控的计数。同步限定在 `@cluster` 分组内，因此节点自己的
+  本地用户不会被动到。
+- **把它的线路并入同一条订阅** —— 一条订阅链接里同时包含主控和所有绑定节点的服务器。
+
+节点就是另一个通过 v2 API（`Token` 请求头）通信的 2S-UI 实例：无需安装 agent，节点侧
+唯一要做的就是在它自己的面板里创建这个 API Token，因此已有的面板可以直接接管。从节点
+采纳过来的入站在主控上是只读副本 —— 请到它所属的节点上修改。
 
 ## 环境变量
 
@@ -228,25 +272,48 @@ go build -o sui main.go
 | ---- | :--: | :---- |
 | SUI_LOG_LEVEL | `"debug"` \| `"info"` \| `"warn"` \| `"error"` | `"info"` |
 | SUI_DEBUG | `boolean` | `false` |
-| SUI_BIN_FOLDER | `string` | `"bin"` |
 | SUI_DB_FOLDER | `string` | `"db"` |
-| SINGBOX_API | `string` | - |
+| SUI_BIN_FOLDER | `string` | `"bin"` |
+
+`SUI_BIN_FOLDER` 仅在从旧的子进程版本迁移数据库时读取；sing-box 已内嵌进二进制，
+运行时不存在 `bin/` 目录。
 
 </details>
 
-## SSL 证书
+## 域名与证书
+
+TLS 相关的配置都集中在面板设置的 **域名与证书** 标签页。面板和订阅服务各自选择自己
+的域名，证书路径会跟着所选域名自动确定，不用再手工填文件路径。
 
 ### 🔐 域名自动申请证书（ACME / Let's Encrypt）—— 推荐
 
-只需在**面板设置**里填写域名（证书模式选 **ACME**），2S-UI 即自动签发并自动续期
-免费的 Let's Encrypt 证书，无需 certbot、无需定时任务。Web 面板与订阅服务可分别
-独立启用。配置成功后即可通过 `https://<你的域名>:2095/app` 访问面板。
+填写域名、填上邮箱、点击签发：2S-UI 即自动签发并自动续期免费的 Let's Encrypt 证书，
+无需 certbot、无需定时任务。配置成功后即可通过 `https://<你的域名>:2095/app` 访问面板。
+
+校验方式默认为 **auto** —— 80 端口空闲时用 standalone，否则借用正在运行的 nginx，
+必要时会在 `/etc/nginx/conf.d` 下自动补一个最小的 `server_name` 配置块。你也可以
+显式指定 **standalone** 或 **nginx**。续期时证书会热加载，无需重启。
 
 > 需要 TCP **80** 端口可从公网访问（HTTP-01 校验）。Docker 部署映射 80 端口：docker compose 方式请取消 `docker-compose.yml` 中 `80:80` 那一行的注释；docker run 方式请加上 `-p 80:80`。
 > 证书保存在 `cert/` 目录，重启后保留。若域名/端口配置有误，会自动回退 HTTP。
+> ACME 仅支持 Linux，在 Windows 上会隐藏。
+
+### 使用自备证书
+
+自己管理的证书 —— Cloudflare 源证书、企业 CA、certbot 签出的证书 —— 可以在同一个
+标签页里注册。2S-UI 会校验文件可读、私钥与证书匹配、以及证书确实覆盖该域名；随后
+这个域名就能像其他域名一样在「接口」和「订阅」标签页中选用。已注册的证书会包含在
+数据库备份里。
+
+### 位于反向代理之后
+
+打开 **TLS 由反向代理终止** 开关，2S-UI 会替你写好 vhost：
+`/etc/nginx/conf.d/s-ui-panel-<域名>.conf`，指向面板并带上必要的转发请求头，用
+`nginx -t` 校验、reload，任何一步失败都会回滚并原样返回 nginx 自己的报错。订阅服务
+也可以放在同一个反代后面。
 
 <details>
-  <summary>想自己管理证书？（Certbot）</summary>
+  <summary>想自己签发证书？（Certbot）</summary>
 
 ### Certbot
 
@@ -257,6 +324,8 @@ ln -s /snap/bin/certbot /usr/bin/certbot
 
 certbot certonly --standalone --register-unsafely-without-email --non-interactive --agree-tos -d <Your Domain Name>
 ```
+
+然后把签出的 `fullchain.pem` / `privkey.pem` 注册到 **域名与证书** 标签页。
 
 </details>
 

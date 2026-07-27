@@ -26,7 +26,10 @@
 | Advanced Traffic Routing Interface     | :heavy_check_mark: |
 | Client & Traffic & System Status       | :heavy_check_mark: |
 | Subscription Link (link/json/clash + info)| :heavy_check_mark: |
+| **Multi-Node Cluster (shared users across servers)** ✨ | :heavy_check_mark: |
 | **Automatic HTTPS (ACME / Let's Encrypt)** ✨ | :heavy_check_mark: |
+| **Automatic nginx Reverse Proxy** ✨    | :heavy_check_mark: |
+| **In-Panel Self-Update** ✨             | :heavy_check_mark: |
 | Dark/Light Theme                       | :heavy_check_mark: |
 | API Interface                          | :heavy_check_mark: |
 
@@ -55,6 +58,21 @@
 - User/Password: admin
 
 ## Install & Upgrade to Latest Version
+
+### From the panel (upgrades only)
+
+Your browser checks GitHub for new releases on every page load and flags one on
+the version pill in the sidebar — that check is client-side, so the panel host
+itself does not need to reach GitHub for the chip to appear. Installing is
+server-side: on Linux — bare metal under systemd, or Docker — one click has the
+panel download the release, verify it against the published `SHA256SUMS`,
+smoke-test the new binary, then replace it in place and restart. No SSH, no
+install script.
+
+> On Windows a running `.exe` cannot replace itself, so the pill only links to
+> the release page. In Docker the new binary lives in the container's writable
+> layer: it survives `docker restart`, but recreating the container reverts to
+> the image's version — pull a new image to make it stick.
 
 ### Linux/macOS
 ```sh
@@ -205,18 +223,50 @@ To run backend (from root folder of repository):
 ## Features
 
 - Supported protocols:
-  - General:  Mixed, SOCKS, HTTP, HTTPS, Direct, Redirect, TProxy
-  - V2Ray based: VLESS, VMess, Trojan, Shadowsocks
-  - Other protocols: ShadowTLS, Hysteria, Hysteria2, Naive, TUIC
+  - General: Mixed, SOCKS, HTTP/HTTPS, Direct, Tun, Redirect, TProxy
+  - V2Ray based: VLESS, VMess, Trojan, Shadowsocks (incl. `plugin` / `plugin_opts`)
+  - Other protocols: ShadowTLS, Hysteria, Hysteria2, Naive¹, TUIC, AnyTLS
+  - Outbound only: Tor, SSH, Selector, URLTest
+  - Endpoints: WireGuard, WARP, Tailscale — with a latency test per endpoint or for all at once
+
+  <sup>1</sup> Naive needs the cronet toolchain, which does not build everywhere: official Linux
+  releases ship it on amd64, arm64, armv7 and 386 only. On armv6, armv5 and s390x a Naive
+  outbound reports that the binary was built without it.
+
 - Supports XTLS protocols
 - An advanced interface for routing traffic, incorporating PROXY Protocol, External, and Transparent Proxy, SSL Certificate, and Port
 - An advanced interface for inbound and outbound configuration
-- Clients’ traffic cap and expiration date
+- Clients’ traffic cap and expiration date; enable or disable a client straight from the list
+- **Live user updates** — on VLESS, VMess, Trojan, Shadowsocks, AnyTLS, Hysteria, Hysteria2 and TUIC, adding, editing or removing a client updates the inbound's user table in place instead of rebuilding the listener, so everyone else keeps their connections — which matters most on the QUIC-based protocols, where a restart drops every session. Other inbound types still restart
+- Hysteria port hopping on the outbound form
 - Displays online clients, inbounds and outbounds with traffic statistics, and system status monitoring
 - Subscription service with ability to add external links and subscription
+- **Multi-node cluster** — monitor other 2S-UI panels, share users across them, and merge their servers into one subscription (see below)
 - HTTPS for secure access to the web panel and subscription service (self-provided domain + SSL certificate)
 - **Automatic SSL certificates** — just enter a domain and 2S-UI issues and auto-renews a free Let's Encrypt certificate for you (no certbot, no cron jobs)
+- **Automatic nginx reverse proxy** — 2S-UI writes and validates the vhost when you put the panel behind a proxy
+- **In-panel self-update** over checksum-verified GitHub releases
 - Dark/Light theme
+
+## Multi-Node Cluster
+
+One panel can manage the others. Add a remote 2S-UI instance on the **Nodes**
+page with its address and an API token, and the master will:
+
+- **Monitor it** — a 5-second heartbeat reports each node as online, offline, or
+  core-stopped (panel reachable but sing-box down).
+- **Share users with it** — clients on the master that reference a node's
+  inbounds are pushed to that node and kept in sync, with each node's traffic
+  folded back into the master's counters. Sync is scoped to a `@cluster` group,
+  so a node's own local users are never touched.
+- **Fold its servers into one subscription** — a client's subscription link
+  carries the master's servers and every bound node's servers together.
+
+A node is just another 2S-UI instance talking over the v2 API (`Token` header):
+no agent to install, and the only node-side setup is creating that API token in
+its own panel, so existing panels can be adopted as they are. Inbounds adopted
+from a node become read-only replicas on the master — edit them on the node they
+belong to.
 
 ## Environment Variables
 
@@ -229,28 +279,58 @@ To run backend (from root folder of repository):
 | -------------- | :--------------------------------------------: | :------------ |
 | SUI_LOG_LEVEL  | `"debug"` \| `"info"` \| `"warn"` \| `"error"` | `"info"`      |
 | SUI_DEBUG      |                   `boolean`                    | `false`       |
-| SUI_BIN_FOLDER |                    `string`                    | `"bin"`       |
 | SUI_DB_FOLDER  |                    `string`                    | `"db"`        |
-| SINGBOX_API    |                    `string`                    | -             |
+| SUI_BIN_FOLDER |                    `string`                    | `"bin"`       |
+
+`SUI_BIN_FOLDER` is only read while migrating a database from the old
+subprocess-based layout; sing-box is embedded in the binary and there is no
+`bin/` folder at runtime.
 
 </details>
 
-## SSL Certificate
+## Domains & Certificates
+
+Everything TLS lives in the **Domains & Certificates** tab of Panel Settings.
+Panel and subscription service each pick their own domain, and the certificate
+paths follow the domain you select — no file paths to copy around.
 
 ### 🔐 Automatic Certificates (ACME / Let's Encrypt) — Recommended
 
-Just enter a domain in **Panel Settings** (certificate mode → **ACME**) and
-2S-UI auto-issues and auto-renews a free Let's Encrypt certificate — no certbot,
-no cron jobs. Web panel and subscription service can be enabled independently.
-Once done, the panel is reachable at `https://<your-domain>:2095/app`.
+Enter a domain, add an email, and press issue: 2S-UI obtains and auto-renews a
+free Let's Encrypt certificate — no certbot, no cron jobs. Once done, the panel
+is reachable at `https://<your-domain>:2095/app`.
+
+The validation method defaults to **auto** — standalone when port 80 is free,
+otherwise it borrows the running nginx, provisioning a minimal `server_name`
+block under `/etc/nginx/conf.d` if one is missing. Pick **standalone** or
+**nginx** explicitly if you would rather decide. Renewals hot-reload the
+certificate; no restart needed.
 
 > Requires TCP port **80** reachable from the internet (HTTP-01 challenge). To
 > publish port 80 with Docker: uncomment the `80:80` line in `docker-compose.yml`,
 > or add `-p 80:80` to `docker run`. Certificates are stored under `cert/` and survive
 > restarts. If the domain/port is misconfigured, 2S-UI falls back to HTTP.
+> ACME is Linux-only and is hidden on Windows.
+
+### Bring your own certificate
+
+Certificates you manage yourself — a Cloudflare origin CA, a corporate CA,
+certbot output — can be registered in the same tab. 2S-UI verifies the files are
+readable, that the key matches the certificate, and that the certificate really
+covers the domain; the domain then becomes selectable on the Interface and
+Subscription tabs like any other. Registered certificates are included in
+database backups.
+
+### Behind a reverse proxy
+
+Turn on **TLS terminated by a reverse proxy** and 2S-UI writes the vhost for
+you: `/etc/nginx/conf.d/s-ui-panel-<domain>.conf`, pointed at the panel with the
+right forwarding headers, checked with `nginx -t`, reloaded, and rolled back
+with nginx's own error message if anything fails. The subscription server can
+sit behind the same proxy.
 
 <details>
-  <summary>Prefer to manage certificates yourself? (Certbot)</summary>
+  <summary>Prefer to issue certificates by hand? (Certbot)</summary>
 
 ### Certbot
 
@@ -261,6 +341,9 @@ ln -s /snap/bin/certbot /usr/bin/certbot
 
 certbot certonly --standalone --register-unsafely-without-email --non-interactive --agree-tos -d <Your Domain Name>
 ```
+
+Then register the resulting `fullchain.pem` / `privkey.pem` under
+**Domains & Certificates**.
 
 </details>
 

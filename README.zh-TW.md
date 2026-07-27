@@ -29,7 +29,10 @@
 | 進階流量路由介面 | :heavy_check_mark: |
 | 用戶端、流量與系統狀態 | :heavy_check_mark: |
 | 訂閱連結（link/json/clash + info） | :heavy_check_mark: |
+| **多節點叢集（跨伺服器共用使用者）** ✨ | :heavy_check_mark: |
 | **網域自動申請憑證（ACME / Let's Encrypt）** ✨ | :heavy_check_mark: |
+| **自動產生 nginx 反向代理** ✨ | :heavy_check_mark: |
+| **面板內一鍵更新** ✨ | :heavy_check_mark: |
 | 深色/淺色佈景主題 | :heavy_check_mark: |
 | API 介面 | :heavy_check_mark: |
 
@@ -58,6 +61,17 @@
 - 使用者名稱/密碼：admin
 
 ## 安裝或升級到最新版本
+
+### 在面板內更新（僅限升級）
+
+每次載入頁面時，**瀏覽器**會檢查 GitHub 上的新版本，並在側邊欄的版本標籤上提示 ——
+這一步在用戶端完成，所以面板所在的伺服器即使連不上 GitHub 也會顯示提示。安裝則在伺服器端：
+在 Linux 上（裸機需 systemd，Docker 亦可）點一下，面板就會下載新版本，用官方發佈的
+`SHA256SUMS` 校驗，先試跑一次新的執行檔，再原地替換並重新啟動。不必 SSH，也不必執行安裝指令稿。
+
+> Windows 上執行中的 `.exe` 無法自我替換，版本標籤只會連到 release 頁面。
+> Docker 裡新的執行檔寫在容器可寫層：`docker restart` 後仍在，但重建容器會退回映像
+> 檔自帶的版本——想長期生效請拉取新映像檔。
 
 ### Linux/macOS
 ```sh
@@ -207,18 +221,49 @@ go build -o sui main.go
 ## 功能
 
 - 支援的協定：
-  - 通用協定：Mixed, SOCKS, HTTP, HTTPS, Direct, Redirect, TProxy
-  - V2Ray 系列：VLESS, VMess, Trojan, Shadowsocks
-  - 其他協定：ShadowTLS, Hysteria, Hysteria2, Naive, TUIC
+  - 通用協定：Mixed, SOCKS, HTTP/HTTPS, Direct, Tun, Redirect, TProxy
+  - V2Ray 系列：VLESS, VMess, Trojan, Shadowsocks（支援 `plugin` / `plugin_opts`）
+  - 其他協定：ShadowTLS, Hysteria, Hysteria2, Naive¹, TUIC, AnyTLS
+  - 僅出站：Tor, SSH, Selector, URLTest
+  - Endpoints：WireGuard、WARP、Tailscale——可單獨測延遲，也可一鍵測全部
+
+  <sup>1</sup> Naive 依賴 cronet 工具鏈，並非所有平台都能編譯：官方 Linux 發佈版只在
+  amd64、arm64、armv7 與 386 上帶這個協定。在 armv6、armv5、s390x 上使用 Naive 出站會提示
+  該執行檔未編譯此協定。
+
 - 支援 XTLS 協定
 - 提供進階流量路由介面，支援 PROXY Protocol、External、Transparent Proxy、SSL Certificate 與 Port
 - 提供進階入站與出站設定介面
-- 支援用戶端流量限制與到期時間
+- 支援用戶端流量限制與到期時間；可直接在列表中啟用或停用用戶端
+- **使用者熱更新** —— 在 VLESS、VMess、Trojan、Shadowsocks、AnyTLS、Hysteria、Hysteria2
+  與 TUIC 上，新增、修改或刪除用戶端時原地更新入站的使用者表，不再重建監聽器，其餘使用者
+  不會斷線 —— 這對 QUIC 系協定尤其重要，重建監聽器會中斷它們的全部工作階段。其他入站類型
+  仍是重新啟動
+- 出站表單支援 Hysteria 連接埠跳躍
 - 顯示線上用戶端、入站、出站、流量統計與系統狀態監控
 - 訂閱服務支援新增外部連結與訂閱
+- **多節點叢集** —— 監控其他 2S-UI 面板、跨節點共用使用者，並把各節點線路合併進同一條訂閱（見下文）
 - 支援透過自備網域與 SSL 憑證，為 Web 面板與訂閱服務啟用 HTTPS
 - **網域自動申請憑證** —— 只需填寫網域，2S-UI 即自動簽發並自動續期免費的 Let's Encrypt 憑證（無需 certbot，無需排程工作）
+- **自動產生 nginx 反向代理** —— 把面板放到反向代理後方時，2S-UI 會自動寫好並驗證 vhost
+- **面板內一鍵更新** —— 以總和檢查碼驗證的 GitHub Release
 - 支援深色/淺色佈景主題
+
+## 多節點叢集
+
+一個面板可以管理其餘面板。在 **節點**（Nodes）頁面填上遠端 2S-UI 執行個體的位址與 API Token，
+主控面板就會：
+
+- **監控它** —— 5 秒一次心跳，回報每個節點為線上、離線或核心已停止（面板可連線但
+  sing-box 未執行）。
+- **與它共用使用者** —— 主控上引用該節點入站的用戶端會被下發到節點並持續同步，
+  各節點的流量也會彙整回主控的計數。同步限定在 `@cluster` 群組內，因此節點自己的
+  本機使用者不會被動到。
+- **把它的線路併入同一條訂閱** —— 一條訂閱連結裡同時包含主控與所有繫結節點的伺服器。
+
+節點就是另一個透過 v2 API（`Token` 請求標頭）通訊的 2S-UI 執行個體：不必安裝 agent，
+節點端唯一要做的就是在它自己的面板裡建立這個 API Token，因此既有的面板可以直接接管。
+從節點採納過來的入站在主控上是唯讀複本 —— 請到它所屬的節點上修改。
 
 ## 環境變數
 
@@ -231,25 +276,49 @@ go build -o sui main.go
 | ---- | :--: | :---- |
 | SUI_LOG_LEVEL | `"debug"` \| `"info"` \| `"warn"` \| `"error"` | `"info"` |
 | SUI_DEBUG | `boolean` | `false` |
-| SUI_BIN_FOLDER | `string` | `"bin"` |
 | SUI_DB_FOLDER | `string` | `"db"` |
-| SINGBOX_API | `string` | - |
+| SUI_BIN_FOLDER | `string` | `"bin"` |
+
+`SUI_BIN_FOLDER` 僅在從舊的子行程版本遷移資料庫時讀取；sing-box 已內嵌進執行檔，
+執行時不存在 `bin/` 目錄。
 
 </details>
 
-## SSL 憑證
+## 網域與憑證
+
+TLS 相關的設定都集中在面板設定的 **網域與憑證** 分頁。面板與訂閱服務各自選擇自己的
+網域，憑證路徑會跟著所選網域自動決定，不必再手動填檔案路徑。
 
 ### 🔐 網域自動申請憑證（ACME / Let's Encrypt）—— 推薦
 
-只需在**面板設定**裡填寫網域（憑證模式選 **ACME**），2S-UI 即自動簽發並自動續期
-免費的 Let's Encrypt 憑證，無需 certbot、無需排程工作。Web 面板與訂閱服務可分別
-獨立啟用。設定成功後即可透過 `https://<你的網域>:2095/app` 存取面板。
+填寫網域、填上電子郵件、按下簽發：2S-UI 即自動簽發並自動續期免費的 Let's Encrypt
+憑證，無需 certbot、無需排程工作。設定成功後即可透過 `https://<你的網域>:2095/app`
+存取面板。
+
+驗證方式預設為 **auto** —— 80 連接埠閒置時用 standalone，否則借用正在執行的 nginx，
+必要時會在 `/etc/nginx/conf.d` 下自動補一個最小的 `server_name` 設定區塊。你也可以
+明確指定 **standalone** 或 **nginx**。續期時憑證會熱重載，不需重新啟動。
 
 > 需要 TCP **80** 連接埠可從公網存取（HTTP-01 校驗）。Docker 部署對應 80 連接埠：docker compose 方式請取消 `docker-compose.yml` 中 `80:80` 該行的註解；docker run 方式請加上 `-p 80:80`。
 > 憑證儲存在 `cert/` 目錄，重新啟動後保留。若網域/連接埠設定有誤，會自動回復 HTTP。
+> ACME 僅支援 Linux，在 Windows 上會隱藏。
+
+### 使用自備憑證
+
+自己管理的憑證 —— Cloudflare 來源憑證、企業 CA、certbot 簽出的憑證 —— 可以在同一個
+分頁裡註冊。2S-UI 會驗證檔案可讀、私鑰與憑證相符、以及憑證確實涵蓋該網域；接著這個
+網域就能像其他網域一樣在「介面」與「訂閱」分頁中選用。已註冊的憑證會包含在資料庫
+備份裡。
+
+### 位於反向代理之後
+
+開啟 **TLS 由反向代理終止** 開關，2S-UI 會替你寫好 vhost：
+`/etc/nginx/conf.d/s-ui-panel-<網域>.conf`，指向面板並帶上必要的轉送請求標頭，用
+`nginx -t` 驗證、reload，任何一步失敗都會復原並原樣回傳 nginx 自己的錯誤訊息。訂閱
+服務也可以放在同一個反向代理後方。
 
 <details>
-  <summary>想自己管理憑證？（Certbot）</summary>
+  <summary>想自己簽發憑證？（Certbot）</summary>
 
 ### Certbot
 
@@ -260,6 +329,8 @@ ln -s /snap/bin/certbot /usr/bin/certbot
 
 certbot certonly --standalone --register-unsafely-without-email --non-interactive --agree-tos -d <Your Domain Name>
 ```
+
+接著把簽出的 `fullchain.pem` / `privkey.pem` 註冊到 **網域與憑證** 分頁。
 
 </details>
 
