@@ -8,9 +8,9 @@
         <span style="flex: 1;"></span>
         <Pop :min-width="230">
           <template #trigger="{ toggle }">
-            <button type="button" class="btn btn-ghost btn-sm" @click="toggle">
+            <Btn sm @click="toggle">
               <Ico name="settings" :size="14" /> {{ $t('tls.options') }}
-            </button>
+            </Btn>
           </template>
           <div style="display: flex; flex-direction: column; gap: 2px; padding: 5px; max-height: 300px; overflow-y: auto;">
             <SwitchLabel v-model="optionCert" :label="$t('tls.cert')" />
@@ -115,6 +115,7 @@ import MultiPick from '@/components/ui/MultiPick.vue'
 import ChipSelect from '@/components/ui/ChipSelect.vue'
 import Pop from '@/components/ui/Pop.vue'
 import Ico from '@/components/ui/Ico.vue'
+import Btn from '@/components/ui/Btn.vue'
 
 const props = defineProps<{ outbound: any }>()
 

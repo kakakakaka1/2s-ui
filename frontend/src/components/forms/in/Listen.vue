@@ -4,9 +4,9 @@
       <SectionLabel style="flex: 1;">{{ $t('objects.listen') }}</SectionLabel>
       <Pop :min-width="240">
         <template #trigger="{ toggle }">
-          <button type="button" class="btn btn-ghost btn-sm" @click="toggle">
+          <Btn sm @click="toggle">
             <Ico name="settings" :size="14" /> {{ $t('listen.options') }}
-          </button>
+          </Btn>
         </template>
         <div style="display: flex; flex-direction: column; gap: 2px; padding: 5px;">
           <SwitchLabel v-model="optionDetour" :label="$t('listen.detour')" />
@@ -65,6 +65,7 @@ import SectionLabel from '@/components/ui/SectionLabel.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import Pop from '@/components/ui/Pop.vue'
 import Ico from '@/components/ui/Ico.vue'
+import Btn from '@/components/ui/Btn.vue'
 
 const props = defineProps<{ data: any; inTags?: string[] }>()
 

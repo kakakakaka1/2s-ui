@@ -4,9 +4,9 @@
       <SectionLabel style="flex: 1;">{{ $t('objects.dial') }}</SectionLabel>
       <Pop :min-width="250">
         <template #trigger="{ toggle }">
-          <button type="button" class="btn btn-ghost btn-sm" @click="toggle">
+          <Btn sm @click="toggle">
             <Ico name="settings" :size="14" /> {{ $t('dial.options') }}
-          </button>
+          </Btn>
         </template>
         <div style="display: flex; flex-direction: column; gap: 2px; padding: 5px; max-height: 300px; overflow-y: auto;">
           <SwitchLabel v-if="mode != 'client'" v-model="optionDetour" :label="$t('listen.detour')" />
@@ -88,6 +88,7 @@ import SectionLabel from '@/components/ui/SectionLabel.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import Pop from '@/components/ui/Pop.vue'
 import Ico from '@/components/ui/Ico.vue'
+import Btn from '@/components/ui/Btn.vue'
 
 const props = defineProps<{ dial: any; mode?: string }>()
 
