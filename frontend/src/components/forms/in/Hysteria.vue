@@ -52,7 +52,7 @@ import Pop from '@/components/ui/Pop.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Btn from '@/components/ui/Btn.vue'
 
-const props = defineProps<{ data: any; direction?: string }>()
+const props = defineProps<{ data: any }>()
 
 const optionRsvConn = computed({
   get: (): boolean => props.data.recv_window_conn != undefined,

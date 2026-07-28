@@ -49,9 +49,9 @@
           <hr class="form-divider" />
         </template>
         <Direct v-if="inbound.type == inTypes.Direct" :data="inbound" />
-        <Shadowsocks v-if="inbound.type == inTypes.Shadowsocks" direction="in" :data="inbound" />
-        <Hysteria v-if="inbound.type == inTypes.Hysteria" direction="in" :data="inbound" />
-        <Hysteria2 v-if="inbound.type == inTypes.Hysteria2" direction="in" :data="inbound" />
+        <Shadowsocks v-if="inbound.type == inTypes.Shadowsocks" :data="inbound" />
+        <Hysteria v-if="inbound.type == inTypes.Hysteria" :data="inbound" />
+        <Hysteria2 v-if="inbound.type == inTypes.Hysteria2" :data="inbound" />
         <Naive v-if="inbound.type == inTypes.Naive" direction="in" :data="inbound" />
         <ShadowTls v-if="inbound.type == inTypes.ShadowTLS" :data="inbound" />
         <Tuic v-if="inbound.type == inTypes.TUIC" direction="in" :data="inbound" />

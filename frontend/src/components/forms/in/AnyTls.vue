@@ -7,11 +7,8 @@
         <textarea class="input mono" rows="9" v-model="padding_scheme"></textarea>
       </Field>
     </template>
-    <!-- Outbound / client side (out_json) -->
+    <!-- client side (out_json) -->
     <template v-else>
-      <Field v-if="direction == 'out'" :label="$t('types.pw')">
-        <input class="input mono" v-model="data.password" />
-      </Field>
       <div class="grid2">
         <Field :label="$t('types.anytls.idleInterval') + ' (' + $t('date.s') + ')'">
           <input class="input mono" type="number" min="0" v-model.number="idleInterval" />

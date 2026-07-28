@@ -27,7 +27,7 @@ import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import KeyInput from '@/components/ui/KeyInput.vue'
 import Network from './Network.vue'
 
-const props = defineProps<{ data: any; direction?: string }>()
+const props = defineProps<{ data: any }>()
 
 const ssMethods = [
   'none',

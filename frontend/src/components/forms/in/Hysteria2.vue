@@ -74,7 +74,7 @@ import Ico from '@/components/ui/Ico.vue'
 import Btn from '@/components/ui/Btn.vue'
 import Headers from './Headers.vue'
 
-const props = defineProps<{ data: any; direction?: string }>()
+const props = defineProps<{ data: any }>()
 const { t } = useI18n({ useScope: 'global' })
 
 const masqTypes = computed(() => [
