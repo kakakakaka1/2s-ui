@@ -4,10 +4,32 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    groups:
+      # Every gomod PR rewrites go.mod and go.sum, so concurrent ones always
+      # conflict and all but the first need a rebase. Batch them into one.
+      gomod:
+        patterns:
+          - "*"
+        # sing-box stays ungrouped. Bumping it makes the verbatim copies in
+        # core/protocol/ go stale, so scripts/check-protocol-copies.sh fails
+        # and every copy has to be re-taken from the module cache. That work
+        # does not belong in a PR that also moves unrelated dependencies.
+        exclude-patterns:
+          - "github.com/sagernet/sing-box"
+        update-types:
+          - "minor"
+          - "patch"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
   # Carried over from the frontend repo when it was inlined. Without this entry
   # the frontend's npm deps simply stop being updated -- the gomod entry above
   # does not cover them, and the frontend repo's own config no longer applies.
@@ -15,3 +37,22 @@ updates:
     directory: "/frontend"
     schedule:
       interval: "daily"
+    groups:
+      frontend:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # typescript is the one major dependabot can never land here on its own:
+    # typescript-eslint pins `typescript >=4.8.4 <6.1.0` and has not moved as
+    # of 8.65.0, so the typescript 7 bump could not even get past install.
+    #
+    # Kept to that single package on purpose. `ignore` suppresses security
+    # update PRs as well as version ones, and most of these dependencies ship
+    # inside the SPA, so a blanket major ignore would silence exactly the
+    # updates worth hearing about.
+    ignore:
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
