@@ -34,12 +34,3 @@ export const intlLocale = () => {
       return l
   }
 }
-
-export const languages = [
-  { title: 'English', value: 'en' },
-  { title: 'فارسی', value: 'fa' },
-  { title: 'Tiếng Việt', value: 'vi' },
-  { title: '简体中文', value: 'zhHans' },
-  { title: '繁體中文', value: 'zhHant' },
-  { title: 'Русский', value: 'ru' },
-]
