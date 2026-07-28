@@ -4,7 +4,7 @@
     <!-- Inbound -->
     <template v-if="direction === 'in'">
       <div class="grid2">
-        <Network :data="data" />
+        <Network :data="data" :mb="15" />
         <Field :label="$t('types.naive.quicCongestion')">
           <Select v-model="quicCongestion">
             <option value="">{{ $t('none') }}</option>
@@ -32,7 +32,7 @@ import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
-import Network from './Network.vue'
+import Network from '../out/Network.vue'
 import Headers from './Headers.vue'
 
 const props = defineProps<{ data: any; direction?: string }>()

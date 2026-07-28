@@ -1,5 +1,5 @@
 <template>
-  <Field label="UDP over TCP" :mb="0">
+  <Field label="UDP over TCP" :mb="mb">
     <Select v-model.number="udpOverTcp">
       <option :value="0">{{ $t('disable') }}</option>
       <option :value="1">1</option>
@@ -13,7 +13,8 @@ import Select from '@/components/ui/Select.vue'
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 
-const props = defineProps<{ data: any }>()
+// See Network.vue: 0 for the grid2 callers, 15 for standalone ones.
+const props = withDefaults(defineProps<{ data: any; mb?: number }>(), { mb: 0 })
 
 const udpOverTcp = computed({
   get: (): number => props.data.udp_over_tcp?.version ?? 0,

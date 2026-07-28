@@ -7,7 +7,7 @@
           <option v-for="m in ssMethods" :key="m" :value="m">{{ m }}</option>
         </Select>
       </Field>
-      <Network :data="data" />
+      <Network :data="data" :mb="15" />
     </div>
     <div style="display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 15px;">
       <SwitchLabel v-model="data.managed" :label="$t('in.ssManageable')" />
@@ -25,7 +25,7 @@ import Field from '@/components/ui/Field.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import KeyInput from '@/components/ui/KeyInput.vue'
-import Network from './Network.vue'
+import Network from '../out/Network.vue'
 
 const props = defineProps<{ data: any }>()
 
