@@ -15,6 +15,13 @@ on:
       - 'go.sum'
       - 'windows/**'
 
+# Same reasoning as release.yml: collapse the redundant push builds, never cancel
+# a publish. The group name has to stay distinct from release.yml's, or the two
+# workflows would cancel each other.
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
+
 permissions:
   contents: write
 

@@ -16,6 +16,16 @@ on:
       - 'go.sum'
       - 's-ui.service'
 
+# Merging several PRs in a row queues one full matrix per push, and only the last
+# one builds the tree that ships. github.ref already separates a release run
+# (refs/tags/...) from a push run, and the cancel guard is belt-and-braces: a
+# publish must never be cancelled part-way through uploading its assets. The
+# group name has to stay distinct from windows.yml's, or the two would cancel
+# each other.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
+
 permissions:
   contents: write
 
