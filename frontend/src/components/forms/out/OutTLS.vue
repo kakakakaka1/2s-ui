@@ -1,7 +1,7 @@
 <template>
   <div style="margin-bottom: 15px;">
     <MSwitchRow v-if="tlsOptional" v-model="tlsEnable" :label="$t('ui.tlsTitle')" :desc="$t('ui.tlsDesc')" />
-    <div v-if="tls.enabled" class="fade-up">
+    <div v-if="tls?.enabled" class="fade-up">
       <div v-if="!tlsOptional" style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
         <SectionLabel>{{ $t('objects.tls') }}</SectionLabel>
         <div style="flex: 1;" />
@@ -178,37 +178,41 @@ const tls = computed((): oTls => props.outbound.tls)
 const tlsOptional = computed((): boolean =>
   !['hysteria', 'hysteria2', 'tuic', 'shadowtls', 'anytls', 'naive'].includes(props.outbound.type))
 
+// Getters tolerate a missing tls object; setters do not need to, because every
+// control below is only reachable once tlsEnable has created it. Same split as
+// the DNS server drawer, which feeds this component entities that legitimately
+// have no tls key at all.
 const tlsEnable = computed({
-  get: () => Object.hasOwn(tls.value, 'enabled') ? tls.value.enabled ?? false : false,
+  get: () => tls.value && Object.hasOwn(tls.value, 'enabled') ? tls.value.enabled ?? false : false,
   set: (v: boolean) => { props.outbound.tls = v ? { enabled: true } : { enabled: false } },
 })
 const disableSni = computed({
-  get: () => tls.value.disable_sni ?? false,
+  get: () => tls.value?.disable_sni ?? false,
   set: (v: boolean) => { props.outbound.tls.disable_sni = v ? true : undefined },
 })
 const insecure = computed({
-  get: () => tls.value.insecure ?? false,
+  get: () => tls.value?.insecure ?? false,
   set: (v: boolean) => { props.outbound.tls.insecure = v ? true : undefined },
 })
 const fragment = computed({
-  get: () => tls.value.fragment ?? false,
+  get: () => tls.value?.fragment ?? false,
   set: (v: boolean) => { props.outbound.tls.fragment = v },
 })
 const recordFragment = computed({
-  get: () => tls.value.record_fragment ?? false,
+  get: () => tls.value?.record_fragment ?? false,
   set: (v: boolean) => { props.outbound.tls.record_fragment = v },
 })
 const alpnValue = computed({
-  get: () => tls.value.alpn ?? [],
+  get: () => tls.value?.alpn ?? [],
   set: (v: string[]) => { props.outbound.tls.alpn = v },
 })
 const cipherSuites = computed({
-  get: () => tls.value.cipher_suites ?? [],
+  get: () => tls.value?.cipher_suites ?? [],
   set: (v: string[]) => { props.outbound.tls.cipher_suites = v },
 })
 const echConfigText = computed({
-  get: (): string => tls.value.ech?.config ? tls.value.ech.config.join('\n') : '',
-  set: (v: string) => { if (tls.value.ech) tls.value.ech.config = v.split('\n') },
+  get: (): string => tls.value?.ech?.config ? tls.value.ech.config.join('\n') : '',
+  set: (v: string) => { if (tls.value?.ech) tls.value.ech.config = v.split('\n') },
 })
 
 const switchCertMode = (v: string | number) => {
@@ -221,13 +225,13 @@ const switchCertMode = (v: string | number) => {
   }
 }
 const switchEchMode = (v: string | number) => {
-  if (!tls.value.ech) return
+  if (!tls.value?.ech) return
   if (v == 0) delete tls.value.ech.config
   else delete tls.value.ech.config_path
 }
 
 const optionCert = computed({
-  get: (): boolean => tls.value.certificate != undefined || tls.value.certificate_path != undefined,
+  get: (): boolean => tls.value?.certificate != undefined || tls.value?.certificate_path != undefined,
   set: (v: boolean) => {
     usePath.value = 0
     if (v) {
@@ -239,39 +243,39 @@ const optionCert = computed({
   },
 })
 const optionSNI = computed({
-  get: (): boolean => tls.value.server_name != undefined,
+  get: (): boolean => tls.value?.server_name != undefined,
   set: (v: boolean) => { props.outbound.tls.server_name = v ? '' : undefined },
 })
 const optionALPN = computed({
-  get: (): boolean => tls.value.alpn != undefined,
+  get: (): boolean => tls.value?.alpn != undefined,
   set: (v: boolean) => { props.outbound.tls.alpn = v ? defaultOutTls.alpn : undefined },
 })
 const optionMinV = computed({
-  get: (): boolean => tls.value.min_version != undefined,
+  get: (): boolean => tls.value?.min_version != undefined,
   set: (v: boolean) => { props.outbound.tls.min_version = v ? defaultOutTls.min_version : undefined },
 })
 const optionMaxV = computed({
-  get: (): boolean => tls.value.max_version != undefined,
+  get: (): boolean => tls.value?.max_version != undefined,
   set: (v: boolean) => { props.outbound.tls.max_version = v ? defaultOutTls.max_version : undefined },
 })
 const optionCS = computed({
-  get: (): boolean => tls.value.cipher_suites != undefined,
+  get: (): boolean => tls.value?.cipher_suites != undefined,
   set: (v: boolean) => { props.outbound.tls.cipher_suites = v ? defaultOutTls.cipher_suites : undefined },
 })
 const optionFP = computed({
-  get: (): boolean => tls.value.utls != undefined,
+  get: (): boolean => tls.value?.utls != undefined,
   set: (v: boolean) => { props.outbound.tls.utls = v ? defaultOutTls.utls : undefined },
 })
 const optionReality = computed({
-  get: (): boolean => tls.value.reality != undefined,
+  get: (): boolean => tls.value?.reality != undefined,
   set: (v: boolean) => { props.outbound.tls.reality = v ? defaultOutTls.reality : undefined },
 })
 const optionEch = computed({
-  get: (): boolean => tls.value.ech != undefined,
+  get: (): boolean => tls.value?.ech != undefined,
   set: (v: boolean) => { props.outbound.tls.ech = v ? defaultOutTls.ech : undefined },
 })
 const optionFragment = computed({
-  get: (): boolean => tls.value.fragment != undefined,
+  get: (): boolean => tls.value?.fragment != undefined,
   set: (v: boolean) => {
     if (v) {
       props.outbound.tls.fragment = false
@@ -283,7 +287,7 @@ const optionFragment = computed({
   },
 })
 const fragmentFallbackDelay = computed({
-  get: (): number => parseInt(tls.value.fragment_fallback_delay?.replace('ms', '') ?? '500') ?? 500,
+  get: (): number => parseInt(tls.value?.fragment_fallback_delay?.replace('ms', '') ?? '500') ?? 500,
   set: (v: number) => { props.outbound.tls.fragment_fallback_delay = v > 0 ? `${v}ms` : undefined },
 })
 </script>
