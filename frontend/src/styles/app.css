@@ -260,6 +260,26 @@
   overflow: hidden; text-overflow: ellipsis; max-width: 60%;
 }
 
+/* ---------------- move up/down button in card footers (Rules / Dns) ---------------- */
+/* Not CardBtn: its disabled state means "request in flight" (opacity .5, wait
+   cursor), while these are disabled because the row is already at an edge. */
+.mv-btn {
+  flex: none;
+  width: 46px;
+  height: 44px;
+  border: none;
+  border-inline-start: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .14s;
+}
+.mv-btn:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
+.mv-btn:disabled { opacity: .3; cursor: default; }
+
 /* ---------------- empty state ---------------- */
 .empty {
   display: flex; flex-direction: column; align-items: center; gap: 14px;

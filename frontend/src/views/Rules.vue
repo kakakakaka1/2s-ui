@@ -165,6 +165,7 @@ import RuleImportModal from '@/layouts/drawers/route/RuleImportModal.vue'
 import { Config } from '@/types/config'
 import { actionKeys, ruleset } from '@/types/rules'
 import { FindDiff } from '@/plugins/utils'
+import { useReorder } from '@/plugins/useReorder'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Pop from '@/components/ui/Pop.vue'
@@ -298,23 +299,7 @@ const confirmDelete = () => {
 }
 
 /* ---------------- ordering (drag & drop + move buttons) ---------------- */
-const draggedItemIndex = ref<number | null>(null)
-const onDragStart = (index: number) => { draggedItemIndex.value = index }
-const onDrop = (index: number) => {
-  if (draggedItemIndex.value !== null) {
-    const draggedItem = rules.value[draggedItemIndex.value]
-    rules.value.splice(draggedItemIndex.value, 1)
-    rules.value.splice(index, 0, draggedItem)
-    draggedItemIndex.value = null
-  }
-}
-const moveRule = (index: number, dir: number) => {
-  const to = index + dir
-  if (to < 0 || to >= rules.value.length) return
-  const item = rules.value[index]
-  rules.value.splice(index, 1)
-  rules.value.splice(to, 0, item)
-}
+const { onDragStart, onDrop, move: moveRule } = useReorder(() => rules.value)
 
 /* ---------------- import (rules JSON / rulesets URL list) ---------------- */
 const importModal = ref<{ open: boolean; mode: 'rules' | 'rulesets' }>({ open: false, mode: 'rules' })
@@ -344,22 +329,3 @@ const saveImportRulesets = (items: any[]) => {
   importModal.value.open = false
 }
 </script>
-
-<style scoped>
-.mv-btn {
-  flex: none;
-  width: 46px;
-  height: 44px;
-  border: none;
-  border-inline-start: 1px solid var(--line);
-  background: transparent;
-  cursor: pointer;
-  color: var(--text-2);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all .14s;
-}
-.mv-btn:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
-.mv-btn:disabled { opacity: .3; cursor: default; }
-</style>
