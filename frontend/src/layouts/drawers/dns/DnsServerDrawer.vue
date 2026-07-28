@@ -295,22 +295,7 @@
     <!-- ===================== Headers (https / h3) ===================== -->
     <template v-if="HasHeaders.includes(server.type)">
       <hr class="form-divider" />
-      <div style="display: flex; align-items: center; margin-bottom: 10px;">
-        <SectionLabel>{{ $t('objects.headers') }}</SectionLabel>
-        <div style="flex: 1;" />
-        <IconBtn name="plus" :title="$t('actions.add')" @click="addHeader" />
-      </div>
-      <div
-        v-for="(header, index) in hdrs"
-        :key="index"
-        style="display: grid; grid-template-columns: 1fr 1fr 34px; gap: 8px; align-items: center; margin-bottom: 8px;"
-      >
-        <input class="input mono" style="height: 38px; font-size: 12.5px;" :value="header.name" :placeholder="$t('objects.key')" @change="updateHeaderKey(index, ($event.target as HTMLInputElement).value)" />
-        <input class="input mono" style="height: 38px; font-size: 12.5px;" :value="header.value" :placeholder="$t('objects.value')" @change="updateHeaderValue(index, ($event.target as HTMLInputElement).value)" />
-        <button type="button" class="btn btn-subtle btn-icon" style="height: 38px; width: 34px;" @click="delHeader(index)">
-          <Ico name="close" :size="14" />
-        </button>
-      </div>
+      <Headers :data="server" />
     </template>
   </MDrawer>
 </template>
@@ -329,6 +314,7 @@ import ChipSelect from '@/components/ui/ChipSelect.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
 import MSwitchRow from '@/components/ui/MSwitchRow.vue'
+import Headers from '@/components/forms/out/Headers.vue'
 import Data from '@/store/modules/data'
 import RandomUtil from '@/plugins/randomUtil'
 import { dnsColor } from '@/plugins/colors'
@@ -457,47 +443,6 @@ const addHostsPredefined = () => { hostsPredefined.value = [...hostsPredefined.v
 const delHostsPredefined = (i: number) => { const pds = [...hostsPredefined.value]; pds.splice(i, 1); hostsPredefined.value = pds }
 const updatePdsKey = (i: number, k: string) => { const pds = [...hostsPredefined.value]; pds[i] = { ...pds[i], name: k }; hostsPredefined.value = pds }
 const updatePdsValue = (i: number, v: string) => { const pds = [...hostsPredefined.value]; pds[i] = { ...pds[i], value: v }; hostsPredefined.value = pds }
-
-// ---- headers (https / h3, legacy Headers.vue computed) ----
-const hdrs = computed<{ name: string; value: string }[]>({
-  get: () => {
-    const headers: { name: string; value: string }[] = []
-    const h = server.value.headers
-    if (h) {
-      Object.keys(h).forEach((key) => {
-        if (Array.isArray(h[key])) {
-          h[key].forEach((v: string) => headers.push({ name: key, value: v }))
-        } else {
-          headers.push({ name: key, value: h[key] })
-        }
-      })
-    }
-    return headers
-  },
-  set: (v: { name: string; value: string }[]) => {
-    if (v.length > 0) {
-      const headers: any = {}
-      v.forEach((h) => {
-        if (headers[h.name]) {
-          if (Array.isArray(headers[h.name])) {
-            headers[h.name].push(h.value)
-          } else {
-            headers[h.name] = [headers[h.name], h.value]
-          }
-        } else {
-          headers[h.name] = h.value
-        }
-      })
-      server.value.headers = headers
-    } else {
-      server.value.headers = undefined
-    }
-  },
-})
-const addHeader = () => { hdrs.value = [...hdrs.value, { name: 'Host', value: '' }] }
-const delHeader = (i: number) => { const h = [...hdrs.value]; h.splice(i, 1); hdrs.value = h }
-const updateHeaderKey = (i: number, k: string) => { const h = [...hdrs.value]; h[i] = { ...h[i], name: k }; hdrs.value = h }
-const updateHeaderValue = (i: number, v: string) => { const h = [...hdrs.value]; h[i] = { ...h[i], value: v }; hdrs.value = h }
 
 // ---- dial options (legacy Dial.vue computeds, dial == server object) ----
 const connectTimeout = computed({
