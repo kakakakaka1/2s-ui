@@ -215,9 +215,7 @@ const rslvdTags = computed((): string[] => {
 
 const clients = computed((): string[] => Data().clients.map((c: any) => c.name))
 
-const inboundTags = computed((): string[] => {
-  return [...Data().inbounds?.map((o: any) => o.tag), ...Data().endpoints?.filter((e: any) => e.listen_port > 0).map((e: any) => e.tag)]
-})
+const inboundTags = computed((): string[] => Data().inboundTags)
 
 const dns = computed((): any => appConfig.value.dns)
 

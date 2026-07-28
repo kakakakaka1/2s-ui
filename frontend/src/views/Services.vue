@@ -71,10 +71,7 @@ const tsTags = computed((): string[] =>
 const ssTags = computed((): string[] =>
   dataStore.inbounds?.filter((o: any) => o.type == 'shadowsocks' && !o.users)?.map((o: any) => o.tag))
 
-const inTags = computed((): string[] => [
-  ...dataStore.inbounds?.map((o: any) => o.tag).filter((tag: any) => tag != null),
-  ...dataStore.endpoints?.filter((e: any) => e.listen_port > 0).map((e: any) => e.tag),
-])
+const inTags = computed((): string[] => dataStore.inboundTags)
 
 const tlsConfigs = computed((): any[] => <any[]>dataStore.tlsConfigs)
 

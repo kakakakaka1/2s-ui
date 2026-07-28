@@ -415,10 +415,7 @@ const serverType = computed({
   },
 })
 
-const outTags = computed((): string[] => [
-  ...Data().outbounds?.map((o: any) => o.tag),
-  ...Data().endpoints?.map((e: any) => e.tag),
-])
+const outTags = computed((): string[] => Data().outboundTags)
 const dnsTags = computed((): string[] => Data().config.dns?.servers?.map((d: any) => d.tag) ?? [])
 
 // ---- hosts: path list + predefined records (legacy computeds) ----

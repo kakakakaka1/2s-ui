@@ -114,10 +114,7 @@ const dataStore = Data()
 // ---------------- store data ----------------
 const inbounds = computed((): any[] => dataStore.inbounds ?? [])
 const tlsConfigs = computed((): any[] => dataStore.tlsConfigs ?? [])
-const inTags = computed((): string[] => [
-  ...(inbounds.value?.map((i: any) => i.tag) ?? []),
-  ...(dataStore.endpoints?.filter((e: any) => e.listen_port > 0).map((e: any) => e.tag) ?? []),
-])
+const inTags = computed((): string[] => dataStore.inboundTags)
 const onlines = computed((): string[] => dataStore.onlines.inbound ?? [])
 const isOnline = (tag: string): boolean => onlines.value.includes(tag)
 

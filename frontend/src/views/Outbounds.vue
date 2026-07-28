@@ -108,10 +108,7 @@ const dataStore = Data()
 // ---------------- store data ----------------
 const outbounds = computed((): Outbound[] => <Outbound[]>dataStore.outbounds)
 
-const outboundTags = computed((): string[] => [
-  ...dataStore.outbounds?.map((o: Outbound) => o.tag),
-  ...dataStore.endpoints?.map((e: any) => e.tag),
-])
+const outboundTags = computed((): string[] => dataStore.outboundTags)
 
 const onlines = computed(() => dataStore.onlines.outbound ?? [])
 

@@ -24,6 +24,21 @@ const Data = defineStore('Data', {
     nodes: <any[]>[],
     nodesStatus: <Record<number, NodeStatus>>{},
   }),
+  getters: {
+    // Detour and route targets, inbound side: every inbound plus the endpoints
+    // that actually listen. Endpoints without a listen_port have nothing to
+    // route *to*, so they only belong in outboundTags.
+    inboundTags(state): string[] {
+      return [
+        ...(state.inbounds ?? []),
+        ...(state.endpoints ?? []).filter((e: any) => e.listen_port > 0),
+      ].map((o: any) => o.tag).filter((t: any) => t != null)
+    },
+    outboundTags(state): string[] {
+      return [...(state.outbounds ?? []), ...(state.endpoints ?? [])]
+        .map((o: any) => o.tag).filter((t: any) => t != null)
+    },
+  },
   actions: {
     async loadData() {
       const msg = await HttpUtils.get('api/load', this.lastLoad >0 ? {lu: this.lastLoad} : {} )

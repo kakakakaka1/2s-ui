@@ -91,10 +91,7 @@ import Ico from '@/components/ui/Ico.vue'
 
 const props = defineProps<{ dial: any; mode?: string }>()
 
-const outTags = computed((): string[] => [
-  ...Data().outbounds?.map((o: any) => o.tag),
-  ...Data().endpoints?.map((e: any) => e.tag),
-])
+const outTags = computed((): string[] => Data().outboundTags)
 
 const dnsTags = computed((): string[] => Data().config.dns?.servers?.map((d: any) => d.tag) ?? [])
 

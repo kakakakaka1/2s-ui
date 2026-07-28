@@ -232,15 +232,9 @@ const rulesets = computed((): any[] => {
 
 const rulesetTags = computed((): string[] => rulesets.value.map((rs: any) => rs.tag))
 
-const outboundTags = computed((): string[] => [
-  ...Data().outbounds?.map((o: any) => o.tag),
-  ...Data().endpoints?.map((e: any) => e.tag),
-])
+const outboundTags = computed((): string[] => Data().outboundTags)
 
-const inboundTags = computed((): string[] => [
-  ...Data().inbounds?.map((o: any) => o.tag),
-  ...Data().endpoints?.filter((e: any) => e.listen_port > 0).map((e: any) => e.tag),
-])
+const inboundTags = computed((): string[] => Data().inboundTags)
 
 /* ---------------- routing base fields ---------------- */
 const routeFinal = computed({
