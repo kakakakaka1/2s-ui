@@ -163,6 +163,7 @@ src/
 | `MDrawer` | `open` `icon?` `color?` `title?` `sub?` `saveLabel?` `width=500` `loading?` | `close` `save` | default | **实体编辑弹窗**:带图标头 + Cancel/Save 脚;每次打开自动 remount 内容 |
 | `Drawer` | `open` `width=460` | `close` | `title` default `footer` | 通用弹窗外壳(自定义头/脚时用） |
 | `Modal` | `open` `title?` `width=720` | `close` | default `footer` | 居中模态 |
+| `DeleteConfirm` | `open` `loading?` | `close` `confirm` | — | 删除确认框(9 个列表页共用):标题/正文/危险色全部内置,只接状态。本地删除(Rules/Dns)不传 `loading` |
 | `Pop` | `width?` `minWidth?` `align='end'` `direction='down'` | — | `trigger` default | 弹出菜单:`#trigger="{ toggle }"` 放触发器,默认槽 `="{ close }"` 放 `.pop-item`。菜单 Teleport 到 body 按触发器定位(在 `overflow` 容器/弹窗里不会被裁切),`align` 是逻辑端(RTL 自动镜像),`direction` 是首选方向、视口不足自动翻转 |
 | `Tabs` | `modelValue` `tabs:[key,label][]` `page?` `mb=18` | `update:modelValue` | — | 下划线标签;`page` = 页级 tab |
 | `IconBtn` | `name` `title?` `danger?` | — | — | 表格行内图标按钮 |

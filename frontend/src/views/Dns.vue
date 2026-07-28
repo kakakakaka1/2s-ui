@@ -21,15 +21,7 @@
   />
 
   <!-- delete confirmation -->
-  <Modal :open="del.open" :title="$t('actions.del')" :width="380" @close="del.open = false">
-    <div style="padding: 18px; font-size: 13.5px;">{{ $t('confirm') }}</div>
-    <template #footer>
-      <Btn @click="del.open = false">{{ $t('no') }}</Btn>
-      <Btn style="color: var(--rose);" @click="confirmDelete">
-        <Ico name="trash" :size="15" /> {{ $t('yes') }}
-      </Btn>
-    </template>
-  </Modal>
+  <DeleteConfirm :open="del.open" @close="del.open = false" @confirm="confirmDelete" />
 
   <div class="page-stack-lg fade-up">
     <!-- ===================== toolbar ===================== -->
@@ -162,7 +154,7 @@ import { FindDiff } from '@/plugins/utils'
 import { dnsColor } from '@/plugins/colors'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
-import Modal from '@/components/ui/Modal.vue'
+import DeleteConfirm from '@/components/ui/DeleteConfirm.vue'
 import Field from '@/components/ui/Field.vue'
 import CheckLabel from '@/components/ui/CheckLabel.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
