@@ -45,7 +45,7 @@ src/
 | 类别 | 变量 |
 |---|---|
 | 品牌 | `--brand #635bff` · `--brand-600`(hover)· `--brand-700`(active)· `--brand-soft`(12% 底) |
-| 语义色 | `--cyan` `--emerald` `--amber` `--rose` `--violet` |
+| 语义色 | `--cyan` `--emerald` `--amber` `--rose` `--violet` `--pink` `--sky` |
 | 表面 | `--bg` · `--surface` · `--surface-2` · `--surface-3` · `--elevated` |
 | 文字 | `--text` · `--text-2` · `--text-3` |
 | 线条 | `--line`(.07)· `--line-2`(.12) |

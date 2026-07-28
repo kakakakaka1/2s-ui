@@ -28,6 +28,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Chip from './Chip.vue'
 import CardBtn from './CardBtn.vue'
+import { actionColor } from '@/plugins/colors'
 
 const props = defineProps<{
   n: number
@@ -43,13 +44,7 @@ defineEmits<{ edit: []; del: [] }>()
 
 const { t } = useI18n()
 
-const ACT_COLORS: Record<string, string> = {
-  route: 'var(--brand)',
-  reject: 'var(--rose)',
-  'hijack-dns': 'var(--cyan)',
-  'route-options': 'var(--violet)',
-}
-const actColor = computed(() => ACT_COLORS[props.action] || 'var(--text-3)')
+const actColor = computed(() => actionColor(props.action))
 const modeLabel = computed(() =>
   props.logical ? `${t('rule.logical')} (${props.mode})` : t('rule.simple')
 )
