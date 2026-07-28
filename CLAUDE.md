@@ -183,8 +183,24 @@ ESLint is deliberately loosened (`vue/no-mutating-props` is `shallowOnly` becaus
 
 ## Release quirks
 
-- `release.yml` and `windows.yml` trigger on **both** `push: main` and `release: published`, and have no `concurrency:` block — merging a PR then publishing a release runs the full 7-platform matrix **twice**. Only the `release` run uploads assets (the upload step is gated on `github.event_name == 'release'`).
+- `release.yml` and `windows.yml` trigger on **both** `push: main` and `release: published` — merging a PR then publishing a release runs the full 7-platform matrix **twice**. Only the `release` run uploads assets (the upload step is gated on `github.event_name == 'release'`). Both carry a `concurrency:` group keyed on `github.ref`, so a run superseded by a later push is cancelled; `cancel-in-progress` is guarded on the event so a publish is never cancelled part-way through uploading. The three group names (`ci-`, `release-`, `windows-`) must stay distinct or the workflows cancel each other.
 - **`config/version` is not in any workflow path filter** — a version-bump-only PR triggers no release build.
 - `docker.yml` has no push trigger, so **a Dockerfile change is ungated until a release is cut**.
 - `Dockerfile.frontend-artifact` expects a prebuilt `frontend_dist/` in the build context (CI builds the frontend once natively rather than five times under QEMU). It **fails from a bare checkout** — use `Dockerfile` locally.
 - `.dockerignore` has no `*.exe` or `.git` entry, while the repo root accumulates ignored multi-hundred-MB `sui*.exe` binaries — they land in the Docker build context.
+
+## Dependency updates
+
+`.github/dependabot.yml` batches minor and patch updates into **one PR per ecosystem** (`gomod`, `github-actions`, `frontend`); majors still arrive on their own. Two behaviours that cost time to rediscover:
+
+- **Editing `dependabot.yml` re-runs dependabot immediately** — it does not wait for the next daily tick. Grouping took effect within minutes of the merge and auto-closed the individual PRs it superseded.
+- **A pseudo-version moving to its tagged release never joins a group.** `v0.2.8-0.20250909125414-3aed155119a1` → `v0.2.8` leaves major/minor/patch identical, so dependabot classifies it as neither minor nor patch and it falls outside the group's `update-types`. It gets its own PR, whose `go.sum` hunk sits right next to the group PR's — merge the group first and the leftover **always** conflicts and needs an `@dependabot rebase` comment.
+
+Two deliberate carve-outs, both easy to "simplify" into a bug:
+
+- `sing-box` is excluded from the gomod group. Bumping it makes the `core/protocol/` copies stale and `scripts/check-protocol-copies.sh` fails, and that re-copy is its own piece of work — not something to do inside a PR that also moves five other modules.
+- Only `typescript` majors are ignored (`typescript-eslint` pins `typescript >=4.8.4 <6.1.0`, unchanged as of 8.65.0). Nothing else is, because `ignore` suppresses **security** update PRs as well as version ones, and most frontend deps ship inside the SPA.
+
+Every action in `.github/workflows/` is pinned to a commit SHA with a trailing `# vX.Y.Z` comment; dependabot maintains both halves. Don't tidy them back to `@vN` — a tag is a mutable ref, and these workflows build the binaries users run as root.
+
+Grouping does not make CI's `npm ci` any more trustworthy on a frontend PR — re-run the `npm install --package-lock-only` check above before merging one.
