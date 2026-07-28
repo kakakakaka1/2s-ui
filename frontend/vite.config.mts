@@ -6,13 +6,10 @@ import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
 import { randomBytes } from 'crypto'
 
-function getUniqueFileName(template) {
-  if (template.includes('.js') || template.includes('.css')) {
-    const hash = randomBytes(8).toString('hex')
-    return template.replace('[name]', hash)
-  }
-  return template
-}
+// web.go serves assets/ with max-age=31536000, so every build must produce filenames
+// the previous build never used. One id per build (not per file) is enough for that,
+// and keeping [name] alongside it means split chunks stay tellable apart.
+const BUILD_ID = randomBytes(8).toString('hex')
 
 export default defineConfig({
   base: '',
@@ -25,12 +22,11 @@ export default defineConfig({
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
       output: {
-        codeSplitting: false,
-        entryFileNames: getUniqueFileName('assets/[name].js'),
-        chunkFileNames: getUniqueFileName('assets/[name].js'),
+        entryFileNames: `assets/[name]-${BUILD_ID}.js`,
+        chunkFileNames: `assets/[name]-${BUILD_ID}.js`,
         assetFileNames: (assetInfo) => {
           if (assetInfo.names.some(name => name.endsWith('.css')))
-            return getUniqueFileName('assets/[name].css')
+            return `assets/[name]-${BUILD_ID}.css`
           return 'assets/' + assetInfo.names[0]
         },
       },
