@@ -31,26 +31,26 @@
         </Field>
         <Field v-if="tls.min_version" :label="$t('tls.minVer')">
           <Select v-model="tls.min_version">
-            <option v-for="v in tlsVersions" :key="v" :value="v">{{ v }}</option>
+            <option v-for="v in TLS_VERSIONS" :key="v" :value="v">{{ v }}</option>
           </Select>
         </Field>
         <Field v-if="tls.max_version" :label="$t('tls.maxVer')">
           <Select v-model="tls.max_version">
-            <option v-for="v in tlsVersions" :key="v" :value="v">{{ v }}</option>
+            <option v-for="v in TLS_VERSIONS" :key="v" :value="v">{{ v }}</option>
           </Select>
         </Field>
         <Field v-if="tls.utls != undefined" label="Fingerprint">
           <Select v-model="tls.utls.fingerprint">
-            <option v-for="f in fingerprints" :key="f.value" :value="f.value">{{ f.title }}</option>
+            <option v-for="f in UTLS_FINGERPRINTS" :key="f.value" :value="f.value">{{ f.title }}</option>
           </Select>
         </Field>
       </div>
 
       <Field v-if="tls.alpn" label="ALPN">
-        <MultiPick v-model="alpnValue" :options="alpnOptions" />
+        <MultiPick v-model="alpnValue" :options="ALPN_OPTIONS" />
       </Field>
       <Field v-if="tls.cipher_suites != undefined" :label="$t('tls.cs')">
-        <ChipSelect v-model="cipherSuites" :options="cipherSuiteItems" />
+        <ChipSelect v-model="cipherSuites" :options="CIPHER_SUITES" />
       </Field>
 
       <template v-if="tls.reality != undefined">
@@ -123,7 +123,7 @@
 <script lang="ts" setup>
 import Select from '@/components/ui/Select.vue'
 import { computed, ref } from 'vue'
-import { oTls, defaultOutTls } from '@/types/tls'
+import { oTls, defaultOutTls, ALPN_OPTIONS, TLS_VERSIONS, CIPHER_SUITES, UTLS_FINGERPRINTS } from '@/types/tls'
 import Field from '@/components/ui/Field.vue'
 import Btn from '@/components/ui/Btn.vue'
 import Pop from '@/components/ui/Pop.vue'
@@ -139,39 +139,6 @@ const props = defineProps<{ outbound: any }>()
 const usePath = ref<string | number>(props.outbound?.tls?.certificate ? 1 : 0)
 const useEchPath = ref<string | number>(props.outbound?.tls?.ech?.config ? 1 : 0)
 
-const alpnOptions = ['h3', 'h2', 'http/1.1']
-const tlsVersions = ['1.0', '1.1', '1.2', '1.3']
-const cipherSuiteItems = [
-  { title: 'RSA-AES128-CBC-SHA', value: 'TLS_RSA_WITH_AES_128_CBC_SHA' },
-  { title: 'RSA-AES256-CBC-SHA', value: 'TLS_RSA_WITH_AES_256_CBC_SHA' },
-  { title: 'RSA-AES128-GCM-SHA256', value: 'TLS_RSA_WITH_AES_128_GCM_SHA256' },
-  { title: 'RSA-AES256-GCM-SHA384', value: 'TLS_RSA_WITH_AES_256_GCM_SHA384' },
-  { title: 'AES128-GCM-SHA256', value: 'TLS_AES_128_GCM_SHA256' },
-  { title: 'AES256-GCM-SHA384', value: 'TLS_AES_256_GCM_SHA384' },
-  { title: 'CHACHA20-POLY1305-SHA256', value: 'TLS_CHACHA20_POLY1305_SHA256' },
-  { title: 'ECDHE-ECDSA-AES128-CBC-SHA', value: 'TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA' },
-  { title: 'ECDHE-ECDSA-AES256-CBC-SHA', value: 'TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA' },
-  { title: 'ECDHE-RSA-AES128-CBC-SHA', value: 'TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA' },
-  { title: 'ECDHE-RSA-AES256-CBC-SHA', value: 'TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA' },
-  { title: 'ECDHE-ECDSA-AES128-GCM-SHA256', value: 'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256' },
-  { title: 'ECDHE-ECDSA-AES256-GCM-SHA384', value: 'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384' },
-  { title: 'ECDHE-RSA-AES128-GCM-SHA256', value: 'TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256' },
-  { title: 'ECDHE-RSA-AES256-GCM-SHA384', value: 'TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384' },
-  { title: 'ECDHE-ECDSA-CHACHA20-POLY1305-SHA256', value: 'TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256' },
-  { title: 'ECDHE-RSA-CHACHA20-POLY1305-SHA256', value: 'TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256' },
-]
-const fingerprints = [
-  { title: 'Chrome', value: 'chrome' },
-  { title: 'Firefox', value: 'firefox' },
-  { title: 'Microsoft Edge', value: 'edge' },
-  { title: 'Apple Safari', value: 'safari' },
-  { title: '360', value: '360' },
-  { title: 'QQ', value: 'qq' },
-  { title: 'Apple IOS', value: 'ios' },
-  { title: 'Android', value: 'android' },
-  { title: 'Random', value: 'random' },
-  { title: 'Randomized', value: 'randomized' },
-]
 
 const tls = computed((): oTls => props.outbound.tls)
 

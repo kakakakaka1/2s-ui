@@ -33,20 +33,20 @@
       <div class="grid2">
         <Field v-if="inTls.min_version" :label="$t('tls.minVer')">
           <Select v-model="inTls.min_version">
-            <option v-for="v in tlsVersions" :key="v" :value="v">{{ v }}</option>
+            <option v-for="v in TLS_VERSIONS" :key="v" :value="v">{{ v }}</option>
           </Select>
         </Field>
         <Field v-if="inTls.max_version" :label="$t('tls.maxVer')">
           <Select v-model="inTls.max_version">
-            <option v-for="v in tlsVersions" :key="v" :value="v">{{ v }}</option>
+            <option v-for="v in TLS_VERSIONS" :key="v" :value="v">{{ v }}</option>
           </Select>
         </Field>
       </div>
       <Field v-if="inTls.alpn" label="ALPN">
-        <MultiPick v-model="alpnValue" :options="alpnOptions" />
+        <MultiPick v-model="alpnValue" :options="ALPN_OPTIONS" />
       </Field>
       <Field v-if="inTls.cipher_suites != undefined" :label="$t('tls.cs')">
-        <ChipSelect v-model="cipherSuites" :options="cipherSuiteItems" />
+        <ChipSelect v-model="cipherSuites" :options="CIPHER_SUITES" />
       </Field>
 
       <!-- certificate: path / text + self-signed generator -->
@@ -132,7 +132,7 @@
     <div v-if="outTls.utls != undefined" class="grid2">
       <Field label="Fingerprint">
         <Select v-model="fingerprint">
-          <option v-for="f in fingerprints" :key="f.value" :value="f.value">{{ f.title }}</option>
+          <option v-for="f in UTLS_FINGERPRINTS" :key="f.value" :value="f.value">{{ f.title }}</option>
         </Select>
       </Field>
     </div>
@@ -187,7 +187,7 @@ import { push } from 'notivue'
 import Data from '@/store/modules/data'
 import HttpUtils from '@/plugins/httputil'
 import RandomUtil from '@/plugins/randomUtil'
-import { tls, iTls, defaultInTls, oTls, defaultOutTls } from '@/types/tls'
+import { tls, iTls, defaultInTls, oTls, defaultOutTls, ALPN_OPTIONS, TLS_VERSIONS, CIPHER_SUITES, UTLS_FINGERPRINTS } from '@/types/tls'
 import MDrawer from '@/components/ui/MDrawer.vue'
 import Field from '@/components/ui/Field.vue'
 import Btn from '@/components/ui/Btn.vue'
@@ -217,42 +217,9 @@ const loading = ref(false)
 const tlsType = ref<string | number>(0)
 const usePath = ref<string | number>(0)
 
-const alpnOptions = ['h3', 'h2', 'http/1.1']
-const tlsVersions = ['1.0', '1.1', '1.2', '1.3']
-const cipherSuiteItems = [
-  { title: 'RSA-AES128-CBC-SHA', value: 'TLS_RSA_WITH_AES_128_CBC_SHA' },
-  { title: 'RSA-AES256-CBC-SHA', value: 'TLS_RSA_WITH_AES_256_CBC_SHA' },
-  { title: 'RSA-AES128-GCM-SHA256', value: 'TLS_RSA_WITH_AES_128_GCM_SHA256' },
-  { title: 'RSA-AES256-GCM-SHA384', value: 'TLS_RSA_WITH_AES_256_GCM_SHA384' },
-  { title: 'AES128-GCM-SHA256', value: 'TLS_AES_128_GCM_SHA256' },
-  { title: 'AES256-GCM-SHA384', value: 'TLS_AES_256_GCM_SHA384' },
-  { title: 'CHACHA20-POLY1305-SHA256', value: 'TLS_CHACHA20_POLY1305_SHA256' },
-  { title: 'ECDHE-ECDSA-AES128-CBC-SHA', value: 'TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA' },
-  { title: 'ECDHE-ECDSA-AES256-CBC-SHA', value: 'TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA' },
-  { title: 'ECDHE-RSA-AES128-CBC-SHA', value: 'TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA' },
-  { title: 'ECDHE-RSA-AES256-CBC-SHA', value: 'TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA' },
-  { title: 'ECDHE-ECDSA-AES128-GCM-SHA256', value: 'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256' },
-  { title: 'ECDHE-ECDSA-AES256-GCM-SHA384', value: 'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384' },
-  { title: 'ECDHE-RSA-AES128-GCM-SHA256', value: 'TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256' },
-  { title: 'ECDHE-RSA-AES256-GCM-SHA384', value: 'TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384' },
-  { title: 'ECDHE-ECDSA-CHACHA20-POLY1305-SHA256', value: 'TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256' },
-  { title: 'ECDHE-RSA-CHACHA20-POLY1305-SHA256', value: 'TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256' },
-]
 const storeItems = [
   { title: 'Mozilla', value: 'mozilla' },
   { title: 'Chrome', value: 'chrome' },
-]
-const fingerprints = [
-  { title: 'Chrome', value: 'chrome' },
-  { title: 'Firefox', value: 'firefox' },
-  { title: 'Microsoft Edge', value: 'edge' },
-  { title: 'Apple Safari', value: 'safari' },
-  { title: '360', value: '360' },
-  { title: 'QQ', value: 'qq' },
-  { title: 'Apple IOS', value: 'ios' },
-  { title: 'Android', value: 'android' },
-  { title: 'Random', value: 'random' },
-  { title: 'Randomized', value: 'randomized' },
 ]
 
 const isNew = computed(() => props.id === 0)
