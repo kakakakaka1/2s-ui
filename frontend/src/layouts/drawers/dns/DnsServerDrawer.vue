@@ -97,77 +97,7 @@
     <!-- ===================== Dial ===================== -->
     <template v-if="!WithoutDial.includes(server.type)">
       <hr class="form-divider" />
-      <div style="display: flex; align-items: center; margin-bottom: 12px;">
-        <SectionLabel>{{ $t('objects.dial') }}</SectionLabel>
-        <div style="flex: 1;" />
-        <Pop :width="280">
-          <template #trigger="{ toggle }">
-            <Btn variant="subtle" sm @click="toggle">{{ $t('dial.options') }}</Btn>
-          </template>
-          <div style="display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto;">
-            <div class="pop-item"><SwitchLabel :label="$t('listen.detour')" v-model="optionDetour" /></div>
-            <div class="pop-item"><SwitchLabel :label="$t('dial.bindIf')" v-model="optionBind" /></div>
-            <div class="pop-item"><SwitchLabel :label="$t('dial.bindIp4')" v-model="optionIPV4" /></div>
-            <div class="pop-item"><SwitchLabel :label="$t('dial.bindIp6')" v-model="optionIPV6" /></div>
-            <div class="pop-item"><SwitchLabel :label="$t('dial.bindNoPort')" v-model="optionBindNoPort" /></div>
-            <div class="pop-item"><SwitchLabel label="Routing Mark" v-model="optionRM" /></div>
-            <div class="pop-item"><SwitchLabel :label="$t('dial.reuseAddr')" v-model="optionRA" /></div>
-            <div class="pop-item"><SwitchLabel :label="$t('listen.tcpOptions')" v-model="optionTCP" /></div>
-            <div class="pop-item"><SwitchLabel :label="$t('listen.udpOptions')" v-model="optionUDP" /></div>
-            <div class="pop-item"><SwitchLabel :label="$t('dial.connTimeout')" v-model="optionCT" /></div>
-            <div class="pop-item"><SwitchLabel :label="$t('dial.tcpKeepAlive')" v-model="optionTcpKeepAlive" /></div>
-            <div class="pop-item"><SwitchLabel :label="$t('dial.domainResolver')" v-model="optionDR" /></div>
-          </div>
-        </Pop>
-      </div>
-
-      <div class="grid2">
-        <Field v-if="optionDetour" :label="$t('dial.detourText')">
-          <Select v-model="server.detour">
-            <option v-for="o in outTags" :key="o" :value="o">{{ o }}</option>
-          </Select>
-        </Field>
-        <Field v-if="optionBind" :label="$t('dial.bindIf')">
-          <input class="input mono" v-model="server.bind_interface" />
-        </Field>
-        <Field v-if="optionIPV4" :label="$t('dial.bindIp4')">
-          <input class="input mono" v-model="server.inet4_bind_address" />
-        </Field>
-        <Field v-if="optionIPV6" :label="$t('dial.bindIp6')">
-          <input class="input mono" v-model="server.inet6_bind_address" />
-        </Field>
-        <Field v-if="optionRM" label="Linux Routing Mark">
-          <input class="input mono" type="number" min="0" v-model.number="routingMark" />
-        </Field>
-        <Field v-if="optionCT" :label="$t('dial.connTimeout') + ' (' + $t('date.s') + ')'">
-          <input class="input mono" type="number" min="1" v-model.number="connectTimeout" />
-        </Field>
-        <Field v-if="optionDR" :label="$t('dial.domainResolver')">
-          <Select v-model="server.domain_resolver">
-            <option v-for="d in dnsTags" :key="d" :value="d">{{ d }}</option>
-          </Select>
-        </Field>
-      </div>
-      <div v-if="optionBindNoPort || optionRA || optionTCP || optionUDP" style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px;">
-        <SwitchLabel v-if="optionBindNoPort" :label="$t('dial.bindNoPort')" :model-value="!!server.bind_address_no_port" @update:model-value="server.bind_address_no_port = $event" />
-        <SwitchLabel v-if="optionRA" :label="$t('dial.reuseAddr')" :model-value="!!server.reuse_addr" @update:model-value="server.reuse_addr = $event" />
-        <SwitchLabel v-if="optionTCP" label="TCP Fast Open" :model-value="!!server.tcp_fast_open" @update:model-value="server.tcp_fast_open = $event" />
-        <SwitchLabel v-if="optionTCP" label="TCP Multi Path" :model-value="!!server.tcp_multi_path" @update:model-value="server.tcp_multi_path = $event" />
-        <SwitchLabel v-if="optionUDP" label="UDP Fragment" :model-value="!!server.udp_fragment" @update:model-value="server.udp_fragment = $event" />
-      </div>
-      <template v-if="optionTcpKeepAlive">
-        <div style="margin-bottom: 15px;">
-          <SwitchLabel :label="$t('dial.disableTcpKeepAlive')" :model-value="!!server.disable_tcp_keep_alive" @update:model-value="server.disable_tcp_keep_alive = $event" />
-        </div>
-        <div class="grid2">
-          <Field :label="$t('dial.tcpKeepAlive')">
-            <input class="input mono" v-model="server.tcp_keep_alive" />
-          </Field>
-          <Field :label="$t('dial.tcpKeepAliveInterval')">
-            <input class="input mono" v-model="server.tcp_keep_alive_interval" />
-          </Field>
-        </div>
-      </template>
+      <Dial :dial="server" />
     </template>
 
     <!-- ===================== TLS ===================== -->
@@ -315,7 +245,7 @@ import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
 import MSwitchRow from '@/components/ui/MSwitchRow.vue'
 import Headers from '@/components/forms/out/Headers.vue'
-import Data from '@/store/modules/data'
+import Dial from '@/components/forms/out/Dial.vue'
 import RandomUtil from '@/plugins/randomUtil'
 import { dnsColor } from '@/plugins/colors'
 import { DnsTypes, createDnsServer, DnsServer } from '@/types/dns'
@@ -401,8 +331,6 @@ const serverType = computed({
   },
 })
 
-const outTags = computed((): string[] => Data().outboundTags)
-const dnsTags = computed((): string[] => Data().config.dns?.servers?.map((d: any) => d.tag) ?? [])
 
 // ---- hosts: path list + predefined records (legacy computeds) ----
 const hostsPath = computed({
@@ -443,84 +371,6 @@ const addHostsPredefined = () => { hostsPredefined.value = [...hostsPredefined.v
 const delHostsPredefined = (i: number) => { const pds = [...hostsPredefined.value]; pds.splice(i, 1); hostsPredefined.value = pds }
 const updatePdsKey = (i: number, k: string) => { const pds = [...hostsPredefined.value]; pds[i] = { ...pds[i], name: k }; hostsPredefined.value = pds }
 const updatePdsValue = (i: number, v: string) => { const pds = [...hostsPredefined.value]; pds[i] = { ...pds[i], value: v }; hostsPredefined.value = pds }
-
-// ---- dial options (legacy Dial.vue computeds, dial == server object) ----
-const connectTimeout = computed({
-  get: () => (server.value.connect_timeout ? parseInt(server.value.connect_timeout.replace('s', '')) : 5),
-  set: (v: number) => { server.value.connect_timeout = v > 0 ? v + 's' : '5s' },
-})
-const routingMark = computed({
-  get: () => server.value.routing_mark ?? 0,
-  set: (v: number) => { server.value.routing_mark = v > 0 ? v : 0 },
-})
-const optionDetour = computed({
-  get: () => server.value.detour !== undefined,
-  set: (v: boolean) => { if (v) server.value.detour = outTags.value[0] ?? ''; else delete server.value.detour },
-})
-const optionBind = computed({
-  get: () => server.value.bind_interface !== undefined,
-  set: (v: boolean) => { if (v) server.value.bind_interface = ''; else delete server.value.bind_interface },
-})
-const optionIPV4 = computed({
-  get: () => server.value.inet4_bind_address !== undefined,
-  set: (v: boolean) => { if (v) server.value.inet4_bind_address = ''; else delete server.value.inet4_bind_address },
-})
-const optionIPV6 = computed({
-  get: () => server.value.inet6_bind_address !== undefined,
-  set: (v: boolean) => { if (v) server.value.inet6_bind_address = ''; else delete server.value.inet6_bind_address },
-})
-const optionBindNoPort = computed({
-  get: () => server.value.bind_address_no_port !== undefined,
-  set: (v: boolean) => { if (v) server.value.bind_address_no_port = true; else delete server.value.bind_address_no_port },
-})
-const optionRM = computed({
-  get: () => server.value.routing_mark !== undefined,
-  set: (v: boolean) => { if (v) server.value.routing_mark = 0; else delete server.value.routing_mark },
-})
-const optionRA = computed({
-  get: () => server.value.reuse_addr !== undefined,
-  set: (v: boolean) => { if (v) server.value.reuse_addr = true; else delete server.value.reuse_addr },
-})
-const optionTCP = computed({
-  get: () => server.value.tcp_fast_open !== undefined && server.value.tcp_multi_path !== undefined,
-  set: (v: boolean) => {
-    if (v) {
-      server.value.tcp_fast_open = false
-      server.value.tcp_multi_path = false
-    } else {
-      delete server.value.tcp_fast_open
-      delete server.value.tcp_multi_path
-    }
-  },
-})
-const optionUDP = computed({
-  get: () => server.value.udp_fragment !== undefined,
-  set: (v: boolean) => { if (v) server.value.udp_fragment = true; else delete server.value.udp_fragment },
-})
-const optionCT = computed({
-  get: () => server.value.connect_timeout !== undefined,
-  set: (v: boolean) => { if (v) server.value.connect_timeout = '5s'; else delete server.value.connect_timeout },
-})
-const optionTcpKeepAlive = computed({
-  get: () =>
-    server.value.disable_tcp_keep_alive !== undefined ||
-    server.value.tcp_keep_alive !== undefined ||
-    server.value.tcp_keep_alive_interval !== undefined,
-  set: (v: boolean) => {
-    if (v) {
-      server.value.tcp_keep_alive = '5m'
-      server.value.tcp_keep_alive_interval = '75s'
-    } else {
-      delete server.value.disable_tcp_keep_alive
-      delete server.value.tcp_keep_alive
-      delete server.value.tcp_keep_alive_interval
-    }
-  },
-})
-const optionDR = computed({
-  get: () => server.value.domain_resolver !== undefined,
-  set: (v: boolean) => { server.value.domain_resolver = v ? dnsTags.value[0] ?? '' : undefined },
-})
 
 // ---- TLS (legacy OutTLS.vue computeds, outbound == server object) ----
 const tls = computed<any>(() => server.value.tls)
