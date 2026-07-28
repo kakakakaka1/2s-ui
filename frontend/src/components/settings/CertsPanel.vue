@@ -149,7 +149,7 @@
 <script lang="ts" setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { push } from 'notivue'
-import { i18n, locale } from '@/locales'
+import { i18n, intlLocale } from '@/locales'
 import HttpUtils from '@/plugins/httputil'
 import { copyToClipboard } from '@/plugins/clipboard'
 import Btn from '@/components/ui/Btn.vue'
@@ -191,7 +191,7 @@ const manualComplete = computed(() =>
 // 跟 TokenModal/ChangesModal 一样按应用语言格式化,不跟浏览器语言——同一个面板里
 // 两种日期写法只会让人怀疑数据不对
 const fmtDate = (unixSec: number) =>
-  unixSec ? new Date(unixSec * 1000).toLocaleDateString(locale, { year: 'numeric', month: '2-digit', day: '2-digit' }) : '—'
+  unixSec ? new Date(unixSec * 1000).toLocaleDateString(intlLocale(), { year: 'numeric', month: '2-digit', day: '2-digit' }) : '—'
 
 // color 只能取 Chip 的预设名，别的值会被它当成 CSS 颜色直接用
 const statusOf = (c: Cert): { text: string; color: 'emerald' | 'amber' | 'rose' } => {

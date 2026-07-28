@@ -71,7 +71,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'
-import { locale } from '@/locales'
+import { intlLocale } from '@/locales'
 import { Node, NodeStatus } from '@/types/node'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
@@ -114,9 +114,11 @@ const stateColor = (n: Node): string => {
 const displayUrl = (n: Node): string => n.baseUrl.replace(/^https?:\/\//, '')
 
 // ---------------- relative time ----------------
-const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
 const relTime = (unix: number): string => {
   if (!unix) return t('ui.none')
+  // built per call so switching language re-formats; hoisting it would pin the
+  // formatter to the language the page was opened in
+  const rtf = new Intl.RelativeTimeFormat(intlLocale(), { numeric: 'auto' })
   const diff = unix - Math.floor(Date.now() / 1000)
   const abs = Math.abs(diff)
   if (abs < 60) return rtf.format(Math.trunc(diff), 'second')

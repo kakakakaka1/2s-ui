@@ -78,7 +78,7 @@
 <script lang="ts" setup>
 import { ref, watch } from 'vue'
 import HttpUtils from '@/plugins/httputil'
-import { i18n, locale } from '@/locales'
+import { i18n, intlLocale } from '@/locales'
 import { copyToClipboard } from '@/plugins/clipboard'
 import Modal from '@/components/ui/Modal.vue'
 import Field from '@/components/ui/Field.vue'
@@ -140,7 +140,7 @@ const deleteToken = async (id: number) => {
 const dateFormatted = (expiry: number): string => {
   if (expiry == 0) return i18n.global.t('unlimited')
   const date = new Date(expiry * 1000)
-  return date.toLocaleString(locale, {
+  return date.toLocaleString(intlLocale(), {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

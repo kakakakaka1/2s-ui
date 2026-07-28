@@ -221,7 +221,7 @@ import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'
 import { Client, Link, createClient, randomConfigs, shuffleConfigs, updateConfigs } from '@/types/clients'
 import { HumanReadable } from '@/plugins/utils'
-import { locale } from '@/locales'
+import { intlLocale } from '@/locales'
 import Drawer from '@/components/ui/Drawer.vue'
 import Tabs from '@/components/ui/Tabs.vue'
 import Field from '@/components/ui/Field.vue'
@@ -370,7 +370,7 @@ const totalDown = computed(() => HumanReadable.sizeFormat((client.value.totalDow
 const nextResetFormatted = computed(() => {
   const ts = client.value.nextReset ?? 0
   if (ts == 0) return '-'
-  return new Date(ts * 1000).toLocaleString(locale)
+  return new Date(ts * 1000).toLocaleString(intlLocale())
 })
 const percent = computed(() =>
   client.value.volume > 0 ? Math.round(((client.value.up + client.value.down) * 100) / client.value.volume) : 0,

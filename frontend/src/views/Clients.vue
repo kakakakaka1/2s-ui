@@ -235,7 +235,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'
 import { HumanReadable } from '@/plugins/utils'
-import { locale } from '@/locales'
+import { intlLocale } from '@/locales'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Chip from '@/components/ui/Chip.vue'
@@ -364,7 +364,7 @@ const quotaColor = (c: any): string => {
 const usageTitle = (c: any): string =>
   '↓' + HumanReadable.sizeFormat(c.down) + ' - ' + HumanReadable.sizeFormat(c.up) + '↑'
 const expiryTitle = (c: any): string | undefined =>
-  c.expiry > 0 ? new Date(c.expiry * 1000).toLocaleString(locale) : undefined
+  c.expiry > 0 ? new Date(c.expiry * 1000).toLocaleString(intlLocale()) : undefined
 const inboundsOf = (c: any): any[] =>
   (c.inbounds ?? []).map((id: number) => inbounds.value.find((i: any) => i.id == id)).filter((i: any) => !!i)
 const protoSummary = (c: any): string => {
