@@ -347,7 +347,7 @@ const genSelfSigned = async () => {
       inTls.value.certificate = publicKey ?? undefined
     } else {
       push.error({
-        message: t('error') + ': ' + msg.obj,
+        message: t('failed') + ': ' + msg.obj,
       })
     }
   }
@@ -371,7 +371,7 @@ const genRealityKey = async () => {
     })
   } else {
     push.error({
-      message: t('error') + ': ' + msg.obj,
+      message: t('failed') + ': ' + msg.obj,
     })
   }
 }
