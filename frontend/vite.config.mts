@@ -11,10 +11,32 @@ import { randomBytes } from 'crypto'
 // and keeping [name] alongside it means split chunks stay tellable apart.
 const BUILD_ID = randomBytes(8).toString('hex')
 
+// @fontsource emits every @font-face as `woff2, woff`. Anything that can run this
+// bundle supports woff2, so the fallback is never requested — but it still lands in
+// dist/, and from there into the binary via web.go's //go:embed.
+function stripWoffFallback() {
+  return {
+    name: 'strip-woff-fallback',
+    enforce: 'pre' as const,
+    transform(code: string, id: string) {
+      if (!id.includes('fontsource') || !id.includes('.css')) return null
+      // Only ever drops a *fallback* (the comma is required), so a woff-only
+      // @font-face — if @fontsource ever ships one — is left intact.
+      const out = code.replace(/,\s*url\([^)]*\.woff\)\s*format\('woff'\)/g, '')
+      if (out === code) {
+        this.warn(`no woff fallback found in ${id}; @fontsource may have changed its CSS shape`)
+        return null
+      }
+      return out
+    },
+  }
+}
+
 export default defineConfig({
   base: '',
   plugins: [
     vue(),
+    stripWoffFallback(),
   ],
   build: {
     manifest: false,
