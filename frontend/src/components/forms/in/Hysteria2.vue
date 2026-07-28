@@ -72,7 +72,7 @@ import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import Pop from '@/components/ui/Pop.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Btn from '@/components/ui/Btn.vue'
-import Headers from './Headers.vue'
+import Headers from '../out/Headers.vue'
 
 const props = defineProps<{ data: any }>()
 const { t } = useI18n({ useScope: 'global' })

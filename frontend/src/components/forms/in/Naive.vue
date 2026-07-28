@@ -33,7 +33,7 @@ import Field from '@/components/ui/Field.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import Network from '../out/Network.vue'
-import Headers from './Headers.vue'
+import Headers from '../out/Headers.vue'
 
 const props = defineProps<{ data: any; direction?: string }>()
 

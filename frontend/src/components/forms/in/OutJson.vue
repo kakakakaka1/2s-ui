@@ -70,7 +70,7 @@ import SectionLabel from '@/components/ui/SectionLabel.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import Network from '../out/Network.vue'
 import UoT from '../out/UoT.vue'
-import Headers from './Headers.vue'
+import Headers from '../out/Headers.vue'
 import AnyTls from './AnyTls.vue'
 import Naive from './Naive.vue'
 
