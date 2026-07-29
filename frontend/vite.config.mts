@@ -4,12 +4,6 @@ import vue from '@vitejs/plugin-vue'
 // Utilities
 import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
-import { randomBytes } from 'crypto'
-
-// web.go serves assets/ with max-age=31536000, so every build must produce filenames
-// the previous build never used. One id per build (not per file) is enough for that,
-// and keeping [name] alongside it means split chunks stay tellable apart.
-const BUILD_ID = randomBytes(8).toString('hex')
 
 // @fontsource emits every @font-face as `woff2, woff`. Anything that can run this
 // bundle supports woff2, so the fallback is never requested — but it still lands in
@@ -43,14 +37,24 @@ export default defineConfig({
     outDir: 'dist',
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
+      // web.go serves assets/ with max-age=31536000, so a file whose bytes changed
+      // must never reuse a name a browser may still hold. Content hashes do that,
+      // and more precisely than a per-build id: an unchanged chunk keeps its name
+      // so the cache still hits across an upgrade, only changed ones are refetched.
+      //
+      // [name] stays in front so split chunks remain tellable apart, and the hash
+      // is what makes that safe — views/Tls.vue and types/tls.ts both reduce to
+      // "tls", and rollup otherwise disambiguates same-name chunks with a trailing
+      // counter whose value moves with module order.
       output: {
-        entryFileNames: `assets/[name]-${BUILD_ID}.js`,
-        chunkFileNames: `assets/[name]-${BUILD_ID}.js`,
-        assetFileNames: (assetInfo) => {
-          if (assetInfo.names.some(name => name.endsWith('.css')))
-            return `assets/[name]-${BUILD_ID}.css`
-          return 'assets/' + assetInfo.names[0]
-        },
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        // [extname] carries the dot. Covers the CSS chunks and the @fontsource
+        // woff2 files, which previously landed under their bare upstream names and
+        // so were served with a year-long max-age they could never invalidate.
+        // public/assets/ (the two favicons) bypasses this pipeline and keeps the
+        // literal names index.html hardcodes.
+        assetFileNames: 'assets/[name]-[hash][extname]',
       },
     }
   },
