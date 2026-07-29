@@ -88,10 +88,13 @@ import Btn from '@/components/ui/Btn.vue'
 import Pop from '@/components/ui/Pop.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
+import { optionField, valueField } from '@/plugins/formField'
 
 // mode="client" hides the toggles that only make sense server-side; the fields
 // themselves still render if the entity already carries those keys.
 const props = defineProps<{ dial: any; mode?: string }>()
+
+const d = () => props.dial
 
 const outTags = computed(() => Data().outboundTags)
 const dnsTags = computed(() => Data().config.dns?.servers?.map((d: any) => d.tag) ?? [])
@@ -104,51 +107,21 @@ const routingMark = computed({
   get: () => props.dial.routing_mark ?? 0,
   set: (v: number) => { props.dial.routing_mark = v > 0 ? v : 0 },
 })
-const bindNoPort = computed({
-  get: () => props.dial.bind_address_no_port ?? false,
-  set: (v: boolean) => { props.dial.bind_address_no_port = v },
-})
-const reuseAddr = computed({
-  get: () => props.dial.reuse_addr ?? false,
-  set: (v: boolean) => { props.dial.reuse_addr = v },
-})
-const tcpFastOpen = computed({
-  get: () => props.dial.tcp_fast_open ?? false,
-  set: (v: boolean) => { props.dial.tcp_fast_open = v },
-})
-const tcpMultiPath = computed({
-  get: () => props.dial.tcp_multi_path ?? false,
-  set: (v: boolean) => { props.dial.tcp_multi_path = v },
-})
-const udpFragment = computed({
-  get: () => props.dial.udp_fragment ?? false,
-  set: (v: boolean) => { props.dial.udp_fragment = v },
-})
-const disableTcpKeepAlive = computed({
-  get: () => props.dial.disable_tcp_keep_alive ?? false,
-  set: (v: boolean) => { props.dial.disable_tcp_keep_alive = v },
-})
+const bindNoPort = valueField(d, 'bind_address_no_port', false)
+const reuseAddr = valueField(d, 'reuse_addr', false)
+const tcpFastOpen = valueField(d, 'tcp_fast_open', false)
+const tcpMultiPath = valueField(d, 'tcp_multi_path', false)
+const udpFragment = valueField(d, 'udp_fragment', false)
+const disableTcpKeepAlive = valueField(d, 'disable_tcp_keep_alive', false)
 
 const optionDetour = computed({
   get: (): boolean => props.dial.detour != undefined,
   set: (v: boolean) => { v ? props.dial.detour = outTags.value[0] ?? '' : delete props.dial.detour },
 })
-const optionBind = computed({
-  get: (): boolean => props.dial.bind_interface != undefined,
-  set: (v: boolean) => { v ? props.dial.bind_interface = '' : delete props.dial.bind_interface },
-})
-const optionIPV4 = computed({
-  get: (): boolean => props.dial.inet4_bind_address != undefined,
-  set: (v: boolean) => { v ? props.dial.inet4_bind_address = '' : delete props.dial.inet4_bind_address },
-})
-const optionIPV6 = computed({
-  get: (): boolean => props.dial.inet6_bind_address != undefined,
-  set: (v: boolean) => { v ? props.dial.inet6_bind_address = '' : delete props.dial.inet6_bind_address },
-})
-const optionBindNoPort = computed({
-  get: (): boolean => props.dial.bind_address_no_port != undefined,
-  set: (v: boolean) => { v ? props.dial.bind_address_no_port = true : delete props.dial.bind_address_no_port },
-})
+const optionBind = optionField(d, 'bind_interface', () => '', 'delete')
+const optionIPV4 = optionField(d, 'inet4_bind_address', () => '', 'delete')
+const optionIPV6 = optionField(d, 'inet6_bind_address', () => '', 'delete')
+const optionBindNoPort = optionField(d, 'bind_address_no_port', () => true, 'delete')
 const optionTcpKeepAlive = computed({
   get: (): boolean =>
     props.dial.disable_tcp_keep_alive != undefined ||
@@ -165,14 +138,8 @@ const optionTcpKeepAlive = computed({
     }
   },
 })
-const optionRM = computed({
-  get: (): boolean => props.dial.routing_mark != undefined,
-  set: (v: boolean) => { v ? props.dial.routing_mark = 0 : delete props.dial.routing_mark },
-})
-const optionRA = computed({
-  get: (): boolean => props.dial.reuse_addr != undefined,
-  set: (v: boolean) => { v ? props.dial.reuse_addr = true : delete props.dial.reuse_addr },
-})
+const optionRM = optionField(d, 'routing_mark', () => 0, 'delete')
+const optionRA = optionField(d, 'reuse_addr', () => true, 'delete')
 const optionTCP = computed({
   get: (): boolean =>
     props.dial.tcp_fast_open != undefined &&
@@ -187,14 +154,9 @@ const optionTCP = computed({
     }
   },
 })
-const optionUDP = computed({
-  get: (): boolean => props.dial.udp_fragment != undefined,
-  set: (v: boolean) => { v ? props.dial.udp_fragment = true : delete props.dial.udp_fragment },
-})
-const optionCT = computed({
-  get: (): boolean => props.dial.connect_timeout != undefined,
-  set: (v: boolean) => { v ? props.dial.connect_timeout = '5s' : delete props.dial.connect_timeout },
-})
+const optionUDP = optionField(d, 'udp_fragment', () => true, 'delete')
+// '5s' not 5 — connectTimeout's getter does .replace('s', '') on it
+const optionCT = optionField(d, 'connect_timeout', () => '5s', 'delete')
 const optionDR = computed({
   get: (): boolean => props.dial.domain_resolver != undefined,
   set: (v: boolean) => { props.dial.domain_resolver = v ? dnsTags.value[0] ?? '' : undefined },
