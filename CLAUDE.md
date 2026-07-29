@@ -197,6 +197,14 @@ ESLint is deliberately loosened (`vue/no-mutating-props` is `shallowOnly` becaus
 - `Dockerfile.frontend-artifact` expects a prebuilt `frontend_dist/` in the build context (CI builds the frontend once natively rather than five times under QEMU). It **fails from a bare checkout** — use `Dockerfile` locally.
 - `.dockerignore` has no `*.exe` or `.git` entry, while the repo root accumulates ignored multi-hundred-MB `sui*.exe` binaries — they land in the Docker build context.
 
+## `.gitattributes`
+
+One rule, `frontend/** linguist-detectable=false`, and it looks cosmetic. Linguist counts bytes, and the Vue SPA outweighs the Go source (~676 KB vs ~551 KB), so without it GitHub labels the whole repo Vue. Nothing builds, tests, or lints this — **deleting the line silently flips the language back**, with no failure anywhere. It stops being necessary once the Go side overtakes the SPA on its own.
+
+`linguist-detectable=false` rather than `linguist-vendored` is deliberate: vendored and generated files get collapsed in pull request diffs, `detectable=false` only drops them from the language bar.
+
+There are deliberately **no line-ending rules here.** Git for Windows' default `core.autocrlf=true` already normalises on commit, so the index is 100% LF without help; and a CRLF *checkout* breaks nothing locally — MSYS2's `bash` and `sed` both tolerate CR, so `build.sh` and `scripts/check-protocol-copies.sh` pass on a CRLF worktree (measured: 7/7 ok). The only gap `* text=auto eol=lf` would close is a contributor who sets `autocrlf=false` and commits CRLF blobs, which has never happened.
+
 ## Dependency updates
 
 `.github/dependabot.yml` batches minor and patch updates into **one PR per ecosystem** (`gomod`, `github-actions`, `frontend`); majors still arrive on their own. Two behaviours that cost time to rediscover:

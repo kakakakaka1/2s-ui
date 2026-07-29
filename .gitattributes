@@ -1,0 +1,11 @@
+# GitHub Linguist classification.
+#
+# This repo ships as a single Go binary: the Vue SPA is built and embedded into
+# it (frontend/dist -> web/html -> //go:embed in web/web.go). Linguist counts
+# bytes, and the SPA outweighs the Go source, so the repo gets labelled "Vue".
+# Keep the frontend out of the language stats.
+#
+# linguist-detectable=false (not linguist-vendored) is deliberate: vendored and
+# generated files get collapsed in pull request diffs, detectable=false only
+# drops them from the language bar.
+frontend/** linguist-detectable=false
