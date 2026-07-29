@@ -55,7 +55,15 @@ npm run lint     # eslint . --fix
 
 ### Tests
 
-**There are none.** Zero `*_test.go` in the repo, no frontend unit tests. CI gates compilation and types only. Verification is: build, run, exercise the changed area by hand (both themes, mobile ≤820px, `fa` RTL for UI work). Don't claim a change is tested because CI is green.
+**Two Go test files, and nothing runs them.** `util/outJson_test.go` (`TestStripServerTlsFields` — the server-only TLS fields stripped from client configs, issue #51) and `cmd/migration/version_test.go` (`TestVersionBefore` — the version comparison that gates migrations). 148 lines between them. There are no frontend unit tests.
+
+**No workflow invokes `go test`** — `ci.yml` runs `go vet`, `go build`, and `vue-tsc`/`vite build`, nothing else. So these two can break and CI stays green. Run them by hand when you touch either area:
+
+```bash
+go test ./util/... ./cmd/migration/...
+```
+
+Everything else is verified the same way it always was: build, run, exercise the changed area by hand (both themes, mobile ≤820px, `fa` RTL for UI work). Don't claim a change is tested because CI is green — for almost all of this repo, green means it compiles.
 
 ### Build tags
 
