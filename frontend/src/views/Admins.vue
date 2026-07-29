@@ -58,7 +58,7 @@
 import AdminModal from '@/layouts/drawers/admin/AdminModal.vue'
 import ChangesModal from '@/layouts/drawers/admin/ChangesModal.vue'
 import TokenModal from '@/layouts/drawers/admin/TokenModal.vue'
-import { i18n } from '@/locales'
+import { intlLocale } from '@/locales'
 import HttpUtils from '@/plugins/httputil'
 import { ref, onMounted } from 'vue'
 import Btn from '@/components/ui/Btn.vue'
@@ -97,9 +97,8 @@ const loadData = async () => {
 }
 
 const dateFormatted = (dt: number): string => {
-  const locale = i18n.global.locale.value.replace('zh', 'zh-')
   const date = new Date(dt)
-  return date.toLocaleString(locale)
+  return date.toLocaleString(intlLocale())
 }
 
 const editModal = ref({

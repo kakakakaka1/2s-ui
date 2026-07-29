@@ -4,9 +4,9 @@
       <SectionLabel style="flex: 1;">Hysteria2</SectionLabel>
       <Pop :min-width="220">
         <template #trigger="{ toggle }">
-          <button type="button" class="btn btn-ghost btn-sm" @click="toggle">
+          <Btn sm @click="toggle">
             <Ico name="settings" :size="14" /> {{ $t('types.hy.hy2Options') }}
-          </button>
+          </Btn>
         </template>
         <div style="display: flex; flex-direction: column; gap: 2px; padding: 5px;">
           <SwitchLabel v-model="optionObfs" :label="$t('types.hy.obfs')" />
@@ -71,9 +71,10 @@ import SectionLabel from '@/components/ui/SectionLabel.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import Pop from '@/components/ui/Pop.vue'
 import Ico from '@/components/ui/Ico.vue'
-import Headers from './Headers.vue'
+import Btn from '@/components/ui/Btn.vue'
+import Headers from '../out/Headers.vue'
 
-const props = defineProps<{ data: any; direction?: string }>()
+const props = defineProps<{ data: any }>()
 const { t } = useI18n({ useScope: 'global' })
 
 const masqTypes = computed(() => [

@@ -38,7 +38,7 @@
         <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 8px 0;">
           <Ico name="check" :size="30" style="color: var(--emerald);" />
           <div style="font-size: 13.5px;">{{ doneMessage }}</div>
-          <Btn variant="primary" style="width: 100%; margin-top: 8px;" @click="onClose">{{ $t('close') }}</Btn>
+          <Btn variant="primary" style="width: 100%; margin-top: 8px;" @click="onClose">{{ $t('actions.close') }}</Btn>
         </div>
       </template>
 
@@ -51,7 +51,7 @@
           <div class="mono" style="font-size: 11.5px; color: var(--text-3); background: var(--bg-2); border-radius: 8px; padding: 10px; word-break: break-all; max-height: 140px; overflow-y: auto;">
             {{ errorMessage }}
           </div>
-          <Btn style="width: 100%;" @click="onClose">{{ $t('close') }}</Btn>
+          <Btn style="width: 100%;" @click="onClose">{{ $t('actions.close') }}</Btn>
         </div>
       </template>
     </div>

@@ -20,7 +20,10 @@ export const i18n = createI18n({
   },
 })
 
-export const locale = (() => {
+// Must be read per call, not snapshotted: setLocale() only assigns to
+// i18n.global.locale, so a value captured at module load leaves every Intl and
+// toLocale* consumer formatting in whichever language the tab was opened in.
+export const intlLocale = () => {
   const l = i18n.global.locale.value
   switch (l) {
     case "zhHans":
@@ -30,13 +33,4 @@ export const locale = (() => {
     default:
       return l
   }
-})()
-
-export const languages = [
-  { title: 'English', value: 'en' },
-  { title: 'فارسی', value: 'fa' },
-  { title: 'Tiếng Việt', value: 'vi' },
-  { title: '简体中文', value: 'zhHans' },
-  { title: '繁體中文', value: 'zhHant' },
-  { title: 'Русский', value: 'ru' },
-]
+}

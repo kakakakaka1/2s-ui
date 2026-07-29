@@ -63,29 +63,20 @@ import Btn from '@/components/ui/Btn.vue'
 import Pop from '@/components/ui/Pop.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
+import { valueField } from '@/plugins/formField'
 
 const props = defineProps<{ data: any; inTags?: string[] }>()
+
+const d = () => props.data
 
 const udpTimeout = computed({
   get: () => props.data.udp_timeout ? parseInt(props.data.udp_timeout.replace('m', '')) : 5,
   set: (v: number) => { props.data.udp_timeout = v > 0 ? v + 'm' : '5m' },
 })
-const tcpFastOpen = computed({
-  get: () => props.data.tcp_fast_open ?? false,
-  set: (v: boolean) => { props.data.tcp_fast_open = v },
-})
-const tcpMultiPath = computed({
-  get: () => props.data.tcp_multi_path ?? false,
-  set: (v: boolean) => { props.data.tcp_multi_path = v },
-})
-const udpFragment = computed({
-  get: () => props.data.udp_fragment ?? false,
-  set: (v: boolean) => { props.data.udp_fragment = v },
-})
-const disableTcpKeepAlive = computed({
-  get: () => props.data.disable_tcp_keep_alive ?? false,
-  set: (v: boolean) => { props.data.disable_tcp_keep_alive = v },
-})
+const tcpFastOpen = valueField(d, 'tcp_fast_open', false)
+const tcpMultiPath = valueField(d, 'tcp_multi_path', false)
+const udpFragment = valueField(d, 'udp_fragment', false)
+const disableTcpKeepAlive = valueField(d, 'disable_tcp_keep_alive', false)
 
 const optionTCP = computed({
   get: (): boolean =>

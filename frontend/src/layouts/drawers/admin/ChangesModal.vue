@@ -77,7 +77,7 @@
 import Select from '@/components/ui/Select.vue'
 import { ref, watch } from 'vue'
 import HttpUtils from '@/plugins/httputil'
-import { locale } from '@/locales'
+import { intlLocale } from '@/locales'
 import Modal from '@/components/ui/Modal.vue'
 import Field from '@/components/ui/Field.vue'
 import Btn from '@/components/ui/Btn.vue'
@@ -117,7 +117,7 @@ const toggleExpand = (id: number) => {
 
 const dateFormatted = (dt: number): string => {
   const date = new Date(dt * 1000)
-  return date.toLocaleString(locale)
+  return date.toLocaleString(intlLocale())
 }
 
 watch(() => props.open, (v) => {

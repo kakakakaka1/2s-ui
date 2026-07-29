@@ -157,7 +157,7 @@ const genWgKey = async (): Promise<{ private_key: string; public_key: string }> 
     })
   } else {
     push.error({
-      message: t('error') + ': ' + msg.obj,
+      message: t('failed') + ': ' + msg.obj,
     })
   }
   return result

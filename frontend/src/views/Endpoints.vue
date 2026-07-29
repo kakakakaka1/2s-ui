@@ -15,15 +15,7 @@
   <WgQrModal :visible="qrcode.visible" :data="qrcode.data" @close="qrcode.visible = false" />
 
   <!-- delete confirmation -->
-  <Modal :open="del.visible" :title="$t('actions.del')" :width="380" @close="del.visible = false">
-    <div style="padding: 18px; font-size: 13.5px;">{{ $t('confirm') }}</div>
-    <template #footer>
-      <Btn @click="del.visible = false">{{ $t('no') }}</Btn>
-      <Btn style="color: var(--rose);" :loading="deleting" @click="confirmDelete">
-        <Ico name="trash" :size="15" /> {{ $t('yes') }}
-      </Btn>
-    </template>
-  </Modal>
+  <DeleteConfirm :open="del.visible" :loading="deleting" @close="del.visible = false" @confirm="confirmDelete" />
 
   <div class="page-stack fade-up">
     <div class="toolbar" style="justify-content: center;">
@@ -88,12 +80,12 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'
-import HttpUtils from '@/plugins/httputil'
+import { useDelayCheck } from '@/plugins/useDelayCheck'
 import { Endpoint } from '@/types/endpoints'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Chip from '@/components/ui/Chip.vue'
-import Modal from '@/components/ui/Modal.vue'
+import DeleteConfirm from '@/components/ui/DeleteConfirm.vue'
 import CardBtn from '@/components/ui/CardBtn.vue'
 import EntityCard, { EntityRow } from '@/components/ui/EntityCard.vue'
 import EndpointDrawer from '@/layouts/drawers/endpoint/EndpointDrawer.vue'
@@ -116,38 +108,13 @@ const onlines = computed(() => [
 // ---------------- delay check ----------------
 // Endpoints register as outbounds in the core, so the same api/checkOutbound
 // latency probe used on the Outbounds page works here unchanged.
-interface CheckResult {
-  loading?: boolean
-  success: boolean
-  data?: { OK?: boolean; Delay?: number; Error?: string } | null
-  errorMessage?: string
-}
-
-const checkResults = ref<Record<string, CheckResult>>({})
-
-const checkEndpoint = async (tag: string) => {
-  checkResults.value = { ...checkResults.value, [tag]: { loading: true, success: false } }
-  const msg = await HttpUtils.get('api/checkOutbound', { tag })
-  const success = msg.success && msg.obj?.OK
-  const errorMessage = success ? undefined : (msg.obj?.Error ?? msg.msg ?? '')
-  checkResults.value = {
-    ...checkResults.value,
-    [tag]: { loading: false, success, data: msg.obj ?? null, errorMessage },
-  }
-}
-
-const testingAll = ref(false)
-
-const checkAllEndpoints = async () => {
-  const list = endpoints.value
-  if (list.length === 0) return
-  testingAll.value = true
-  try {
-    await Promise.all(list.map((e) => checkEndpoint(e.tag)))
-  } finally {
-    testingAll.value = false
-  }
-}
+const {
+  checkResults,
+  testingAll,
+  check: checkEndpoint,
+  checkAll: checkAllEndpoints,
+  delayRow,
+} = useDelayCheck(() => endpoints.value)
 
 // ---------------- card rows ----------------
 const cardRows = (item: any): EntityRow[] => [
@@ -162,20 +129,8 @@ const cardRows = (item: any): EntityRow[] => [
     mono: item.listen_port > 0,
   },
   { k: t('types.wg.peers'), v: item.peers?.length ?? t('ui.none') },
-  delayRow(item),
+  delayRow(item.tag),
 ]
-
-const delayRow = (item: any): EntityRow => {
-  const r = checkResults.value[item.tag]
-  if (r?.loading) return { k: t('out.delay'), v: '…', mono: true }
-  if (r && r.loading == false) {
-    if (r.success) {
-      return { k: t('out.delay'), v: (r.data?.Delay ?? 0) + ' ' + t('date.ms'), mono: true, color: 'var(--emerald)' }
-    }
-    return { k: t('out.delay'), v: r.errorMessage || t('failed'), color: 'var(--rose)' }
-  }
-  return { k: t('out.delay'), v: t('ui.none') }
-}
 
 // ---------------- drawers / modals ----------------
 const drawer = ref({ visible: false, id: 0, data: '' })

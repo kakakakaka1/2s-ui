@@ -21,15 +21,7 @@
   />
 
   <!-- delete confirmation -->
-  <Modal :open="del.open" :title="$t('actions.del')" :width="380" @close="del.open = false">
-    <div style="padding: 18px; font-size: 13.5px;">{{ $t('confirm') }}</div>
-    <template #footer>
-      <Btn @click="del.open = false">{{ $t('no') }}</Btn>
-      <Btn style="color: var(--rose);" @click="confirmDelete">
-        <Ico name="trash" :size="15" /> {{ $t('yes') }}
-      </Btn>
-    </template>
-  </Modal>
+  <DeleteConfirm :open="del.open" @close="del.open = false" @confirm="confirmDelete" />
 
   <div class="page-stack-lg fade-up">
     <!-- ===================== toolbar ===================== -->
@@ -159,10 +151,11 @@ import DnsRuleDrawer from '@/layouts/drawers/dns/DnsRuleDrawer.vue'
 import { Config } from '@/types/config'
 import { actionDnsRuleKeys, dnsRule } from '@/types/dns'
 import { FindDiff } from '@/plugins/utils'
+import { useReorder } from '@/plugins/useReorder'
 import { dnsColor } from '@/plugins/colors'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
-import Modal from '@/components/ui/Modal.vue'
+import DeleteConfirm from '@/components/ui/DeleteConfirm.vue'
 import Field from '@/components/ui/Field.vue'
 import CheckLabel from '@/components/ui/CheckLabel.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
@@ -215,9 +208,7 @@ const rslvdTags = computed((): string[] => {
 
 const clients = computed((): string[] => Data().clients.map((c: any) => c.name))
 
-const inboundTags = computed((): string[] => {
-  return [...Data().inbounds?.map((o: any) => o.tag), ...Data().endpoints?.filter((e: any) => e.listen_port > 0).map((e: any) => e.tag)]
-})
+const inboundTags = computed((): string[] => Data().inboundTags)
 
 const dns = computed((): any => appConfig.value.dns)
 
@@ -326,40 +317,5 @@ const confirmDelete = () => {
 }
 
 /* ---------------- ordering (drag & drop + move buttons) ---------------- */
-const draggedItemIndex = ref<number | null>(null)
-const onDragStart = (index: number) => { draggedItemIndex.value = index }
-const onDrop = (index: number) => {
-  if (draggedItemIndex.value !== null) {
-    const draggedItem = dnsRules.value[draggedItemIndex.value]
-    dnsRules.value.splice(draggedItemIndex.value, 1)
-    dnsRules.value.splice(index, 0, draggedItem)
-    draggedItemIndex.value = null
-  }
-}
-const moveRule = (index: number, dir: number) => {
-  const to = index + dir
-  if (to < 0 || to >= dnsRules.value.length) return
-  const item = dnsRules.value[index]
-  dnsRules.value.splice(index, 1)
-  dnsRules.value.splice(to, 0, item)
-}
+const { onDragStart, onDrop, move: moveRule } = useReorder(() => dnsRules.value)
 </script>
-
-<style scoped>
-.mv-btn {
-  flex: none;
-  width: 46px;
-  height: 44px;
-  border: none;
-  border-inline-start: 1px solid var(--line);
-  background: transparent;
-  cursor: pointer;
-  color: var(--text-2);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all .14s;
-}
-.mv-btn:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
-.mv-btn:disabled { opacity: .3; cursor: default; }
-</style>

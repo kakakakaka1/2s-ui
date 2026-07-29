@@ -49,9 +49,9 @@
           <hr class="form-divider" />
         </template>
         <Direct v-if="inbound.type == inTypes.Direct" :data="inbound" />
-        <Shadowsocks v-if="inbound.type == inTypes.Shadowsocks" direction="in" :data="inbound" />
-        <Hysteria v-if="inbound.type == inTypes.Hysteria" direction="in" :data="inbound" />
-        <Hysteria2 v-if="inbound.type == inTypes.Hysteria2" direction="in" :data="inbound" />
+        <Shadowsocks v-if="inbound.type == inTypes.Shadowsocks" :data="inbound" />
+        <Hysteria v-if="inbound.type == inTypes.Hysteria" :data="inbound" />
+        <Hysteria2 v-if="inbound.type == inTypes.Hysteria2" :data="inbound" />
         <Naive v-if="inbound.type == inTypes.Naive" direction="in" :data="inbound" />
         <ShadowTls v-if="inbound.type == inTypes.ShadowTLS" :data="inbound" />
         <Tuic v-if="inbound.type == inTypes.TUIC" direction="in" :data="inbound" />
@@ -113,7 +113,7 @@ import Chip from '@/components/ui/Chip.vue'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import IconBtn from '@/components/ui/IconBtn.vue'
-import Listen from '@/components/forms/in/Listen.vue'
+import Listen from '@/components/forms/out/Listen.vue'
 import Direct from '@/components/forms/in/Direct.vue'
 import Shadowsocks from '@/components/forms/in/Shadowsocks.vue'
 import Hysteria from '@/components/forms/in/Hysteria.vue'
@@ -124,12 +124,12 @@ import Tuic from '@/components/forms/in/Tuic.vue'
 import Tun from '@/components/forms/in/Tun.vue'
 import AnyTls from '@/components/forms/in/AnyTls.vue'
 import TProxy from '@/components/forms/in/TProxy.vue'
-import Transport from '@/components/forms/in/Transport.vue'
+import Transport from '@/components/forms/out/Transport.vue'
 import Users from '@/components/forms/in/Users.vue'
 import InTLS from '@/components/forms/in/InTLS.vue'
-import Multiplex from '@/components/forms/in/Multiplex.vue'
+import Multiplex from '@/components/forms/out/Multiplex.vue'
 import OutJson from '@/components/forms/in/OutJson.vue'
-import Dial from '@/components/forms/in/Dial.vue'
+import Dial from '@/components/forms/out/Dial.vue'
 import AddrVue from '@/components/forms/in/Addr.vue'
 
 const props = defineProps<{

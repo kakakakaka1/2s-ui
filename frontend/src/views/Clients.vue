@@ -28,15 +28,7 @@
   />
 
   <!-- delete confirmation (single row or bulk) -->
-  <Modal :open="del.visible" :title="$t('actions.del')" :width="380" @close="del.visible = false">
-    <div style="padding: 18px; font-size: 13.5px;">{{ $t('confirm') }}</div>
-    <template #footer>
-      <Btn @click="del.visible = false">{{ $t('no') }}</Btn>
-      <Btn style="color: var(--rose);" :loading="deleting" @click="confirmDelete">
-        <Ico name="trash" :size="15" /> {{ $t('yes') }}
-      </Btn>
-    </template>
-  </Modal>
+  <DeleteConfirm :open="del.visible" :loading="deleting" @close="del.visible = false" @confirm="confirmDelete" />
 
   <div class="page-stack fade-up">
     <!-- ===================== toolbar ===================== -->
@@ -235,7 +227,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'
 import { HumanReadable } from '@/plugins/utils'
-import { locale } from '@/locales'
+import { intlLocale } from '@/locales'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Chip from '@/components/ui/Chip.vue'
@@ -244,7 +236,7 @@ import Avatar from '@/components/ui/Avatar.vue'
 import IconBtn from '@/components/ui/IconBtn.vue'
 import Toggle from '@/components/ui/Toggle.vue'
 import Segmented from '@/components/ui/Segmented.vue'
-import Modal from '@/components/ui/Modal.vue'
+import DeleteConfirm from '@/components/ui/DeleteConfirm.vue'
 import BarMini from '@/components/charts/BarMini.vue'
 import ClientDrawer from '@/layouts/drawers/client/ClientDrawer.vue'
 import ClientAddBulk from '@/layouts/drawers/client/ClientAddBulk.vue'
@@ -364,7 +356,7 @@ const quotaColor = (c: any): string => {
 const usageTitle = (c: any): string =>
   '↓' + HumanReadable.sizeFormat(c.down) + ' - ' + HumanReadable.sizeFormat(c.up) + '↑'
 const expiryTitle = (c: any): string | undefined =>
-  c.expiry > 0 ? new Date(c.expiry * 1000).toLocaleString(locale) : undefined
+  c.expiry > 0 ? new Date(c.expiry * 1000).toLocaleString(intlLocale()) : undefined
 const inboundsOf = (c: any): any[] =>
   (c.inbounds ?? []).map((id: number) => inbounds.value.find((i: any) => i.id == id)).filter((i: any) => !!i)
 const protoSummary = (c: any): string => {

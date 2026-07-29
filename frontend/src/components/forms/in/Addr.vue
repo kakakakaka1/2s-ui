@@ -3,9 +3,9 @@
     <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
       <Pop :min-width="220">
         <template #trigger="{ toggle }">
-          <button type="button" class="btn btn-ghost btn-sm" @click="toggle">
+          <Btn sm @click="toggle">
             <Ico name="settings" :size="14" /> {{ $t('in.mdOption') }}
-          </button>
+          </Btn>
         </template>
         <div style="display: flex; flex-direction: column; gap: 2px; padding: 5px;">
           <SwitchLabel v-model="optionRemark" :label="$t('in.remark')" />
@@ -34,6 +34,7 @@ import Field from '@/components/ui/Field.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import Pop from '@/components/ui/Pop.vue'
 import Ico from '@/components/ui/Ico.vue'
+import Btn from '@/components/ui/Btn.vue'
 import OutTLS from './OutTLS.vue'
 
 const props = defineProps<{ addr: any; hasTls?: boolean }>()

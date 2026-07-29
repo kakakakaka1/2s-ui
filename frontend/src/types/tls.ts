@@ -137,3 +137,43 @@ export const defaultOutTls: oTls = {
     config_path: "",
   }
 }
+// Option tables for the TLS forms. Kept here rather than in each form because
+// three of them carried byte-identical copies under four different names
+// (cipher_suites / cipherSuiteItems / cipherSuites / fingerprints); a new uTLS
+// fingerprint or cipher from sing-box now lands in one place.
+export const ALPN_OPTIONS = ['h3', 'h2', 'http/1.1']
+
+export const TLS_VERSIONS = ['1.0', '1.1', '1.2', '1.3']
+
+export const CIPHER_SUITES = [
+  { title: 'RSA-AES128-CBC-SHA', value: 'TLS_RSA_WITH_AES_128_CBC_SHA' },
+  { title: 'RSA-AES256-CBC-SHA', value: 'TLS_RSA_WITH_AES_256_CBC_SHA' },
+  { title: 'RSA-AES128-GCM-SHA256', value: 'TLS_RSA_WITH_AES_128_GCM_SHA256' },
+  { title: 'RSA-AES256-GCM-SHA384', value: 'TLS_RSA_WITH_AES_256_GCM_SHA384' },
+  { title: 'AES128-GCM-SHA256', value: 'TLS_AES_128_GCM_SHA256' },
+  { title: 'AES256-GCM-SHA384', value: 'TLS_AES_256_GCM_SHA384' },
+  { title: 'CHACHA20-POLY1305-SHA256', value: 'TLS_CHACHA20_POLY1305_SHA256' },
+  { title: 'ECDHE-ECDSA-AES128-CBC-SHA', value: 'TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA' },
+  { title: 'ECDHE-ECDSA-AES256-CBC-SHA', value: 'TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA' },
+  { title: 'ECDHE-RSA-AES128-CBC-SHA', value: 'TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA' },
+  { title: 'ECDHE-RSA-AES256-CBC-SHA', value: 'TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA' },
+  { title: 'ECDHE-ECDSA-AES128-GCM-SHA256', value: 'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256' },
+  { title: 'ECDHE-ECDSA-AES256-GCM-SHA384', value: 'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384' },
+  { title: 'ECDHE-RSA-AES128-GCM-SHA256', value: 'TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256' },
+  { title: 'ECDHE-RSA-AES256-GCM-SHA384', value: 'TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384' },
+  { title: 'ECDHE-ECDSA-CHACHA20-POLY1305-SHA256', value: 'TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256' },
+  { title: 'ECDHE-RSA-CHACHA20-POLY1305-SHA256', value: 'TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256' },
+]
+
+export const UTLS_FINGERPRINTS = [
+  { title: 'Chrome', value: 'chrome' },
+  { title: 'Firefox', value: 'firefox' },
+  { title: 'Microsoft Edge', value: 'edge' },
+  { title: 'Apple Safari', value: 'safari' },
+  { title: '360', value: '360' },
+  { title: 'QQ', value: 'qq' },
+  { title: 'Apple IOS', value: 'ios' },
+  { title: 'Android', value: 'android' },
+  { title: 'Random', value: 'random' },
+  { title: 'Randomized', value: 'randomized' },
+]

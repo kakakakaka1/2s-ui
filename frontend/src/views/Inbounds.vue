@@ -14,15 +14,7 @@
   />
 
   <!-- delete confirmation -->
-  <Modal :open="del.visible" :title="$t('actions.del')" :width="380" @close="del.visible = false">
-    <div style="padding: 18px; font-size: 13.5px;">{{ $t('confirm') }}</div>
-    <template #footer>
-      <Btn @click="del.visible = false">{{ $t('no') }}</Btn>
-      <Btn style="color: var(--rose);" :loading="deleting" @click="confirmDelete">
-        <Ico name="trash" :size="15" /> {{ $t('yes') }}
-      </Btn>
-    </template>
-  </Modal>
+  <DeleteConfirm :open="del.visible" :loading="deleting" @close="del.visible = false" @confirm="confirmDelete" />
 
   <div class="page-stack fade-up">
     <!-- ===================== toolbar ===================== -->
@@ -102,7 +94,7 @@ import { HumanReadable } from '@/plugins/utils'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Chip from '@/components/ui/Chip.vue'
-import Modal from '@/components/ui/Modal.vue'
+import DeleteConfirm from '@/components/ui/DeleteConfirm.vue'
 import Segmented from '@/components/ui/Segmented.vue'
 import CardBtn from '@/components/ui/CardBtn.vue'
 import InboundDrawer from '@/layouts/drawers/inbound/InboundDrawer.vue'
@@ -114,10 +106,7 @@ const dataStore = Data()
 // ---------------- store data ----------------
 const inbounds = computed((): any[] => dataStore.inbounds ?? [])
 const tlsConfigs = computed((): any[] => dataStore.tlsConfigs ?? [])
-const inTags = computed((): string[] => [
-  ...(inbounds.value?.map((i: any) => i.tag) ?? []),
-  ...(dataStore.endpoints?.filter((e: any) => e.listen_port > 0).map((e: any) => e.tag) ?? []),
-])
+const inTags = computed((): string[] => dataStore.inboundTags)
 const onlines = computed((): string[] => dataStore.onlines.inbound ?? [])
 const isOnline = (tag: string): boolean => onlines.value.includes(tag)
 

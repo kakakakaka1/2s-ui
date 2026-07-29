@@ -91,6 +91,28 @@ const router = createRouter({
 const DEFAULT_TITLE = '2S-UI'
 let intervalId:any
 
+// Chunk names carry a content hash and build.sh wipes web/html before copying, so
+// after an in-place upgrade an already-open tab asks for chunks the server no longer
+// has. Reload once to pick up the new index.html; the flag keeps a genuinely
+// unreachable server from turning that into a reload loop.
+const RELOADED_KEY = '2sui-chunk-reload'
+
+router.onError((err, to) => {
+  if (!/dynamically imported module|Importing a module script failed|Failed to fetch/i.test(String(err))) return
+  if (sessionStorage.getItem(RELOADED_KEY)) return
+  sessionStorage.setItem(RELOADED_KEY, '1')
+  // Reload at the target, not in place. vue-router commits the URL only once the
+  // navigation resolves, so location.reload() would re-open the route being left and
+  // the user would have to click again; resolve().href re-attaches BASE_URL, which
+  // fullPath does not carry. It also lets the flag converge — if the chunk is still
+  // missing the initial navigation fails too, afterEach never runs, and the second
+  // onError stops. Reloading in place landed on a working route, which cleared the
+  // flag and re-armed the whole thing on the next click.
+  window.location.assign(router.resolve(to.fullPath).href)
+})
+
+router.afterEach(() => sessionStorage.removeItem(RELOADED_KEY))
+
 // Navigation guard to check authentication state
 router.beforeEach((to) => {
   // Load default data

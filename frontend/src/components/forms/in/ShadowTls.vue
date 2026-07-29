@@ -74,7 +74,7 @@ import Chip from '@/components/ui/Chip.vue'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import IconBtn from '@/components/ui/IconBtn.vue'
-import Dial from './Dial.vue'
+import Dial from '../out/Dial.vue'
 
 const props = defineProps<{ data: any }>()
 

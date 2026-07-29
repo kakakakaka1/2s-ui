@@ -56,10 +56,7 @@ import SectionLabel from '@/components/ui/SectionLabel.vue'
 
 const props = defineProps<{ data: any }>()
 
-const outTags = computed(() => [
-  ...Data().outbounds?.map((o: any) => o.tag) ?? [],
-  ...Data().endpoints?.map((e: any) => e.tag) ?? [],
-])
+const outTags = computed(() => Data().outboundTags)
 
 const addUser = () => {
   if (!props.data.users) props.data.users = []

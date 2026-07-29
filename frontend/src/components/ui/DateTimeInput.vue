@@ -24,14 +24,13 @@
       :value="localValue"
       @change="onNative"
     />
-    <button
+    <Btn
       v-if="modelValue > 0"
-      type="button"
-      class="btn btn-ghost btn-sm"
+      sm
       style="height: 40px; flex: none;"
       :title="$t('unlimited')"
       @click="$emit('update:modelValue', 0)"
-    ><Ico name="close" :size="14" /></button>
+    ><Ico name="close" :size="14" /></Btn>
   </div>
 </template>
 
@@ -39,6 +38,7 @@
 import { computed, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Ico from './Ico.vue'
+import Btn from './Btn.vue'
 
 // modelValue: epoch seconds; 0 = unlimited
 const props = defineProps<{ modelValue: number }>()

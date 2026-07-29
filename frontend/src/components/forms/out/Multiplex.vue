@@ -2,7 +2,10 @@
   <div style="margin-bottom: 15px;">
     <MSwitchRow v-model="muxEnable" :label="$t('objects.multiplex')" :desc="$t('mux.enable')" />
     <div v-if="muxEnable" class="fade-up">
-      <div class="grid2">
+      <!-- These four are the client's half of the negotiation; an inbound only
+           accepts what the peer asks for. Gated on != 'in' rather than == 'out'
+           so a caller that passes no direction keeps them. -->
+      <div v-if="direction != 'in'" class="grid2">
         <Field :label="$t('protocol')">
           <Select v-model="protocol">
             <option value="">{{ $t('none') }}</option>
@@ -45,7 +48,7 @@ import Field from '@/components/ui/Field.vue'
 import MSwitchRow from '@/components/ui/MSwitchRow.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 
-const props = defineProps<{ data: any }>()
+const props = defineProps<{ data: any; direction?: string }>()
 
 const mux = computed((): oMultiplex => props.data.multiplex ?? null)
 

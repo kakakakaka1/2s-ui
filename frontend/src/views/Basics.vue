@@ -235,18 +235,14 @@ const saveConfig = async () => {
   loading.value = false
 }
 
-const inboundTags = computed((): string[] => {
-  return [...Data().inbounds?.map((i: any) => i.tag), ...Data().endpoints?.filter((e: any) => e.listen_port > 0).map((e: any) => e.tag)]
-})
+const inboundTags = computed((): string[] => Data().inboundTags)
 
 const clientNames = computed((): string[] => {
   const clients = <any[]>Data().clients
   return clients?.map(c => c.name)
 })
 
-const outboundTags = computed((): string[] => {
-  return [...Data().outbounds?.map((o: any) => o.tag), ...Data().endpoints?.map((e: any) => e.tag)]
-})
+const outboundTags = computed((): string[] => Data().outboundTags)
 
 const toOptions = (tags: string[]) => (tags ?? []).map(t => ({ title: t, value: t }))
 const inboundOptions = computed(() => toOptions(inboundTags.value))

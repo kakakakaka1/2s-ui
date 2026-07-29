@@ -13,15 +13,7 @@
   />
 
   <!-- delete confirmation -->
-  <Modal :open="del.visible" :title="$t('actions.del')" :width="380" @close="del.visible = false">
-    <div style="padding: 18px; font-size: 13.5px;">{{ $t('confirm') }}</div>
-    <template #footer>
-      <Btn @click="del.visible = false">{{ $t('no') }}</Btn>
-      <Btn style="color: var(--rose);" :loading="deleting" @click="confirmDelete">
-        <Ico name="trash" :size="15" /> {{ $t('yes') }}
-      </Btn>
-    </template>
-  </Modal>
+  <DeleteConfirm :open="del.visible" :loading="deleting" @close="del.visible = false" @confirm="confirmDelete" />
 
   <div class="page-stack fade-up">
     <div class="toolbar" style="justify-content: center;">
@@ -71,12 +63,12 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'
-import { locale } from '@/locales'
+import { intlLocale } from '@/locales'
 import { Node, NodeStatus } from '@/types/node'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
 import Chip from '@/components/ui/Chip.vue'
-import Modal from '@/components/ui/Modal.vue'
+import DeleteConfirm from '@/components/ui/DeleteConfirm.vue'
 import CardBtn from '@/components/ui/CardBtn.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import EntityCard, { EntityRow } from '@/components/ui/EntityCard.vue'
@@ -114,9 +106,11 @@ const stateColor = (n: Node): string => {
 const displayUrl = (n: Node): string => n.baseUrl.replace(/^https?:\/\//, '')
 
 // ---------------- relative time ----------------
-const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
 const relTime = (unix: number): string => {
   if (!unix) return t('ui.none')
+  // built per call so switching language re-formats; hoisting it would pin the
+  // formatter to the language the page was opened in
+  const rtf = new Intl.RelativeTimeFormat(intlLocale(), { numeric: 'auto' })
   const diff = unix - Math.floor(Date.now() / 1000)
   const abs = Math.abs(diff)
   if (abs < 60) return rtf.format(Math.trunc(diff), 'second')

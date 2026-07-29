@@ -1,8 +1,10 @@
 <template>
+  <!-- Service name on its own row so the two timeouts stay paired; one grid2
+       for all three leaves Ping Timeout orphaned on a half row. -->
+  <Field :label="$t('transport.grpcServiceName')">
+    <input class="input mono" v-model="transport.service_name" />
+  </Field>
   <div class="grid2">
-    <Field :label="$t('transport.grpcServiceName')">
-      <input class="input mono" v-model="transport.service_name" />
-    </Field>
     <Field :label="$t('transport.idleTimeout') + ' (' + $t('date.s') + ')'">
       <input class="input mono" type="number" min="1" v-model.number="idleTimeout" />
     </Field>

@@ -11,15 +11,7 @@
   />
 
   <!-- delete confirmation -->
-  <Modal :open="del.visible" :title="$t('actions.del')" :width="380" @close="del.visible = false">
-    <div style="padding: 18px; font-size: 13.5px;">{{ $t('confirm') }}</div>
-    <template #footer>
-      <Btn @click="del.visible = false">{{ $t('no') }}</Btn>
-      <Btn style="color: var(--rose);" :loading="deleting" @click="confirmDelete">
-        <Ico name="trash" :size="15" /> {{ $t('yes') }}
-      </Btn>
-    </template>
-  </Modal>
+  <DeleteConfirm :open="del.visible" :loading="deleting" @close="del.visible = false" @confirm="confirmDelete" />
 
   <div class="page-stack fade-up">
     <div class="toolbar" style="justify-content: center;">
@@ -54,7 +46,7 @@ import Data from '@/store/modules/data'
 import { Srv } from '@/types/services'
 import Btn from '@/components/ui/Btn.vue'
 import Ico from '@/components/ui/Ico.vue'
-import Modal from '@/components/ui/Modal.vue'
+import DeleteConfirm from '@/components/ui/DeleteConfirm.vue'
 import CardBtn from '@/components/ui/CardBtn.vue'
 import EntityCard, { EntityRow } from '@/components/ui/EntityCard.vue'
 import ServiceDrawer from '@/layouts/drawers/service/ServiceDrawer.vue'
@@ -71,10 +63,7 @@ const tsTags = computed((): string[] =>
 const ssTags = computed((): string[] =>
   dataStore.inbounds?.filter((o: any) => o.type == 'shadowsocks' && !o.users)?.map((o: any) => o.tag))
 
-const inTags = computed((): string[] => [
-  ...dataStore.inbounds?.map((o: any) => o.tag).filter((tag: any) => tag != null),
-  ...dataStore.endpoints?.filter((e: any) => e.listen_port > 0).map((e: any) => e.tag),
-])
+const inTags = computed((): string[] => dataStore.inboundTags)
 
 const tlsConfigs = computed((): any[] => <any[]>dataStore.tlsConfigs)
 

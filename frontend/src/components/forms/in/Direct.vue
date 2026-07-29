@@ -2,7 +2,7 @@
   <div>
     <SectionLabel style="margin-bottom: 12px;">Direct</SectionLabel>
     <div class="grid2">
-      <Network :data="data" />
+      <Network :data="data" :mb="15" />
       <Field :label="$t('types.direct.overrideAddr')">
         <input class="input mono" v-model="data.override_address" />
       </Field>
@@ -17,7 +17,7 @@
 import { computed } from 'vue'
 import Field from '@/components/ui/Field.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
-import Network from './Network.vue'
+import Network from '../out/Network.vue'
 
 const props = defineProps<{ data: any }>()
 

@@ -6,12 +6,16 @@
     <Field :label="$t('transport.path')">
       <input class="input mono" v-model="transport.path" />
     </Field>
-    <Field :label="$t('transport.httpMethod')">
-      <Select v-model="method">
-        <option value="">{{ $t('none') }}</option>
-        <option v-for="m in methodList" :key="m" :value="m">{{ m }}</option>
-      </Select>
-    </Field>
+  </div>
+  <!-- Method is on its own row so the two timeouts stay paired; folding all
+       five into one grid2 leaves Ping Timeout orphaned on a half row. -->
+  <Field :label="$t('transport.httpMethod')">
+    <Select v-model="method">
+      <option value="">{{ $t('none') }}</option>
+      <option v-for="m in methodList" :key="m" :value="m">{{ m }}</option>
+    </Select>
+  </Field>
+  <div class="grid2">
     <Field :label="$t('transport.idleTimeout') + ' (' + $t('date.s') + ')'">
       <input class="input mono" type="number" min="1" v-model.number="idleTimeout" />
     </Field>

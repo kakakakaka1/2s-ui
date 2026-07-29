@@ -85,7 +85,7 @@
             <option v-for="s in strategies" :key="s.value" :value="s.value">{{ s.title }}</option>
           </Select>
         </Field>
-        <Field :label="$t('basic.dns.server')">
+        <Field :label="$t('dns.server')">
           <input class="input mono" v-model="form.server" />
         </Field>
       </div>

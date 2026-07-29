@@ -14,7 +14,6 @@
     "@vue/devtools-api": "^8.2.1",
     "axios": "^1.18.1",
     "clipboard": "^2.0.11",
-    "core-js": "^3.49.0",
     "echarts": "^6.1.0",
     "notivue": "^2.4.5",
     "pinia": "^4.0.2",
@@ -26,7 +25,6 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "@babel/types": "^8.0.4",
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.1.2",
     "@vitejs/plugin-vue": "^6.0.8",

@@ -7,8 +7,8 @@
           <option v-for="v in ['4', '4a', '5']" :key="v" :value="v">{{ v }}</option>
         </Select>
       </Field>
-      <Network v-if="needNetwork" :data="inData.out_json" />
-      <UoT v-if="needUot" :data="inData.out_json" />
+      <Network v-if="needNetwork" :data="inData.out_json" :mb="15" />
+      <UoT v-if="needUot" :data="inData.out_json" :mb="15" />
       <Field v-if="type == inTypes.HTTP" :label="$t('transport.path')">
         <input class="input mono" v-model="inData.out_json.path" />
       </Field>
@@ -68,9 +68,9 @@ import { InTypes } from '@/types/inbounds'
 import Field from '@/components/ui/Field.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
-import Network from './Network.vue'
-import UoT from './UoT.vue'
-import Headers from './Headers.vue'
+import Network from '../out/Network.vue'
+import UoT from '../out/UoT.vue'
+import Headers from '../out/Headers.vue'
 import AnyTls from './AnyTls.vue'
 import Naive from './Naive.vue'
 

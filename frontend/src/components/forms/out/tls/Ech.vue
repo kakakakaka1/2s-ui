@@ -102,7 +102,7 @@ const genECH = async () => {
       props.oTls.ech.config = config ?? undefined
     } else {
       push.error({
-        message: i18n.global.t('error') + ': ' + msg.obj,
+        message: i18n.global.t('failed') + ': ' + msg.obj,
       })
     }
   }
