@@ -12,6 +12,12 @@ import { computed, type WritableComputedRef } from 'vue'
 // `props.outbound.tls`. MDrawer only re-keys its body when `open` flips, so the
 // child stays mounted across those swaps. A reference captured at setup would
 // keep writing into the discarded object.
+//
+// The getters below optional-chain owner() and the setters deliberately do not:
+// every call site either owns the object outright or renders behind a v-if on it
+// (InboundDrawer's `v-if="inbound.out_json"`), so a setter is only reachable once
+// it exists. Same split as out/OutTLS.vue. Adding `?.` there would turn a future
+// null owner into a silently dropped write instead of a throw.
 
 /**
  * Presence toggle: on writes the default, off removes the key.
