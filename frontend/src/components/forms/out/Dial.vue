@@ -8,18 +8,18 @@
           <Btn variant="subtle" sm @click="toggle">{{ $t('dial.options') }}</Btn>
         </template>
         <div style="display: flex; flex-direction: column; gap: 2px; padding: 4px;">
-          <div class="pop-item"><SwitchLabel v-model="optionDetour" :label="$t('listen.detour')" /></div>
-          <div class="pop-item"><SwitchLabel v-model="optionBind" :label="$t('dial.bindIf')" /></div>
-          <div class="pop-item"><SwitchLabel v-model="optionIPV4" :label="$t('dial.bindIp4')" /></div>
-          <div class="pop-item"><SwitchLabel v-model="optionIPV6" :label="$t('dial.bindIp6')" /></div>
-          <div class="pop-item"><SwitchLabel v-model="optionBindNoPort" :label="$t('dial.bindNoPort')" /></div>
-          <div class="pop-item"><SwitchLabel v-model="optionRM" label="Routing Mark" /></div>
-          <div class="pop-item"><SwitchLabel v-model="optionRA" :label="$t('dial.reuseAddr')" /></div>
+          <div v-if="mode != 'client'" class="pop-item"><SwitchLabel v-model="optionDetour" :label="$t('listen.detour')" /></div>
+          <div v-if="mode != 'client'" class="pop-item"><SwitchLabel v-model="optionBind" :label="$t('dial.bindIf')" /></div>
+          <div v-if="mode != 'client'" class="pop-item"><SwitchLabel v-model="optionIPV4" :label="$t('dial.bindIp4')" /></div>
+          <div v-if="mode != 'client'" class="pop-item"><SwitchLabel v-model="optionIPV6" :label="$t('dial.bindIp6')" /></div>
+          <div v-if="mode != 'client'" class="pop-item"><SwitchLabel v-model="optionBindNoPort" :label="$t('dial.bindNoPort')" /></div>
+          <div v-if="mode != 'client'" class="pop-item"><SwitchLabel v-model="optionRM" label="Routing Mark" /></div>
+          <div v-if="mode != 'client'" class="pop-item"><SwitchLabel v-model="optionRA" :label="$t('dial.reuseAddr')" /></div>
           <div class="pop-item"><SwitchLabel v-model="optionTCP" :label="$t('listen.tcpOptions')" /></div>
           <div class="pop-item"><SwitchLabel v-model="optionUDP" :label="$t('listen.udpOptions')" /></div>
           <div class="pop-item"><SwitchLabel v-model="optionCT" :label="$t('dial.connTimeout')" /></div>
           <div class="pop-item"><SwitchLabel v-model="optionTcpKeepAlive" :label="$t('dial.tcpKeepAlive')" /></div>
-          <div class="pop-item"><SwitchLabel v-model="optionDR" :label="$t('dial.domainResolver')" /></div>
+          <div v-if="mode != 'client'" class="pop-item"><SwitchLabel v-model="optionDR" :label="$t('dial.domainResolver')" /></div>
         </div>
       </Pop>
     </div>
@@ -89,7 +89,9 @@ import Pop from '@/components/ui/Pop.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
 
-const props = defineProps<{ dial: any }>()
+// mode="client" hides the toggles that only make sense server-side; the fields
+// themselves still render if the entity already carries those keys.
+const props = defineProps<{ dial: any; mode?: string }>()
 
 const outTags = computed(() => Data().outboundTags)
 const dnsTags = computed(() => Data().config.dns?.servers?.map((d: any) => d.tag) ?? [])
