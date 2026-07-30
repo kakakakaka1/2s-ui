@@ -12,8 +12,8 @@
 ### Edit Client
 ![edit-client](./media/edit-client.png "edit-client")
 
-### External Links
-![external-links](./media/ext-links.png "external-links")
+### Subscription QR
+![subscription-qr](./media/qr-subscription.png "subscription-qr")
 
 ### DNS
 ![dns](./media/dns.png "dns")
@@ -23,3 +23,12 @@
 
 ### Traffic Chart
 ![traffic-chart](./media/traffic-chart.png "traffic-chart")
+
+### Nodes (multi-node cluster)
+![nodes](./media/nodes.png "nodes")
+
+### Settings — Domains & Certificates
+![settings-certificates](./media/settings-certificates.png "settings-certificates")
+
+### Settings — Interface
+![settings-interface](./media/settings-interface.png "settings-interface")

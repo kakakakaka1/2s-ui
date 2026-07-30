@@ -243,7 +243,7 @@ To run backend (from root folder of repository):
 - Subscription service with ability to add external links and subscription
 - **Multi-node cluster** — monitor other 2S-UI panels, share users across them, and merge their servers into one subscription (see below)
 - HTTPS for secure access to the web panel and subscription service (self-provided domain + SSL certificate)
-- **Automatic SSL certificates** — just enter a domain and 2S-UI issues and auto-renews a free Let's Encrypt certificate for you (no certbot, no cron jobs)
+- **Automatic SSL certificates** — just enter a domain and 2S-UI issues and auto-renews a free Let's Encrypt certificate for you (acme.sh is installed and driven for you; nothing to schedule)
 - **Automatic nginx reverse proxy** — 2S-UI writes and validates the vhost when you put the panel behind a proxy
 - **In-panel self-update** over checksum-verified GitHub releases
 - Dark/Light theme
@@ -297,8 +297,11 @@ paths follow the domain you select — no file paths to copy around.
 ### 🔐 Automatic Certificates (ACME / Let's Encrypt) — Recommended
 
 Enter a domain, add an email, and press issue: 2S-UI obtains and auto-renews a
-free Let's Encrypt certificate — no certbot, no cron jobs. Once done, the panel
-is reachable at `https://<your-domain>:2095/app`.
+free Let's Encrypt certificate. Issuance runs through **acme.sh**, which 2S-UI
+installs for you on first use (along with `socat`, needed for standalone
+validation) and registers for automatic renewal via acme.sh's own cron entry —
+there is nothing for you to schedule. Once done, the panel is reachable at
+`https://<your-domain>:2095/app`.
 
 The validation method defaults to **auto** — standalone when port 80 is free,
 otherwise it borrows the running nginx, provisioning a minimal `server_name`
@@ -308,8 +311,10 @@ certificate; no restart needed.
 
 > Requires TCP port **80** reachable from the internet (HTTP-01 challenge). To
 > publish port 80 with Docker: uncomment the `80:80` line in `docker-compose.yml`,
-> or add `-p 80:80` to `docker run`. Certificates are stored under `cert/` and survive
-> restarts. If the domain/port is misconfigured, 2S-UI falls back to HTTP.
+> or add `-p 80:80` to `docker run`. Certificates are stored under
+> `/root/cert/<domain>/` as `fullchain.pem` / `privkey.pem` and survive restarts
+> (the Docker volume above maps that path out). If the domain/port is
+> misconfigured, 2S-UI falls back to HTTP.
 > ACME is Linux-only and is hidden on Windows.
 
 ### Bring your own certificate

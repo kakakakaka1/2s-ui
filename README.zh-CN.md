@@ -240,7 +240,7 @@ go build -o sui main.go
 - 订阅服务支持添加外部链接和订阅
 - **多节点集群** —— 监控其他 2S-UI 面板、跨节点共享用户，并把各节点线路合并进同一条订阅（见下文）
 - 支持通过自备域名和 SSL 证书，为 Web 面板和订阅服务启用 HTTPS
-- **域名自动申请证书** —— 只需填写域名，2S-UI 即自动签发并自动续期免费的 Let's Encrypt 证书（无需 certbot，无需定时任务）
+- **域名自动申请证书** —— 只需填写域名，2S-UI 即自动签发并自动续期免费的 Let's Encrypt 证书（acme.sh 由面板自动安装并调用，不用你自己配定时任务）
 - **自动生成 nginx 反向代理** —— 把面板放到反代后面时，2S-UI 自动写好并校验 vhost
 - **面板内一键更新** —— 基于校验和验证的 GitHub Release
 - 支持深色/浅色主题
@@ -287,15 +287,17 @@ TLS 相关的配置都集中在面板设置的 **域名与证书** 标签页。�
 
 ### 🔐 域名自动申请证书（ACME / Let's Encrypt）—— 推荐
 
-填写域名、填上邮箱、点击签发：2S-UI 即自动签发并自动续期免费的 Let's Encrypt 证书，
-无需 certbot、无需定时任务。配置成功后即可通过 `https://<你的域名>:2095/app` 访问面板。
+填写域名、填上邮箱、点击签发：2S-UI 即自动签发并自动续期免费的 Let's Encrypt 证书。
+签发底层走 **acme.sh** —— 首次使用时面板会自动帮你装好 acme.sh（以及 standalone 校验
+需要的 `socat`），并启用 acme.sh 自带的 cron 做自动续期，你不需要自己配任何定时任务。
+配置成功后即可通过 `https://<你的域名>:2095/app` 访问面板。
 
 校验方式默认为 **auto** —— 80 端口空闲时用 standalone，否则借用正在运行的 nginx，
 必要时会在 `/etc/nginx/conf.d` 下自动补一个最小的 `server_name` 配置块。你也可以
 显式指定 **standalone** 或 **nginx**。续期时证书会热加载，无需重启。
 
 > 需要 TCP **80** 端口可从公网访问（HTTP-01 校验）。Docker 部署映射 80 端口：docker compose 方式请取消 `docker-compose.yml` 中 `80:80` 那一行的注释；docker run 方式请加上 `-p 80:80`。
-> 证书保存在 `cert/` 目录，重启后保留。若域名/端口配置有误，会自动回退 HTTP。
+> 证书保存在 `/root/cert/<域名>/` 下，文件名固定为 `fullchain.pem` / `privkey.pem`，重启后保留（上面 Docker 命令里的挂载正是把这个路径映射出来）。若域名/端口配置有误，会自动回退 HTTP。
 > ACME 仅支持 Linux，在 Windows 上会隐藏。
 
 ### 使用自备证书

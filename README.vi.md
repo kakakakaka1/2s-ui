@@ -242,7 +242,7 @@ go build -o sui main.go
 - Dịch vụ subscription với khả năng thêm liên kết và subscription bên ngoài
 - **Cụm đa node** — giám sát các bảng điều khiển 2S-UI khác, dùng chung người dùng giữa chúng, và gộp máy chủ của chúng vào cùng một subscription (xem bên dưới)
 - HTTPS để truy cập an toàn vào bảng điều khiển web và dịch vụ subscription (tên miền tự cung cấp + chứng chỉ SSL)
-- **Chứng chỉ SSL tự động** — chỉ cần nhập tên miền và 2S-UI sẽ cấp phát và tự động gia hạn chứng chỉ Let's Encrypt miễn phí cho bạn (không cần certbot, không cần cron job)
+- **Chứng chỉ SSL tự động** — chỉ cần nhập tên miền và 2S-UI sẽ cấp phát và tự động gia hạn chứng chỉ Let's Encrypt miễn phí cho bạn (acme.sh được bảng điều khiển tự cài và gọi; bạn không phải lập lịch gì)
 - **Reverse proxy nginx tự động** — 2S-UI tự viết và kiểm tra vhost khi bạn đặt bảng điều khiển sau một proxy
 - **Tự cập nhật ngay trong bảng điều khiển** qua các bản phát hành GitHub đã xác thực checksum
 - Giao diện sáng/tối
@@ -296,8 +296,10 @@ dẫn chứng chỉ đi theo tên miền bạn chọn — không phải chép ta
 ### 🔐 Chứng chỉ tự động (ACME / Let's Encrypt) — Khuyến nghị
 
 Nhập tên miền, thêm email và bấm cấp phát: 2S-UI sẽ lấy về và tự động gia hạn chứng chỉ
-Let's Encrypt miễn phí — không cần certbot, không cần cron job. Sau khi hoàn tất, bảng
-điều khiển có thể truy cập tại `https://<your-domain>:2095/app`.
+Let's Encrypt miễn phí. Việc cấp phát chạy qua **acme.sh** — ở lần dùng đầu tiên, bảng
+điều khiển sẽ tự cài acme.sh cho bạn (cùng với `socat`, cần cho xác thực standalone) và
+bật gia hạn tự động bằng chính cron job của acme.sh, nên bạn không phải tự lập lịch gì
+cả. Sau khi hoàn tất, bảng điều khiển có thể truy cập tại `https://<your-domain>:2095/app`.
 
 Phương thức xác thực mặc định là **auto** — dùng standalone khi cổng 80 còn trống, ngược
 lại mượn nginx đang chạy và tự tạo một khối `server_name` tối thiểu dưới
@@ -306,8 +308,10 @@ muốn tự quyết. Khi gia hạn, chứng chỉ được nạp nóng; không c
 
 > Yêu cầu cổng TCP **80** có thể truy cập từ internet (HTTP-01 challenge). Để
 > publish cổng 80 với Docker: bỏ ghi chú dòng `80:80` trong `docker-compose.yml`,
-> hoặc thêm `-p 80:80` vào `docker run`. Chứng chỉ được lưu trữ trong `cert/` và vẫn tồn tại
-> sau khi khởi động lại. Nếu tên miền/cổng được cấu hình sai, 2S-UI sẽ chuyển về HTTP.
+> hoặc thêm `-p 80:80` vào `docker run`. Chứng chỉ được lưu trong `/root/cert/<tên-miền>/`
+> với tên tệp `fullchain.pem` / `privkey.pem` và vẫn tồn tại sau khi khởi động lại (volume
+> trong lệnh Docker ở trên chính là để map đường dẫn này ra ngoài). Nếu tên miền/cổng được
+> cấu hình sai, 2S-UI sẽ chuyển về HTTP.
 > ACME chỉ hỗ trợ Linux và bị ẩn trên Windows.
 
 ### Dùng chứng chỉ của riêng bạn
