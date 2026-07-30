@@ -263,9 +263,12 @@ func (a *AcmeService) resolveMethod(method string) (string, error) {
 	}
 }
 
-// nginxHasServerName 在 nginx -T 的完整生效配置里查找是否已有 server_name 含该域名。
-// 按行解析,值换行的合法写法(server_name 与域名不同行)检不出——后果只是多生成一个
-// 冗余块:nginx 对重名仅告警 conflicting server name,-t 仍通过,无害。
+// nginxHasServerName reports whether a chunk of nginx config declares the domain
+// as a server_name. Parsed line by line, so a value wrapped onto its own line is
+// missed and we generate a redundant block — nginx then drops whichever of the two
+// it reads second, which is what EnsureVhost rolls back on.
+//
+// It never looks at listen: for "is there a block on port N" use nginxFilesServing.
 func nginxHasServerName(conf, domain string) bool {
 	const directive = "server_name"
 	for _, line := range strings.Split(conf, "\n") {
@@ -294,7 +297,11 @@ func nginxHasServerName(conf, domain string) bool {
 // 缺失时生成自包含的最小验证块(只加自己的文件,不碰用户已有配置):nginx -t 通过才
 // reload,失败立即回滚删除;文件常驻,以后自动续期仍靠它验证。
 func (a *AcmeService) ensureNginxServerBlock(domain string) error {
-	if out, err := runCmd(cmdDetectTO, "/root", "nginx", "-T"); err == nil && nginxHasServerName(out, domain) {
+	// Port-aware on purpose: matching server_name alone lets the reverse proxy's own
+	// 443-only vhost pose as the validation block, and acme.sh --nginx ignores listen
+	// too, so it would inject the challenge location there while HTTP-01 arrives on 80.
+	if out, err := runCmd(cmdDetectTO, "/root", "nginx", "-T"); err == nil &&
+		len(nginxFilesServing(out, domain, httpPort)) > 0 {
 		return nil
 	}
 	confPath := filepath.Join(nginxConfDir, "s-ui-acme-"+domain+".conf")
@@ -323,9 +330,23 @@ func (a *AcmeService) ensureNginxServerBlock(domain string) error {
 	if err := os.WriteFile(confPath, []byte(content), 0644); err != nil {
 		return common.NewErrorf("写入 nginx 验证配置失败 %s: %v", confPath, err)
 	}
-	if out, err := runCmd(cmdDetectTO, "/root", "nginx", "-t"); err != nil {
+	testOut, err := runCmd(cmdDetectTO, "/root", "nginx", "-t")
+	if err != nil {
 		_ = os.Remove(confPath) // 绝不留下会卡住 reload 的配置
-		return common.NewErrorf("自动生成的 nginx 验证配置未通过 nginx -t,已回滚删除 %s:\n%s", confPath, out)
+		return common.NewErrorf("自动生成的 nginx 验证配置未通过 nginx -t,已回滚删除 %s:\n%s", confPath, testOut)
+	}
+	// A conflict here means the guard missed an existing :80 block — nginxFilesServing
+	// needs listen and server_name in the same block body, which fails when server_name
+	// sits in an included snippet or wraps onto the next line. Not shruggable: nginx
+	// keeps whichever it read first, and conf.d/s-ui-acme- sorts early, so the block
+	// dropped is likely the user's own site.
+	if conflictsOnPort(parseNginxConflicts(testOut), domain, httpPort) {
+		_ = os.Remove(confPath)
+		return common.NewErrorf("nginx 报 %s 在 :80 上 server_name 重名,说明它其实已经有这个域名的 80 端口"+
+			"server 块了,只是写法我们认不出来(server_name 写在 include 进来的片段里,或者值换行了)。"+
+			"两份同名块会让 nginx 只保留先读到的那份、顶掉另一个——被顶掉的多半是你原有的站点,"+
+			"而自动生成的这份只有一个 root。已回滚删除 %s。请确认原有的那个 server 块能被 acme.sh 找到,"+
+			"或改用 standalone 验证。\nnginx -t 原文:\n%s", domain, confPath, testOut)
 	}
 	if out, err := runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx"); err != nil {
 		_ = os.Remove(confPath)
@@ -334,8 +355,9 @@ func (a *AcmeService) ensureNginxServerBlock(domain string) error {
 	// 复验块是否真的生效:若本机 nginx.conf 没有 include conf.d/*.conf(源码编译、
 	// openresty、手写配置都常见),上面三步会全部「成功」——文件根本没被解析,nginx -t
 	// 自然通过——随后 acme.sh 才报它自己的 "Can not find conf file",离真因十万八千里。
-	// 复验把它变成一条指向根因的错误。
-	if out, err := runCmd(cmdDetectTO, "/root", "nginx", "-T"); err != nil || !nginxHasServerName(out, domain) {
+	// 复验把它变成一条指向根因的错误。端口同样要带上,否则 443 的反代块会冒充它。
+	if out, err := runCmd(cmdDetectTO, "/root", "nginx", "-T"); err != nil ||
+		len(nginxFilesServing(out, domain, httpPort)) == 0 {
 		_ = os.Remove(confPath)
 		// 若文件其实已被 include(nginx -T 因别的原因失败),上面那次 reload 已把块读进
 		// 内存,光删文件不足以复原;再 reload 一次抹掉。没被 include 时这次是空操作。
@@ -350,10 +372,23 @@ func (a *AcmeService) ensureNginxServerBlock(domain string) error {
 
 // ===== 反向代理 vhost:由面板自动生成、自动校验、失败自动回滚 =====
 
+// Proxy blocks always listen on 443, the ACME validation block on 80 — so a
+// conflicting-server-name warning only means "our block got dropped" once the port
+// matches; on the domain alone a duplicate on :80 reads as a 443 conflict.
+const (
+	httpPort  = 80
+	httpsPort = 443
+)
+
 // 生成的文件是 s-ui-proxy-<域名>.conf。前缀刻意和 ACME 验证块的 s-ui-acme- 区分开:
 // 清理不再需要的配置时要能 glob 出「我们生成的反代」,又绝不能扫到验证块——
 // 那个删掉证书就续不了期了。
-const nginxProxyConfPrefix = "s-ui-proxy-"
+//
+// First entry is the current prefix (proxyConfPath builds from it); the rest are
+// historical. The name changed once (s-ui-panel- -> s-ui-proxy-), and an upgraded
+// install still has the old file carrying the same server_name on 443 — sweep only
+// the current prefix and every save conflicts, so the proxy can never be switched on.
+var nginxProxyConfPrefixes = []string{"s-ui-proxy-", "s-ui-panel-"}
 
 // ProxyEndpoint 是一个域名下的一条反代规则:把 Path 交给本机的某个端口。
 // 面板和订阅各算一条;两者共用域名时会落进同一个 server 块的两个 location——
@@ -371,6 +406,58 @@ type VhostOptions struct {
 	CertFile  string // 设置里手填的证书,仅当 /root/cert/<域名>/ 下那份不存在时才用
 	KeyFile   string
 	Endpoints []ProxyEndpoint
+}
+
+// ProxySide is the reverse-proxy input for one side (panel or subscription).
+// It comes either from the form on save (values not yet in the DB) or from the DB
+// at startup; both must aggregate identically, hence the shared BuildVhostSpecs.
+type ProxySide struct {
+	Name     string // goes into the config comment and the log: panel / subscription
+	Enabled  bool
+	Domain   string
+	Path     string
+	Listen   string
+	Port     int
+	CertFile string
+	KeyFile  string
+}
+
+// BuildVhostSpecs groups endpoints by DOMAIN rather than by service: panel and
+// subscription commonly share one, and a server block each makes nginx report a
+// conflicting server name and silently drop one of them. Argument order is location
+// order (panel first), and keeping it fixed is what makes the generated content
+// comparable, so EnsureVhost can short-circuit instead of reloading for nothing.
+//
+// A side switched ON with no domain is an error, never a silent skip: it reads like
+// "disabled" but the service already runs plaintext, and skipping it shrinks specs —
+// possibly to empty — so SyncVhosts deletes the vhost that was answering on 443.
+func BuildVhostSpecs(sides ...ProxySide) ([]VhostOptions, error) {
+	var specs []VhostOptions
+	byDomain := map[string]int{}
+	for _, s := range sides {
+		if !s.Enabled {
+			continue
+		}
+		domain := strings.ToLower(strings.TrimSpace(s.Domain))
+		if domain == "" {
+			return nil, common.NewErrorf("%s 打开了「由反向代理终结 TLS」却没有填域名:"+
+				"反向代理需要它作为 server_name。请先填域名,或把这个开关关掉——"+
+				"开着而没有配置意味着服务只跑明文 HTTP,而 443 上没有人接。", s.Name)
+		}
+		ep := ProxyEndpoint{Name: s.Name, Path: s.Path, Listen: s.Listen, Port: s.Port}
+		if i, ok := byDomain[domain]; ok {
+			specs[i].Endpoints = append(specs[i].Endpoints, ep)
+			continue
+		}
+		byDomain[domain] = len(specs)
+		specs = append(specs, VhostOptions{
+			Domain:    domain,
+			CertFile:  s.CertFile,
+			KeyFile:   s.KeyFile,
+			Endpoints: []ProxyEndpoint{ep},
+		})
+	}
+	return specs, nil
 }
 
 // VhostResult 回给前端展示:生成了哪个文件、每个端点的对外地址是什么。
@@ -415,8 +502,8 @@ func nginxVersion() (major, minor, patch int) {
 	return get(0), get(1), get(2)
 }
 
-// nginxEnv 是生成配置时需要的本机 nginx 事实,由 EnsurePanelProxy 探测后传入,
-// 好让 buildPanelProxyConf 保持纯函数、能脱离 nginx 直接验证输出。
+// nginxEnv 是生成配置时需要的本机 nginx 事实,由 detectNginxEnv 探测后传入,
+// 好让 buildVhostConf 保持纯函数、能脱离 nginx 直接验证输出。
 type nginxEnv struct {
 	http2Listen    string // 加在 listen 后面的 http2 参数(老语法)
 	http2Directive string // 独立的 http2 指令行(1.25.1+ 新语法)
@@ -576,7 +663,28 @@ func nginxProxiesPort(conf string, port int) bool {
 // proxyConfPath 是本域名对应的反代配置文件路径。名字里带域名,
 // 换域名时生成新文件、旧的由 SyncVhosts 清掉,永远不碰用户自己写的配置。
 func proxyConfPath(domain string) string {
-	return filepath.Join(nginxConfDir, nginxProxyConfPrefix+domain+".conf")
+	return filepath.Join(nginxConfDir, nginxProxyConfPrefixes[0]+domain+".conf")
+}
+
+// vhostDomainOf recovers the domain from a filename WE generated; anything else
+// returns "" — s-ui-acme- is not in the prefix list, so a validation block can
+// never be swept away as if it were a proxy.
+//
+// It strips the prefix that actually matched, not the current one: trimming the
+// current prefix off a historical filename is a no-op and yields
+// "s-ui-panel-example.com", which no longer matches SyncVhosts' wanted set, so the
+// file survives the stale sweep and collides with what we generate right after.
+func vhostDomainOf(path string) string {
+	base := filepath.Base(path)
+	if !strings.HasSuffix(base, ".conf") {
+		return ""
+	}
+	for _, prefix := range nginxProxyConfPrefixes {
+		if strings.HasPrefix(base, prefix) {
+			return strings.TrimSuffix(strings.TrimPrefix(base, prefix), ".conf")
+		}
+	}
+	return ""
 }
 
 // confIsEffective 判断这份文件是否真的被 nginx 读进了生效配置。
@@ -587,6 +695,307 @@ func confIsEffective(effectiveConf, confPath string) bool {
 	return strings.Contains(effectiveConf, "# configuration file "+confPath+":")
 }
 
+// nginxConflict is one parsed "conflicting server name" warning.
+type nginxConflict struct {
+	Name string // the duplicated server_name
+	Addr string // listen address as printed, e.g. 0.0.0.0:443 / [::]:443; empty if unparsed
+	Port int    // port taken from Addr; 0 when there is none (unix sockets)
+}
+
+// parseNginxConflicts picks every conflicting-server-name warning out of the
+// output of nginx -t / -T. nginx prints (src/http/ngx_http.c, ngx_http_server_names):
+//
+//	2026/07/30 09:50:32 [warn] 2031855#2031855: conflicting server name "example.com" on 0.0.0.0:443, ignored
+//
+// The prefix is the error log's, not "nginx: ", and is matched on the marker rather
+// than anchored. The address is ngx_sock_ntop's normalised text (0.0.0.0:443, [::]:443,
+// [2001:db8::1]:443, portless unix:/path), so taking everything after the last
+// colon covers the bracketed v6 form too. A dual-stack block reports once per
+// family, hence a slice. The warning carries no filename — locating the culprit
+// needs a separate nginx -T.
+func parseNginxConflicts(out string) []nginxConflict {
+	const marker = "conflicting server name "
+	var res []nginxConflict
+	for _, line := range strings.Split(out, "\n") {
+		i := strings.Index(line, marker)
+		if i < 0 {
+			continue
+		}
+		rest := line[i+len(marker):]
+		if len(rest) == 0 || rest[0] != '"' {
+			continue
+		}
+		j := strings.IndexByte(rest[1:], '"') // a server_name never contains quotes; first pair wins
+		if j < 0 {
+			continue
+		}
+		c := nginxConflict{Name: rest[1 : 1+j]}
+		rest = rest[1+j+1:]
+		// What is left is ` on <addr>, ignored`. If the wording ever changes, keep the
+		// name and leave Addr empty so the caller treats the port as unknown.
+		const on = " on "
+		if strings.HasPrefix(rest, on) {
+			addr := rest[len(on):]
+			if k := strings.IndexByte(addr, ','); k >= 0 {
+				addr = addr[:k]
+			}
+			c.Addr = strings.TrimSpace(addr)
+			if k := strings.LastIndexByte(c.Addr, ':'); k >= 0 {
+				if p, err := strconv.Atoi(c.Addr[k+1:]); err == nil {
+					c.Port = p
+				}
+			}
+		}
+		res = append(res, c)
+	}
+	return res
+}
+
+// conflictsOnPort reports whether any warning means "this domain's block on port
+// collided with another one". Case-insensitive: nginx lowercases server_name while
+// parsing, and the domain stored in settings is lowercased too.
+//
+// The port has to be part of the test. Both blocks we generate are single-port (the
+// proxy vhost on 443, the ACME validation block on 80), so a duplicate on the other
+// port says nothing about ours — and on the domain alone a healthy config gets rolled
+// back on every save, forever: the rollback deletes the file, so hadPrevious stays
+// false and the identical-content short-circuit is never reached.
+//
+// An empty Addr means the wording did not parse; over-report there rather than miss
+// one, since both callers respond by rolling back and telling the user.
+func conflictsOnPort(conflicts []nginxConflict, domain string, port int) bool {
+	for _, c := range conflicts {
+		if strings.EqualFold(c.Name, domain) && (c.Addr == "" || c.Port == port) {
+			return true
+		}
+	}
+	return false
+}
+
+// nginxConfSection is one section of nginx -T output: a file it read, plus body.
+type nginxConfSection struct {
+	Path string
+	Body string
+}
+
+// splitNginxDump cuts the dump on the "# configuration file <path>:" lines nginx
+// prints itself. Anything before the first section (warn / ok lines mixed in by
+// CombinedOutput) belongs to no file and is dropped.
+func splitNginxDump(dump string) []nginxConfSection {
+	const header = "# configuration file "
+	var out []nginxConfSection
+	var sb strings.Builder
+	path, open := "", false
+	flush := func() {
+		if open {
+			out = append(out, nginxConfSection{Path: path, Body: sb.String()})
+		}
+		sb.Reset()
+	}
+	for _, line := range strings.Split(dump, "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, header) && strings.HasSuffix(t, ":") {
+			flush()
+			path, open = strings.TrimSuffix(strings.TrimPrefix(t, header), ":"), true
+			continue
+		}
+		if open {
+			sb.WriteString(line)
+			sb.WriteByte('\n')
+		}
+	}
+	flush()
+	return out
+}
+
+// nginxServerBlocks extracts the body of every server { ... } block (braces
+// excluded). It only strips comments and balances braces, so a brace inside a
+// quoted string cuts in the wrong place. Acceptable: this only names the offending
+// file in an error message, and whether to roll back is conflictsOnPort's call.
+func nginxServerBlocks(conf string) []string {
+	var sb strings.Builder
+	sb.Grow(len(conf))
+	for _, line := range strings.Split(conf, "\n") {
+		if i := strings.IndexByte(line, '#'); i >= 0 {
+			line = line[:i]
+		}
+		sb.WriteString(line)
+		sb.WriteByte('\n')
+	}
+	s := sb.String()
+
+	var blocks []string
+	for i := 0; i < len(s); i++ {
+		if s[i] != '{' {
+			continue
+		}
+		// The word right before '{' must be server: an upstream's `server 1.2.3.4:80;`
+		// has no brace, and a stream server block has no server_name so the caller drops it.
+		head := strings.TrimRight(s[:i], " \t\r\n")
+		if head[strings.LastIndexAny(head, " \t\r\n;{}")+1:] != "server" {
+			continue
+		}
+		depth, j := 1, i+1
+		for ; j < len(s) && depth > 0; j++ {
+			if s[j] == '{' {
+				depth++
+			} else if s[j] == '}' {
+				depth--
+			}
+		}
+		if depth == 0 {
+			blocks = append(blocks, s[i+1:j-1])
+			i = j - 1
+		}
+	}
+	return blocks
+}
+
+// nginxListensOn reports whether a server block body listens on port.
+// Understands `listen 443 ssl;`, `listen [::]:443 ssl;`, `listen 1.2.3.4:443;`,
+// `listen *:443;`, and the address-only `listen 1.2.3.4 ssl;` (where nginx
+// defaults to 443 or 80 depending on the ssl parameter).
+func nginxListensOn(block string, port int) bool {
+	for _, stmt := range strings.Split(nginxStmtSplitter.Replace(block), "\n") {
+		fields := strings.Fields(stmt)
+		if len(fields) < 2 || fields[0] != "listen" {
+			continue
+		}
+		p := 0
+		if n, err := strconv.Atoi(fields[1]); err == nil {
+			p = n
+		} else if i := strings.LastIndexByte(fields[1], ':'); i >= 0 {
+			p, _ = strconv.Atoi(fields[1][i+1:]) // unix:/path does not parse; stays 0
+		} else {
+			p = httpPort
+			for _, f := range fields[2:] {
+				if f == "ssl" {
+					p = httpsPort
+				}
+			}
+		}
+		if p == port {
+			return true
+		}
+	}
+	return false
+}
+
+// nginxFilesServing returns which files in the dump provide a server block for
+// domain on port, deduplicated and in nginx's own read order. It exists because
+// neither caller can work from server_name alone: the conflicting warning carries
+// no filename, and ensureNginxServerBlock asking for a :80 block would otherwise be
+// answered by the reverse proxy's 443-only vhost.
+func nginxFilesServing(dump, domain string, port int) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, sec := range splitNginxDump(dump) {
+		if seen[sec.Path] {
+			continue
+		}
+		for _, b := range nginxServerBlocks(sec.Body) {
+			// Split into statements first: nginxHasServerName parses line by line and would
+			// miss `server { listen 443 ssl; server_name a.com; }`. The splitter is
+			// idempotent, so nginxListensOn replacing again internally is harmless.
+			stmts := nginxStmtSplitter.Replace(b)
+			if nginxListensOn(stmts, port) && nginxHasServerName(stmts, domain) {
+				seen[sec.Path] = true
+				out = append(out, sec.Path)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// precheckVhost is everything EnsureVhost asks before it touches the disk: are the
+// options well formed, is nginx usable, is there a certificate. It normalises
+// opt.Domain in place and hands back the resolved certificate paths.
+//
+// Separate because saving settings sometimes has to ask the same questions WITHOUT
+// writing (CheckVhosts). The two must ask an identical set: if they drift, the save
+// passes and the startup reconciliation fails afterwards — by which point the
+// service runs plaintext, nothing answers on 443, and nobody is left to report it.
+func (a *AcmeService) precheckVhost(opt *VhostOptions) (certFile, keyFile string, err error) {
+	if runtime.GOOS == "windows" {
+		return "", "", common.NewError("Windows 不支持自动生成 nginx 配置")
+	}
+	opt.Domain = strings.TrimSpace(opt.Domain)
+	if opt.Domain == "" {
+		return "", "", common.NewError("请先填写「域名」:反向代理需要它作为 server_name")
+	}
+	if !validDomain(opt.Domain) {
+		return "", "", common.NewErrorf("域名含非法字符: %q", opt.Domain)
+	}
+	if len(opt.Endpoints) == 0 {
+		return "", "", common.NewErrorf("%s 没有需要反代的服务", opt.Domain)
+	}
+	for _, ep := range opt.Endpoints {
+		if ep.Port <= 0 {
+			return "", "", common.NewErrorf("%s 的端口无效: %d", ep.Name, ep.Port)
+		}
+	}
+
+	status := a.DetectNginx()
+	if !status.Installed {
+		return "", "", common.NewError("未检测到 nginx,无法自动生成反向代理配置;请先安装 nginx(apt install nginx)后重试")
+	}
+	if !status.Active {
+		return "", "", common.NewError("nginx 已安装但没有运行,无法确认配置是否生效;请先启动它(systemctl start nginx)后重试")
+	}
+	if st, err := os.Stat(nginxConfDir); err != nil || !st.IsDir() {
+		return "", "", common.NewErrorf("nginx 配置目录 %s 不存在,无法自动生成"+
+			"(Alpine 通常是 /etc/nginx/http.d,源码编译的 nginx 可能没有此目录)", nginxConfDir)
+	}
+
+	return resolveDomainCert(opt.Domain, opt.CertFile, opt.KeyFile)
+}
+
+// CheckVhosts answers two questions without writing a byte or reloading nginx:
+//
+//  1. would generating this set fail right now (usually a missing certificate),
+//     returned as an error;
+//  2. is nginx already exactly this, returned as drift=false.
+//
+// Question 1 serves the save path while the proxy is already on: it cannot rewrite
+// the vhost first (this page is that location), so it saves, restarts, and lets the
+// startup reconciliation write — and a failure in that gap reaches nobody, because
+// by then the service is plaintext. Asking here is the only way to ask without writing.
+//
+// Question 2 is the self-healing handle: a reconciliation that failed at the last
+// restart, or a file removed by hand, says nothing — the settings page looks fine
+// while the panel is gone from 443. Reporting drift lets the page point at its own
+// "restart panel" button, which re-runs the reconciliation.
+func (a *AcmeService) CheckVhosts(specs []VhostOptions) (drift bool, err error) {
+	if len(specs) == 0 {
+		return false, nil
+	}
+	// Read the effective config once for the whole batch. If nginx -T will not run we
+	// do not guess — the "file is right but never included" case is dropped and only
+	// the on-disk comparison decides. This is a hint on a settings page: a warning
+	// that a failed probe pins there permanently is worse than a missed one.
+	var effective string
+	if out, e := runCmd(cmdDetectTO, "/root", "nginx", "-T"); e == nil {
+		effective = out
+	}
+	env := detectNginxEnv()
+	for _, spec := range specs {
+		certFile, keyFile, err := a.precheckVhost(&spec)
+		if err != nil {
+			return false, err
+		}
+		// Same yardstick as EnsureVhost's short-circuit: identical content AND nginx
+		// really did read the file. Anything else means running ≠ saved.
+		confPath := proxyConfPath(spec.Domain)
+		previous, readErr := os.ReadFile(confPath)
+		if readErr != nil || string(previous) != buildVhostConf(spec, certFile, keyFile, env) ||
+			(effective != "" && !confIsEffective(effective, confPath)) {
+			drift = true
+		}
+	}
+	return drift, nil
+}
+
 // EnsureVhost 为一个域名生成 nginx 反向代理配置并确认它真的生效。
 //
 // 全过程「验证通过才算成功」:nginx -t 不过、和用户已有配置撞 server_name、reload 失败、
@@ -594,38 +1003,7 @@ func confIsEffective(effectiveConf, confPath string) bool {
 // 调用方必须在这里成功之后才把面板/订阅切成明文 HTTP —— 顺序反了就会出现
 // 「服务不再终结 TLS,前面又没人接管」的窗口,而关掉开关的入口正在那个打不开的页面里。
 func (a *AcmeService) EnsureVhost(opt VhostOptions) (*VhostResult, error) {
-	if runtime.GOOS == "windows" {
-		return nil, common.NewError("Windows 不支持自动生成 nginx 配置")
-	}
-	opt.Domain = strings.TrimSpace(opt.Domain)
-	if opt.Domain == "" {
-		return nil, common.NewError("请先填写「域名」:反向代理需要它作为 server_name")
-	}
-	if !validDomain(opt.Domain) {
-		return nil, common.NewErrorf("域名含非法字符: %q", opt.Domain)
-	}
-	if len(opt.Endpoints) == 0 {
-		return nil, common.NewErrorf("%s 没有需要反代的服务", opt.Domain)
-	}
-	for _, ep := range opt.Endpoints {
-		if ep.Port <= 0 {
-			return nil, common.NewErrorf("%s 的端口无效: %d", ep.Name, ep.Port)
-		}
-	}
-
-	status := a.DetectNginx()
-	if !status.Installed {
-		return nil, common.NewError("未检测到 nginx,无法自动生成反向代理配置;请先安装 nginx(apt install nginx)后重试")
-	}
-	if !status.Active {
-		return nil, common.NewError("nginx 已安装但没有运行,无法确认配置是否生效;请先启动它(systemctl start nginx)后重试")
-	}
-	if st, err := os.Stat(nginxConfDir); err != nil || !st.IsDir() {
-		return nil, common.NewErrorf("nginx 配置目录 %s 不存在,无法自动生成"+
-			"(Alpine 通常是 /etc/nginx/http.d,源码编译的 nginx 可能没有此目录)", nginxConfDir)
-	}
-
-	certFile, keyFile, err := resolveDomainCert(opt.Domain, opt.CertFile, opt.KeyFile)
+	certFile, keyFile, err := a.precheckVhost(&opt)
 	if err != nil {
 		return nil, err
 	}
@@ -670,13 +1048,51 @@ func (a *AcmeService) EnsureVhost(opt VhostOptions) (*VhostResult, error) {
 		restore()
 		return nil, common.NewErrorf("生成的 nginx 配置未通过 nginx -t,已回滚:\n%s", out)
 	}
-	// 用户自己已经为这个域名配过 443 的话,nginx 会忽略后出现的那个块(也就是我们的),
-	// 只留一句 warn。不复验就会「成功」得毫无意义:文件在、nginx 正常、面板照样打不开。
-	if strings.Contains(out, "conflicting server name") && strings.Contains(out, opt.Domain) {
+	// With two server blocks for one domain on 443, nginx keeps whichever it parsed
+	// first, drops the other, emits one warn, and -t still passes — so without this
+	// check the success is meaningless: file present, nginx healthy, panel unreachable.
+	// Which one loses depends on include order, so the casualty may be the user's site
+	// or ours; both are broken, so roll back either way and let them pick.
+	//
+	// This is the ONLY line of defence. nginx -T dumps during parsing, before the
+	// conflict is adjudicated, so a dropped block is still dumped — the confIsEffective
+	// + nginxProxiesPort pair below cannot see it and is always true here.
+	conflicts := parseNginxConflicts(out)
+	if conflictsOnPort(conflicts, opt.Domain, httpsPort) {
+		// Dump once more BEFORE rolling back (restore deletes our file) to name the other
+		// files serving a 443 block — the warning carries no filename, so without this the
+		// user cannot tell which one to edit. Failing to locate it only weakens the message.
+		where := "没能定位到冲突的文件,请自行查 nginx -T 的输出"
+		if dump, e := runCmd(cmdDetectTO, "/root", "nginx", "-T"); e == nil {
+			var others []string
+			files := nginxFilesServing(dump, opt.Domain, httpsPort)
+			for _, f := range files {
+				if f != confPath {
+					others = append(others, f)
+				}
+			}
+			switch {
+			case len(others) > 0:
+				where = "冲突的另一份在:" + strings.Join(others, "、")
+			case len(files) > 0:
+				where = "只有 " + confPath + " 提供 443 块,多半是 nginx.conf 把它 include 了两次"
+			}
+		}
 		restore()
-		return nil, common.NewErrorf("nginx 里已经有 %s 的 443 配置了,自动生成的会被忽略;"+
-			"已回滚。请在你已有的那份配置里把 %s 反代到 http://%s,并加上 proxy_set_header Host $host;",
-			opt.Domain, normalizeProxyPath(opt.Endpoints[0].Path), upstreamAddr(opt.Endpoints[0].Listen, opt.Endpoints[0].Port))
+		return nil, common.NewErrorf("nginx 里有不止一份 %s 的 443 配置,它只保留先读到的那份、"+
+			"忽略其余的(被顶掉的可能是你原有的站点,也可能是这份自动生成的);已回滚。%s。"+
+			"请只保留一份:在你要留下的那个 server 块里把 %s 反代到 http://%s,"+
+			"并加上 proxy_set_header Host $host;\nnginx -t 原文:\n%s",
+			opt.Domain, where, normalizeProxyPath(opt.Endpoints[0].Path),
+			upstreamAddr(opt.Endpoints[0].Listen, opt.Endpoints[0].Port), out)
+	}
+	// Any remaining duplicate is not on 443 (typically :80): harmless here and no reason
+	// to block the save, but it can make acme.sh --nginx pick the wrong block later.
+	for _, c := range conflicts {
+		if strings.EqualFold(c.Name, opt.Domain) {
+			logger.Warning("nginx 里有 ", opt.Domain, " 的重名 server 块(", c.Addr,
+				"),不影响本次反代,但可能影响 acme.sh 的 HTTP-01 验证")
+		}
 	}
 	if out, err := runCmd(cmdDetectTO, "/root", "systemctl", "reload", "nginx"); err != nil {
 		restore()
@@ -716,34 +1132,13 @@ func (a *AcmeService) SyncVhosts(specs []VhostOptions) ([]*VhostResult, error) {
 		wanted[strings.ToLower(strings.TrimSpace(s.Domain))] = true
 	}
 
-	// 大小写改名的残留要先清:同一个域名若还留着一份大小写不同的旧 conf,nginx 会把
-	// 两份判成 conflicting server name,新生成的那份被静默忽略。这个域名马上就要重新
-	// 生成,先删是安全的。
-	removed := 0
-	list := func() []string {
-		entries, _ := filepath.Glob(filepath.Join(nginxConfDir, nginxProxyConfPrefix+"*.conf"))
-		return entries
-	}
-	for _, p := range list() {
-		domain := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), nginxProxyConfPrefix), ".conf")
-		if wanted[strings.ToLower(domain)] && p != proxyConfPath(strings.ToLower(domain)) {
-			if err := os.Remove(p); err == nil {
-				logger.Info("已删除大小写不一致的旧反代配置:", p)
-				removed++
-			}
-		}
-	}
-
-	// 先生成,全部成功后再删多余的。反过来的话,生成失败(典型:换成的新域名还没有
-	// 证书)时旧配置已经被删,而调用方失败时是【不保存设置】的——磁盘上的反代被销毁、
-	// 数据库里还是旧配置,正在服务的域名就此断掉,且要等到下一次 reload 才暴露。
-	// 同域名的更新由 EnsureVhost 原地覆盖 + 失败回滚,不依赖先删。
+	// 先生成、全部成功后再删多余的:反过来的话,生成失败(典型:新域名还没有证书)时
+	// 旧配置已经被删,而调用方失败时是【不保存设置】的,正在服务的域名就此断掉。
 	//
-	// EnsureVhost 只回滚它自己那个域名;而批次里排在前面的域名一旦成功就已经写盘 +
-	// reload。后面任一域名失败时,调用方是【不保存设置】的,那些先生效的 vhost 就成了
-	// 「库里没记、nginx 却在转发」的孤儿(典型:面板有证书、订阅没有,面板那份先生效,
-	// save 却因订阅失败整体中止,443 上多出一份没人管的反代)。所以逐个记下前一状态,
-	// 失败时把这一批已应用的一起还原,让磁盘和「未保存」的语义对齐。
+	// EnsureVhost 只回滚它自己那个域名,批次里先成功的已经写盘 + reload 了。所以逐个
+	// 记下前一状态,任一域名失败就整批还原,让磁盘和「未保存」的语义对齐——否则会留下
+	// 「库里没记、nginx 却在转发」的孤儿。下面删历史副本那一步也记进这里,它删掉的
+	// 可能正在服务流量。
 	type appliedVhost struct {
 		path        string
 		prev        []byte
@@ -766,6 +1161,46 @@ func (a *AcmeService) SyncVhosts(specs []VhostOptions) ([]*VhostResult, error) {
 		}
 	}
 
+	// Renamed leftovers must go first. A domain whose old conf sits at a different path
+	// (prefix changed, or case differs) is a conflicting server name, and conf.d globs
+	// alphabetically — s-ui-panel- before s-ui-proxy- — so the block nginx drops is the
+	// file we are about to generate. Sweeping after generation is already too late.
+	//
+	// Not free, though: that pre-rename copy is very likely serving traffic (every
+	// upgraded install is in that state) and a failed generation means the caller does
+	// NOT save. So copy it into applied first — one failed save must not take a live
+	// 443 entrypoint with it.
+	removed := 0
+	list := func() []string {
+		var entries []string
+		for _, prefix := range nginxProxyConfPrefixes {
+			e, _ := filepath.Glob(filepath.Join(nginxConfDir, prefix+"*.conf"))
+			entries = append(entries, e...)
+		}
+		return entries
+	}
+	for _, p := range list() {
+		domain := vhostDomainOf(p)
+		if domain == "" {
+			continue
+		}
+		if wanted[strings.ToLower(domain)] && p != proxyConfPath(strings.ToLower(domain)) {
+			// 读不出来就别删。回滚全靠这份副本,没有它这次删除就是不可逆的,而这个文件
+			// 很可能正在 443 上服务。留着它最坏是撞一次 server_name 冲突、被 EnsureVhost
+			// 拦下并报错,那是可恢复的;删掉找不回来才不是。
+			prev, err := os.ReadFile(p)
+			if err != nil {
+				logger.Warning("跳过删除路径不一致的旧反代配置(读取失败,删了就无法回滚) ", p, ": ", err)
+				continue
+			}
+			if err := os.Remove(p); err == nil {
+				logger.Info("已删除路径不一致的旧反代配置:", p)
+				removed++
+				applied = append(applied, appliedVhost{path: p, prev: prev, hadPrevious: true})
+			}
+		}
+	}
+
 	var results []*VhostResult
 	for _, spec := range specs {
 		// 路径口径与 EnsureVhost 内部一致(只 TrimSpace,不额外 ToLower)
@@ -782,8 +1217,8 @@ func (a *AcmeService) SyncVhosts(specs []VhostOptions) ([]*VhostResult, error) {
 	}
 
 	for _, p := range list() {
-		domain := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), nginxProxyConfPrefix), ".conf")
-		if wanted[strings.ToLower(domain)] {
+		domain := vhostDomainOf(p)
+		if domain == "" || wanted[strings.ToLower(domain)] {
 			continue
 		}
 		if err := os.Remove(p); err != nil {

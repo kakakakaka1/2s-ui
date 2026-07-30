@@ -99,7 +99,43 @@ func (a *APP) Start() error {
 		logger.Error(err)
 	}
 
+	a.syncNginxProxy()
+
 	return nil
+}
+
+// syncNginxProxy aligns the auto-generated reverse-proxy configs in nginx with the
+// settings ALREADY PERSISTED in the DB. It runs after both servers are up, so the
+// panel has already decided whether it serves plaintext or TLS and touching nginx
+// cannot open a window where neither side is serving.
+//
+// Turning the proxy OFF can only be finished here. The frontend dares not delete the
+// vhost while switching the panel side off — that vhost is the 443 the current page
+// arrives on, so the follow-up api/save and api/restartApp would never be sent, and
+// the panel would end up plaintext with nobody answering on 443. It also heals
+// pre-rename s-ui-panel-*.conf files and orphans left by an earlier switch-off.
+//
+// Failures are logged only: whether nginx is installed, or whether the panel runs as
+// root, must never block startup.
+func (a *APP) syncNginxProxy() {
+	sides, err := a.SettingService.ProxyVhostSpecs()
+	if err != nil {
+		// Never reconcile on a failed read: the side comes back disabled and SyncVhosts
+		// would delete a 443 entrypoint that is serving fine. Doing nothing is recoverable.
+		logger.Warning("读取反代设置失败,跳过启动时的 nginx 对账(nginx 保持原样):", err)
+		return
+	}
+	specs, err := service.BuildVhostSpecs(sides...)
+	if err != nil {
+		// 典型是「开关开着但域名空」这种半成品状态。同样不能继续:那一侧被跳过后 specs
+		// 会少一份甚至变空,对账随即把已生成的 vhost 当成多余的删掉。
+		logger.Warning("反代设置不完整,跳过启动时的 nginx 对账(nginx 保持原样):", err)
+		return
+	}
+	var acme service.AcmeService
+	if _, err := acme.SyncVhosts(specs); err != nil {
+		logger.Warning("启动时对账 nginx 反代配置失败(不影响面板运行):", err)
+	}
 }
 
 func (a *APP) Stop() {

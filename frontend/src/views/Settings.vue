@@ -102,7 +102,7 @@
         <input class="input mono" type="number" min="1" v-model.number="subPort" />
       </SRow>
       <ToggleRow v-model="subBehindProxy" :label="$t('setting.behindProxy')" :desc="subBehindProxyDesc" />
-      <SRow :label="$t('setting.subUri')">
+      <SRow :label="$t('setting.subUri')" :hint="subUriHint">
         <input class="input mono" v-model="settings.subURI" placeholder="https://sub.example.com/sub/" />
       </SRow>
       <ToggleRow v-model="subEncode" :label="$t('setting.subEncode')" />
@@ -275,6 +275,7 @@ import yaml from 'yaml'
 import { push } from 'notivue'
 import { i18n } from '@/locales'
 import HttpUtils from '@/plugins/httputil'
+import api from '@/plugins/api'
 import { FindDiff } from '@/plugins/utils'
 import EditorModal from '@/layouts/drawers/EditorModal.vue'
 import Tabs from '@/components/ui/Tabs.vue'
@@ -350,7 +351,73 @@ onMounted(async () => {
   await loadCerts()
   await loadData()
   loading.value = false
+  // 不 await:它要跑一次 nginx -T,而这只是一条提示,不该让设置页干等着
+  void checkProxyDrift()
 })
+
+// 交给后端的反代表单,同步与校验共用一份。DomainSet / ListenSet / CertSet 告诉后端
+// 「这几项确实带了,空串就是空」——否则它会回退读库,拿上一个域名的证书凑数、或者把
+// 「开关开着却没填域名」这个该报错的半成品状态当成「沿用原值」放过去。
+const proxyFormPayload = () => {
+  const s = settings.value as Record<string, any>
+  return {
+    webNginx: s.webNginx, webDomain: s.webDomain, webDomainSet: 'true', webPort: s.webPort,
+    webPath: s.webPath, webListen: s.webListen, webListenSet: 'true',
+    webCertFile: s.webCertFile, webKeyFile: s.webKeyFile, webCertSet: 'true',
+    subNginx: s.subNginx, subDomain: s.subDomain, subDomainSet: 'true', subPort: s.subPort,
+    subPath: s.subPath, subListen: s.subListen, subListenSet: 'true',
+    subCertFile: s.subCertFile, subKeyFile: s.subKeyFile, subCertSet: 'true',
+  }
+}
+
+// 反代开着时,nginx 那份 vhost 是重启后的启动对账下发的,而对账失败只写进日志——面板
+// 从 443 上消失了,设置页却看不出任何异常。所以加载时主动问一次,并指向本页顶部现成的
+// 「重启面板」:重启会重新跑对账,这本来就是自愈入口,只是没人会想到去点它。
+//
+// 故意绕开 HttpUtils:它对 success:false 一律弹红色错误,而这是用户什么都没做时的后台
+// 探测,不该一打开页面就糊一脸报错。真正要拦人的地方(保存前)照常走 HttpUtils。
+const checkProxyDrift = async () => {
+  const s = settings.value as Record<string, any>
+  if (s.webNginx !== 'true' && s.subNginx !== 'true') return
+  const warn = (message: string) => push.warning({
+    title: i18n.global.t('setting.proxyDrift'), duration: 12000, message,
+  })
+  try {
+    const { data } = await api.post('api/checkNginxProxy', proxyFormPayload())
+    if (!data || typeof data.success !== 'boolean') return
+    // 检查压根跑不起来(nginx 没装、没在跑、证书没了)比配置漂移更严重——反代开着时这些
+    // 都意味着面板已经从公网失联,所以照样要说,而且用后端那句具体的原因。只跳过
+    // Invalid login:会话过期由 loadData 那次 HttpUtils 调用处理,在这里报只会误导。
+    if (!data.success) {
+      if (data.msg && data.msg !== 'Invalid login') warn(data.msg)
+      return
+    }
+    if (data.obj?.drift) warn(i18n.global.t('setting.proxyDriftHint'))
+  } catch {
+    // 只有探测本身没跑通(网络、超时)才真的静默:那不说明反代坏了,只说明这次没问到
+  }
+}
+
+// 同步/校验失败后,把两个反代开关还原成库里的值:开关早在这一步【之前】就被 setter 写进
+// settings 了,而这次保存根本没到库,不还原就是 UI 显示「开」、库里还是「关」,此后改任何
+// 东西都会把它带进下一次同步再失败一次,页面卡死到只能刷新。
+// 只还原这两个开关——它们是唯一会把服务切成明文 HTTP、必须与库一致的字段,域名/端口都只是
+// 草稿。还原成 before 的【原值】而不是 "false":库里默认是空串,写 "false" 会在 proxyInputs
+// 里凭空造出一次变更,下次保存白白重启一遍面板。
+const revertProxySwitches = (before: Record<string, any>) => {
+  const now = settings.value as Record<string, any>
+  // reverted 必须在赋值之前算——now 和 settings.value 是同一个对象
+  const reverted = now.webNginx !== before.webNginx || now.subNginx !== before.subNginx
+  settings.value.webNginx = before.webNginx ?? ''
+  settings.value.subNginx = before.subNginx ?? ''
+  if (reverted) {
+    push.warning({
+      title: i18n.global.t('setting.proxyReverted'),
+      duration: 9000,
+      message: i18n.global.t('setting.proxyRevertedHint'),
+    })
+  }
+}
 
 const loadData = async () => {
   loading.value = true
@@ -384,9 +451,6 @@ const proxyInputs = [
 ]
 
 const save = async () => {
-  // 保存前按当前域名把证书路径重新派生一次:域名 watch 只盯域名变化,证书清单的
-  // 变化(刚在证书页申请/登记/改过路径)不在它眼里,不补这一步会把旧路径存进库
-  syncCertsFromList()
   const now = settings.value as Record<string, any>
   const before = oldSettings.value
   const webOn = now.webNginx === 'true'
@@ -394,26 +458,87 @@ const save = async () => {
   const webWasOn = before.webNginx === 'true'
   const subWasOn = before.subNginx === 'true'
 
-  // 一次调用把两侧都交给后端:它按域名聚合(同域名合并成一份 vhost 的两个 location),
-  // 并删掉不再需要的旧配置。任何一侧开着就得同步——不止是刚打开的那一次,改端口/路径/
-  // 域名要跟着改,而「开关开着、配置却不在」的实例(升级上来的、或被手工删过)也靠这步自愈。
-  // 内容没变且已生效时后端直接返回,不会白 reload 一次 nginx。
-  if (webOn || subOn || webWasOn || subWasOn) {
-    loading.value = true
-    // CertSet 告诉后端「证书路径这两项表单确实带了,空串就是空」:域名没有证书时
-    // 必须让 vhost 生成失败、把用户拦在这里,不能回退读库拿上一个域名的证书凑数
-    const r = await HttpUtils.post('api/syncNginxProxy', {
-      webNginx: now.webNginx, webDomain: now.webDomain, webPort: now.webPort,
-      webPath: now.webPath, webListen: now.webListen, webListenSet: 'true',
-      webCertFile: now.webCertFile, webKeyFile: now.webKeyFile, webCertSet: 'true',
-      subNginx: now.subNginx, subDomain: now.subDomain, subPort: now.subPort,
-      subPath: now.subPath, subListen: now.subListen, subListenSet: 'true',
-      subCertFile: now.subCertFile, subKeyFile: now.subKeyFile, subCertSet: 'true',
+  // 「我们自动填的」两个 URI 长什么样,以及这次保存会不会真的去自动改它们。判据必须与
+  // 下面那段自动填充的条件【逐字一致】:少一个条件,就会放过一个它其实不会去改的情况,
+  // 把不一致原样存进库(反代关着时它就不改——那时 URI 是用户手填的对外地址)。
+  const webAuto = 'https://' + before.webDomain + normalizePath(before.webPath)
+  const subAuto = 'https://' + before.subDomain + normalizePath(before.subPath)
+  const webWillAutofill = webOn && now.webDomain && (!now.webURI || now.webURI === webAuto)
+  const subWillAutofill = subOn && now.subDomain && (!now.subURI || now.subURI === subAuto)
+
+  // 「面板 URI」只决定重启后跳到哪,不参与任何路由。它和「面板路径」不一致时,保存后的
+  // 重启会把人送到一个面板并不服务的地址——那一刻面板已经重启完,没有第二次机会,而唯一
+  // 能改回来的入口就在那个打不开的页面里。所以拦在保存之前,什么都还没写进库。
+  //
+  // 排除 webWillAutofill:改「面板路径」时 URI 还停在旧路径上,此刻必然不一致,而下面那段
+  // 本来就会把它更新成新路径——不排除的话,改路径这个最正常的操作会被自己拦死。
+  //
+  // 明知的代价:外层还有一层 nginx/CDN 把 /app1/ rewrite 成 /app/ 时这是合法配置,会误伤。
+  // 取「宁可拦错」——填错远比 rewrite 常见,而填错的后果是把人关在面板外面。
+  if (webUriPathMismatch.value && !webWillAutofill) {
+    push.error({
+      title: i18n.global.t('setting.webUriPathBlocked'),
+      duration: 10000,
+      message: i18n.global.t('setting.webUriPathBlockedHint', {
+        path: normalizePath(now.webPath),
+      }),
     })
+    return
+  }
+  // 订阅侧同一条规则,排除项也同理。后果不同:它不会 404 在你面前——「订阅 URI」是发给
+  // 客户端的链接前缀,填错了面板一切正常,只是所有客户端从此静默地更新不到。正因为看不见,
+  // 更该拦在保存之前。
+  if (subUriPathMismatch.value && !subWillAutofill) {
+    push.error({
+      title: i18n.global.t('setting.subUriPathBlocked'),
+      duration: 10000,
+      message: i18n.global.t('setting.subUriPathBlockedHint', {
+        path: normalizePath(now.subPath),
+      }),
+    })
+    return
+  }
+
+  // 保存前按当前域名把证书路径重新派生一次:域名 watch 只盯域名变化,证书清单的
+  // 变化(刚在证书页申请/登记/改过路径)不在它眼里,不补这一步会把旧路径存进库
+  syncCertsFromList()
+
+  // 保存【之前】就去配 nginx,只有一种情况是安全的:面板侧的反代从关到开。那时这个页面
+  // 还走面板自己的 TLS 端口、不经过 nginx,改 nginx 断不了后续请求的路;而且必须先配,
+  // 因为面板马上就要降成明文 HTTP,443 上得先有人接。
+  //
+  // 反代已经开着时,这个页面【就是】那个 nginx location,在这里动 nginx 会把保存本身搁浅:
+  // 改路径/域名会挪走 location(/app/ -> /app1/),下一个请求 /app/api/save 就不再被代理;
+  // 关掉反代则直接删掉它。两种情况下 api/save 和 api/restartApp 都送不出去,最后停在
+  // 「nginx 是新的、库里还是旧的」——面板从公网上消失。改 vhost 和重启面板这两步没有安全的
+  // 先后:谁先走,夹在中间的那步都会死在它刚切断的路上。
+  //
+  // 所以反代开着时的改动一律推迟:保存、重启,由启动对账(app.syncNginxProxy)按已落库的
+  // 设置重写 nginx,那时面板已经在新路径上服务了,waitReachable 再把跳转按到新地址能通为止。
+  // 判据于是简化成一句「这个页面加载时面板在不在 nginx 后面」。
+  const panelWasBehindProxy = webWasOn
+  const proxyChanged = proxyInputs.some(k => now[k] !== before[k])
+
+  // 一次调用把两侧都交给后端,它按域名聚合并清掉不再需要的旧配置。两个入口读同一份表单、
+  // 问同一批问题,区别只在落不落盘:反代已经开着时只能校验(checkNginxProxy),写入推迟到
+  // 保存+重启之后的启动对账——而那一步失败没人能告诉用户(服务已改跑明文、443 上没人接),
+  // 所以必须在这里就问出来,让用户停在一个还能用的页面上、且什么都没保存。
+  //
+  // 只校验那条额外要求 proxyChanged:反代设置一个字没动时没有新配置要拦,而校验本身会因为
+  // nginx 没装/没在跑而失败,那会把改时区这种毫不相干的保存一并卡死。落盘那条不加这个条件,
+  // 它对「开关开着、配置却不在」的实例有自愈作用;脱节则由加载时的 checkProxyDrift 报告。
+  if ((webOn || subOn) && (!panelWasBehindProxy || proxyChanged)) {
+    loading.value = true
+    const r = await HttpUtils.post(
+      panelWasBehindProxy ? 'api/checkNginxProxy' : 'api/syncNginxProxy', proxyFormPayload())
     loading.value = false
-    // 生成失败就【不保存】:服务继续自己终结 TLS,访问方式不变。
+    // 失败就【不保存】:服务继续按原样跑,访问方式不变。
     // 反过来先存后配的话,服务已经改跑明文 HTTP 而 nginx 没接住,人就进不来了。
-    if (!r.success) return
+    if (!r.success) {
+      revertProxySwitches(before)
+      return
+    }
+    // 只有真正下发的那条路径会回 vhost 清单;校验那条回的是 { drift },没有可报的地址
     const vhosts: any[] = Array.isArray(r.obj) ? r.obj : []
     if (vhosts.length) {
       push.success({
@@ -431,13 +556,12 @@ const save = async () => {
   // 要跟着域名/路径走:反代开着改域名时,旧地址的 vhost 恰恰在这次保存里被删掉,不跟的话
   // 保存后的跳转和发给客户端的订阅链接就都指向一个已经没人服务的地址,还会一直存在库里。
   // 关掉反代时反过来:若当前值正是我们填的那个,清空它,让跳转按服务自身的域名/端口重推。
-  const webAuto = 'https://' + before.webDomain + normalizePath(before.webPath)
+  // webAuto/subAuto 在函数开头已算好(那里要拿它把「会被自动改对的」排除在路径校验之外)。
   if (webOn && now.webDomain && (!now.webURI || now.webURI === webAuto)) {
     settings.value.webURI = 'https://' + now.webDomain + normalizePath(now.webPath)
   } else if (!webOn && webWasOn && now.webURI === webAuto) {
     settings.value.webURI = ''
   }
-  const subAuto = 'https://' + before.subDomain + normalizePath(before.subPath)
   if (subOn && now.subDomain && (!now.subURI || now.subURI === subAuto)) {
     settings.value.subURI = 'https://' + now.subDomain + normalizePath(now.subPath)
   } else if (!subOn && subWasOn && now.subURI === subAuto) {
@@ -447,7 +571,8 @@ const save = async () => {
   // 两个服务都只在启动时读各自的 Nginx 开关/端口/监听地址,所以这些改动必须带一次重启:
   // 开启后不重启,服务还在原端口上说 TLS,而 nginx 已经用明文 HTTP 连它 —— 443 全站 502;
   // 关闭后不重启则反过来。saveAndRestart 会保存、重启、探活,再跳到新地址。
-  if (proxyInputs.some(k => now[k] !== before[k])) {
+  // 复用上面算好的 proxyChanged:中间只改过 webURI/subURI,而它们不在 proxyInputs 里。
+  if (proxyChanged) {
     loading.value = true
     push.success({
       title: i18n.global.t('success'),
@@ -552,10 +677,42 @@ const subBehindProxyDesc = computed(() => {
   return base + ' ' + i18n.global.t('setting.behindProxyListenWarn')
 })
 
+// 取手填对外地址里的路径;不是可解析的绝对 URL 就返回空(那件事另有地方报)。
+const uriPathOf = (uri: string) => {
+  const v = (uri ?? '').trim()
+  if (!v) return ''
+  try {
+    return normalizePath(new URL(v).pathname)
+  } catch {
+    return ''
+  }
+}
+
+// 「面板 URI」只决定重启后跳到哪、订阅链接怎么拼,不参与任何路由——面板真正服务的路径
+// 来自「面板路径」,生成的 nginx location 也是照它建的。两个名字看不出这层区别,所以
+// 改它来换路径是个既常见又昂贵的错误:跳过去是 404,面板还在原路径上。一分叉就说。
+const webUriPathMismatch = computed(() => {
+  const p = uriPathOf(settings.value.webURI)
+  return p !== '' && p !== normalizePath(settings.value.webPath)
+})
+
+// 订阅侧同一个坑,而且更安静:这个 URI 是发给客户端的链接前缀,不一致不会 404 在你面前,
+// 只是所有人的订阅从此更新不到。
+const subUriPathMismatch = computed(() => {
+  const p = uriPathOf(settings.value.subURI)
+  return p !== '' && p !== normalizePath(settings.value.subPath)
+})
+
+const subUriHint = computed(() =>
+  subUriPathMismatch.value ? i18n.global.t('setting.subUriPathMismatch') : '')
+
 // 反代模式下面板只知道自己是 http://内网:端口,推断不出对外地址(代理的域名/端口/协议
 // 它都看不到),重启后的跳转只能靠 webURI。仅此时提示,非反代模式它是可选覆盖项。
 const webUriHint = computed(() => {
-  return webBehindProxy.value ? i18n.global.t('setting.webUriProxyHint') : ''
+  const parts: string[] = []
+  if (webBehindProxy.value) parts.push(i18n.global.t('setting.webUriProxyHint'))
+  if (webUriPathMismatch.value) parts.push(i18n.global.t('setting.webUriPathMismatch'))
+  return parts.join(' ')
 })
 
 // ===== 域名 ↔ 证书 =====

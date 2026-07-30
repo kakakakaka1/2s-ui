@@ -218,9 +218,14 @@ func (s *SettingService) GetWebCertMode() (string, error) {
 }
 
 func (s *SettingService) GetWebNginx() (bool, error) {
-	// 空字符串表示"尚未设置/未部署",安全地按 false 处理(避免 ParseBool("") 报错)
+	// 空字符串表示"尚未设置/未部署",安全地按 false 处理(避免 ParseBool("") 报错)。
+	// 读失败则必须传出去、不能一样塌成 false:那会让启动时的对账把「读不出来」当成
+	// 「用户关掉了」,删掉正在服务的 443 入口(详见 ProxyVhostSpecs)。
 	v, err := s.getString("webNginx")
-	if err != nil || v == "" {
+	if err != nil {
+		return false, err
+	}
+	if v == "" {
 		return false, nil
 	}
 	return strconv.ParseBool(v)
@@ -366,13 +371,56 @@ func (s *SettingService) GetSubCertMode() (string, error) {
 
 // GetSubNginx 是订阅侧的「由反向代理终结 TLS」,语义与 webNginx 对称:
 // 开着时订阅服务只跑明文 HTTP,TLS 交给前面的 nginx。
-// 空字符串表示尚未设置,按 false 处理(避免 ParseBool("") 报错)。
+// 空字符串表示尚未设置,按 false 处理(避免 ParseBool("") 报错);读失败按 GetWebNginx
+// 同样的理由往上传,不塌成 false。
 func (s *SettingService) GetSubNginx() (bool, error) {
 	v, err := s.getString("subNginx")
-	if err != nil || v == "" {
+	if err != nil {
+		return false, err
+	}
+	if v == "" {
 		return false, nil
 	}
 	return strconv.ParseBool(v)
+}
+
+// ProxyVhostSpecs derives which reverse-proxy vhosts nginx should have from the
+// settings ALREADY PERSISTED in the DB, for the startup reconciliation in
+// app.syncNginxProxy. It shares BuildVhostSpecs with the API path that reads the
+// form; the two must produce identical results.
+//
+// Every read error is reported rather than defaulted away: the reconciliation
+// deletes any generated vhost whose side comes back disabled, so collapsing a failed
+// read to Enabled=false would tear down a live 443 entrypoint over a transient DB
+// error. Every key here is in defaultValueMap, so a missing row yields the default —
+// reaching this path means the read itself failed.
+func (s *SettingService) ProxyVhostSpecs() ([]ProxySide, error) {
+	var firstErr error
+	keep := func(err error) {
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	get := func(f func() (string, error)) string { v, err := f(); keep(err); return v }
+	getInt := func(f func() (int, error)) int { v, err := f(); keep(err); return v }
+	getBool := func(f func() (bool, error)) bool { v, err := f(); keep(err); return v }
+
+	sides := []ProxySide{
+		{
+			Name: "panel", Enabled: getBool(s.GetWebNginx), Domain: get(s.GetWebDomain),
+			Path: get(s.GetWebPath), Listen: get(s.GetListen), Port: getInt(s.GetPort),
+			CertFile: get(s.GetCertFile), KeyFile: get(s.GetKeyFile),
+		},
+		{
+			Name: "subscription", Enabled: getBool(s.GetSubNginx), Domain: get(s.GetSubDomain),
+			Path: get(s.GetSubPath), Listen: get(s.GetSubListen), Port: getInt(s.GetSubPort),
+			CertFile: get(s.GetSubCertFile), KeyFile: get(s.GetSubKeyFile),
+		},
+	}
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	return sides, nil
 }
 
 func (s *SettingService) GetSubAcmeEmail() (string, error) {

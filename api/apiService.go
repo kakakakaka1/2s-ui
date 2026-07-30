@@ -621,7 +621,12 @@ func (a *ApiService) readProxyForm(c *gin.Context, prefix string, scope string) 
 
 	f := proxyForm{enabled: get("Nginx") == "true"}
 
-	if f.domain = get("Domain"); f.domain == "" {
+	// 域名的空值是有含义的(开关开着却没填域名,BuildVhostSpecs 会当场报错),不能当
+	// 「没传」回退读库:那会用旧域名生成 vhost、再把空值存进库,下次启动对账读到空就跳过,
+	// DB 与 nginx 从此长期不一致且不再自愈。与 ListenSet / CertSet 同理用独立标志。
+	if get("DomainSet") == "true" {
+		f.domain = get("Domain")
+	} else if f.domain = get("Domain"); f.domain == "" {
 		if scope == "web" {
 			f.domain, _ = a.SettingService.GetWebDomain()
 		} else {
@@ -677,53 +682,62 @@ func (a *ApiService) readProxyForm(c *gin.Context, prefix string, scope string) 
 			}
 		}
 	}
-	// 域名统一小写:nginx 的 server_name 不分大小写,大小写不同的同一域名若各生成
-	// 一份 vhost,后一份会被判 conflicting server name 静默忽略,一侧就失联了。
-	f.domain = strings.ToLower(strings.TrimSpace(f.domain))
+	// 大小写归一化不在这里做:BuildVhostSpecs 统一处理,它同时服务表单和启动对账
+	// 两条路径,只能有一个来源。
 	return f
 }
 
-// SyncNginxProxy 按当前表单值,让 nginx 里自动生成的那些反代配置与设置保持一致。
-// 前端在【保存设置之前】调用:只有这里成功了,把面板/订阅切成明文 HTTP 才是安全的。
-//
-// 按【域名】而不是按服务聚合:面板和订阅共用一个域名是常见配置,各生成一份 server 块
-// 会被 nginx 判 conflicting server name 而忽略掉后一个,于是其中一个静默失联。
-func (a *ApiService) SyncNginxProxy(c *gin.Context) {
-	var acme service.AcmeService
-
+// proxySides 把两侧表单值转成 BuildVhostSpecs 的输入。SyncNginxProxy 与
+// CheckNginxProxy 读同一份表单、问同一批问题,只是一个落盘一个不落盘。
+func (a *ApiService) proxySides(c *gin.Context) []service.ProxySide {
 	web := a.readProxyForm(c, "web", "web")
 	sub := a.readProxyForm(c, "sub", "sub")
-
-	// 同域名的端点合进同一份 vhost;顺序固定(面板在前)好让配置内容可比对,
-	// 这样内容没变时 EnsureVhost 能直接短路、不白 reload 一次 nginx。
-	var specs []service.VhostOptions
-	byDomain := map[string]int{}
-	add := func(f proxyForm, name string) {
-		if !f.enabled || strings.TrimSpace(f.domain) == "" {
-			return
-		}
-		ep := service.ProxyEndpoint{Name: name, Path: f.path, Listen: f.listen, Port: f.port}
-		if i, ok := byDomain[f.domain]; ok {
-			specs[i].Endpoints = append(specs[i].Endpoints, ep)
-			return
-		}
-		byDomain[f.domain] = len(specs)
-		specs = append(specs, service.VhostOptions{
-			Domain:    f.domain,
-			CertFile:  f.cert,
-			KeyFile:   f.key,
-			Endpoints: []service.ProxyEndpoint{ep},
-		})
+	return []service.ProxySide{
+		{Name: "panel", Enabled: web.enabled, Domain: web.domain, Path: web.path,
+			Listen: web.listen, Port: web.port, CertFile: web.cert, KeyFile: web.key},
+		{Name: "subscription", Enabled: sub.enabled, Domain: sub.domain, Path: sub.path,
+			Listen: sub.listen, Port: sub.port, CertFile: sub.cert, KeyFile: sub.key},
 	}
-	add(web, "panel")
-	add(sub, "subscription")
+}
 
+// SyncNginxProxy syncs the auto-generated reverse-proxy configs with the current
+// form values. The frontend calls it before saving when the proxy is switched ON or
+// adjusted: only once this succeeds is it safe to move the panel/subscription to
+// plaintext HTTP. Switching the panel side OFF never comes through here — see
+// app.syncNginxProxy for why that has to wait until after the restart.
+func (a *ApiService) SyncNginxProxy(c *gin.Context) {
+	var acme service.AcmeService
+	// Same aggregation as the startup reconciliation; both must agree exactly
+	specs, err := service.BuildVhostSpecs(a.proxySides(c)...)
+	if err != nil {
+		pureJsonMsg(c, false, err.Error())
+		return
+	}
 	res, err := acme.SyncVhosts(specs)
 	if err != nil {
 		pureJsonMsg(c, false, err.Error())
 		return
 	}
 	jsonMsgObj(c, "", res, nil)
+}
+
+// CheckNginxProxy is SyncNginxProxy's read-only twin: same form, same questions,
+// but it writes nothing and never reloads nginx. The frontend calls it in the two
+// places where writing is not an option — before saving while the proxy is already
+// on, and when the settings page loads, to report drift. See service.CheckVhosts.
+func (a *ApiService) CheckNginxProxy(c *gin.Context) {
+	var acme service.AcmeService
+	specs, err := service.BuildVhostSpecs(a.proxySides(c)...)
+	if err != nil {
+		pureJsonMsg(c, false, err.Error())
+		return
+	}
+	drift, err := acme.CheckVhosts(specs)
+	if err != nil {
+		pureJsonMsg(c, false, err.Error())
+		return
+	}
+	jsonMsgObj(c, "", map[string]bool{"drift": drift}, nil)
 }
 
 func (a *ApiService) IssueCert(c *gin.Context) {
