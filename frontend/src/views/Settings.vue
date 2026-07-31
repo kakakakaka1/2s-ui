@@ -458,44 +458,27 @@ const save = async () => {
   const webWasOn = before.webNginx === 'true'
   const subWasOn = before.subNginx === 'true'
 
-  // 「我们自动填的」两个 URI 长什么样,以及这次保存会不会真的去自动改它们。判据必须与
-  // 下面那段自动填充的条件【逐字一致】:少一个条件,就会放过一个它其实不会去改的情况,
-  // 把不一致原样存进库(反代关着时它就不改——那时 URI 是用户手填的对外地址)。
+  // Whether this save will actually rewrite the URIs. Must match the autofill condition below
+  // word for word: a looser check would store a mismatch the autofill never gets to fix.
   const webAuto = 'https://' + before.webDomain + normalizePath(before.webPath)
   const subAuto = 'https://' + before.subDomain + normalizePath(before.subPath)
   const webWillAutofill = webOn && now.webDomain && (!now.webURI || now.webURI === webAuto)
   const subWillAutofill = subOn && now.subDomain && (!now.subURI || now.subURI === subAuto)
 
-  // 「面板 URI」只决定重启后跳到哪,不参与任何路由。它和「面板路径」不一致时,保存后的
-  // 重启会把人送到一个面板并不服务的地址——那一刻面板已经重启完,没有第二次机会,而唯一
-  // 能改回来的入口就在那个打不开的页面里。所以拦在保存之前,什么都还没写进库。
+  // A mismatch restarts the panel onto a path it does not serve, and the only way back is the
+  // page that no longer opens — so block before anything is written.
   //
-  // 排除 webWillAutofill:改「面板路径」时 URI 还停在旧路径上,此刻必然不一致,而下面那段
-  // 本来就会把它更新成新路径——不排除的话,改路径这个最正常的操作会被自己拦死。
-  //
-  // 明知的代价:外层还有一层 nginx/CDN 把 /app1/ rewrite 成 /app/ 时这是合法配置,会误伤。
-  // 取「宁可拦错」——填错远比 rewrite 常见,而填错的后果是把人关在面板外面。
+  // webWillAutofill is excluded: changing the path leaves the URI stale until the autofill below
+  // fixes it, so without this the normal path change would block itself. An outer nginx/CDN
+  // rewrite is a false positive we accept — typos are commoner, and a typo locks you out.
   if (webUriPathMismatch.value && !webWillAutofill) {
-    push.error({
-      title: i18n.global.t('setting.webUriPathBlocked'),
-      duration: 10000,
-      message: i18n.global.t('setting.webUriPathBlockedHint', {
-        path: normalizePath(now.webPath),
-      }),
-    })
+    push.error({ title: i18n.global.t('setting.webUriPathBlocked'), duration: 10000 })
     return
   }
-  // 订阅侧同一条规则,排除项也同理。后果不同:它不会 404 在你面前——「订阅 URI」是发给
-  // 客户端的链接前缀,填错了面板一切正常,只是所有客户端从此静默地更新不到。正因为看不见,
-  // 更该拦在保存之前。
+  // Same rule on the subscription side, same exclusion. Quieter failure: nothing 404s, the panel
+  // looks fine and every client silently stops updating — which is why it is blocked here.
   if (subUriPathMismatch.value && !subWillAutofill) {
-    push.error({
-      title: i18n.global.t('setting.subUriPathBlocked'),
-      duration: 10000,
-      message: i18n.global.t('setting.subUriPathBlockedHint', {
-        path: normalizePath(now.subPath),
-      }),
-    })
+    push.error({ title: i18n.global.t('setting.subUriPathBlocked'), duration: 10000 })
     return
   }
 
@@ -688,16 +671,15 @@ const uriPathOf = (uri: string) => {
   }
 }
 
-// 「面板 URI」只决定重启后跳到哪、订阅链接怎么拼,不参与任何路由——面板真正服务的路径
-// 来自「面板路径」,生成的 nginx location 也是照它建的。两个名字看不出这层区别,所以
-// 改它来换路径是个既常见又昂贵的错误:跳过去是 404,面板还在原路径上。一分叉就说。
+// Panel URI is not a route: the served path — and the generated nginx location — comes from Base
+// URI. The names hide that, so editing the URI to move the panel is a common, expensive mistake.
 const webUriPathMismatch = computed(() => {
   const p = uriPathOf(settings.value.webURI)
   return p !== '' && p !== normalizePath(settings.value.webPath)
 })
 
-// 订阅侧同一个坑,而且更安静:这个 URI 是发给客户端的链接前缀,不一致不会 404 在你面前,
-// 只是所有人的订阅从此更新不到。
+// Same trap on the subscription side, and quieter: this URI is only the link prefix handed to
+// clients, so a mismatch never 404s — subscriptions just stop updating.
 const subUriPathMismatch = computed(() => {
   const p = uriPathOf(settings.value.subURI)
   return p !== '' && p !== normalizePath(settings.value.subPath)
@@ -706,8 +688,8 @@ const subUriPathMismatch = computed(() => {
 const subUriHint = computed(() =>
   subUriPathMismatch.value ? i18n.global.t('setting.subUriPathMismatch') : '')
 
-// 反代模式下面板只知道自己是 http://内网:端口,推断不出对外地址(代理的域名/端口/协议
-// 它都看不到),重启后的跳转只能靠 webURI。仅此时提示,非反代模式它是可选覆盖项。
+// Behind a proxy the panel cannot infer its public address, so the post-restart redirect depends
+// on webURI. Only warn there; otherwise the field is an optional override.
 const webUriHint = computed(() => {
   const parts: string[] = []
   if (webBehindProxy.value) parts.push(i18n.global.t('setting.webUriProxyHint'))
