@@ -1,4 +1,4 @@
-# 2S-UI
+# <img src="frontend/public/assets/favicon.svg" width="44" height="44" align="middle" alt=""> 2S-UI
 [English](README.md) · [فارسی](README.fa.md) · [Tiếng Việt](README.vi.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [Русский](README.ru.md)
 
 **基于 SagerNet/Sing-Box 的多协议代理 Web 面板，支持订阅分发、流量监控与自托管部署。**
