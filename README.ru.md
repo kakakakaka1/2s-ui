@@ -1,4 +1,4 @@
-# <img src="frontend/public/assets/favicon.svg" width="44" height="44" align="middle" alt=""> 2S-UI
+# 2S-UI
 
 [English](README.md) · [فارسی](README.fa.md) · [Tiếng Việt](README.vi.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [Русский](README.ru.md)
 
