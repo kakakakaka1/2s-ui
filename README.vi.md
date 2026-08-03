@@ -1,4 +1,4 @@
-# 2S-UI
+# <img src="frontend/public/assets/favicon.svg" width="44" height="44" align="texttop" alt=""> 2S-UI
 [English](README.md) · [فارسی](README.fa.md) · [Tiếng Việt](README.vi.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [Русский](README.ru.md)
 
 **Một bảng điều khiển web sing-box được duy trì tích cực để quản lý proxy đa giao thức, phân phối subscription, giám sát lưu lượng và triển khai tự lưu trữ.**
