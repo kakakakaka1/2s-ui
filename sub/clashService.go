@@ -77,6 +77,7 @@ func (s *ClashService) GetClash(subId string) (*string, []string, error) {
 	extOutbounds, extTags := s.LinkService.GetExternalOutbounds(&client.Links)
 	*outbounds = append(*outbounds, extOutbounds...)
 	*outTags = append(*outTags, extTags...)
+	uniqueOutboundTags(*outbounds, *outTags)
 
 	basicConfig, err := s.getClashConfig()
 	if err != nil || len(basicConfig) == 0 {
@@ -423,6 +424,16 @@ func buildProxyGroups(output map[string]interface{}, proxyTags []string, noDefGr
 		if hasGroupNamed(customGroups, "Auto") {
 			defaultGroups = defaultGroups[:1]
 			defaultGroups[0]["proxies"] = proxyTags
+		}
+		// No routes at all — e.g. the client only references node replicas and
+		// reconciliation has not written their links yet. A url-test group with
+		// an empty proxies list fails mihomo's config parse outright, taking
+		// the whole subscription with it (the Clash twin of the empty urltest
+		// the JSON path degrades around). Drop Auto and point Proxy at the
+		// built-in DIRECT so the profile still imports.
+		if len(proxyTags) == 0 {
+			defaultGroups = defaultGroups[:1]
+			defaultGroups[0]["proxies"] = []string{"DIRECT"}
 		}
 	}
 	// noDefGrp leaves defaultGroups nil, so this is the custom groups alone.
