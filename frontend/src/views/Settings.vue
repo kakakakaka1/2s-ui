@@ -991,8 +991,8 @@ const geositeList = [
 ]
 
 const geoList = [
-  { title: "Site-Private", value: "geoip-private" },
-  { title: "IP-Private", value: "geosite-private" },
+  { title: "Site-Private", value: "geosite-private" },
+  { title: "IP-Private", value: "geoip-private" },
   { title: "Site-Ads", value: "geosite-ads" },
   { title: "🇮🇷 Site-Iran", value: "geosite-ir" },
   { title: "🇮🇷 IP-Iran", value: "geoip-ir" },
@@ -1235,8 +1235,22 @@ const updateRuleSets = () => {
   const tags = <string[]>[]
   if ((dns.value?.rules?.length ?? 0) > 0) dns.value.rules.forEach((r: any) => { if (r.rule_set) tags.push(...r.rule_set) })
   if ((rules.value?.length ?? 0) > 0) rules.value.forEach((r: any) => { if (r.rule_set) tags.push(...r.rule_set) })
-  if (tags.length > 0) {
-    subJsonExt.value.rule_set = geo.filter((g: any) => tags.includes(g.tag))
+  // The list is rebuilt from the selectors, so anything the operator added by
+  // hand in the JSON editor has to be carried over or a single chip click
+  // silently drops it. That editor takes any JSON, so the stored value is not
+  // necessarily an array.
+  const existing = subJsonExt.value?.rule_set
+  const list: any[] = Array.isArray(existing) ? existing : []
+  const byTag = new Map(list.map((rs: any) => [rs.tag, rs]))
+  const custom = list.filter((rs: any) => !geo.some((g: any) => g.tag == rs.tag))
+  if (tags.length > 0 || custom.length > 0) {
+    subJsonExt.value.rule_set = [
+      // A catalog entry the operator already edited wins over the catalog --
+      // swapping the jsDelivr URL for a mirror has to survive a chip click.
+      // The trade-off is that later catalog fixes no longer reach them.
+      ...geo.filter((g: any) => tags.includes(g.tag)).map((g: any) => byTag.get(g.tag) ?? g),
+      ...custom,
+    ]
   } else {
     delete subJsonExt.value.rule_set
   }

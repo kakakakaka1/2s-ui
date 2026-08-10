@@ -93,6 +93,7 @@ export interface Trojan extends InboundBasics {
   transport?: Transport
 }
 export interface Naive extends InboundBasics {
+  network?: "udp" | "tcp"
   tls: iTls,
   quic_congestion_control?: "" | "bbr" | "bbr2" | "cubic" | "reno"
 }
@@ -216,7 +217,10 @@ const defaultValues: Record<InType, Inbound> = {
   trojan: <Trojan>{ type: InTypes.Trojan, tls_id: 0, transport: {} },
   naive: <Naive>{ type: InTypes.Naive, tls_id: 0 },
   hysteria: <Hysteria>{ type: InTypes.Hysteria, up_mbps: 100, down_mbps: 100, tls_id: 0 },
-  shadowtls: <ShadowTLS>{ type: InTypes.ShadowTLS, version: 3, handshake: {}, handshake_for_server_name: {} },
+  // handshake.server_port has no sing-box default; leaving it unset makes the
+  // inbound fail to start, so seed the port the handshake server almost always
+  // listens on.
+  shadowtls: <ShadowTLS>{ type: InTypes.ShadowTLS, version: 3, handshake: { server_port: 443 }, handshake_for_server_name: {} },
   tuic: <TUIC>{ type: InTypes.TUIC, congestion_control: "cubic", tls_id: 0 },
   hysteria2: <Hysteria2>{ type: InTypes.Hysteria2, tls_id: 0 },
   vless: <VLESS>{ type: InTypes.VLESS, tls_id: 0, transport: {} },
@@ -237,6 +241,12 @@ const defaultValues: Record<InType, Inbound> = {
 }
 
 export function createInbound<T extends Inbound>(type: InType,json?: Partial<T>): Inbound {
-  const defaultObject: Inbound = { ...defaultValues[type] ?? {}, ...(json ?? {}) }
+  // Deep copy: a shallow spread hands every new inbound the very same nested
+  // objects (handshake, transport, padding_scheme), so filling in one form
+  // rewrites the defaults the next one starts from. The clone is annotated
+  // because spreading JSON.parse's `any` would make the literal `any` too and
+  // stop TypeScript from checking it.
+  const base: Inbound = JSON.parse(JSON.stringify(defaultValues[type] ?? {}))
+  const defaultObject: Inbound = { ...base, ...(json ?? {}) }
   return defaultObject
 }

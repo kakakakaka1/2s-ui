@@ -246,6 +246,35 @@ func naiveLink(
 		port, _ := addr["server_port"].(float64)
 		uri := baseUri + toBase64([]byte(fmt.Sprintf("%s:%s@%s:%.0f", username, password, addr["server"].(string), port)))
 		links = append(links, addParams(uri, params, addr["remark"].(string)))
+
+		// The legacy http2:// form above carries no transport, so a client cannot
+		// tell an h2 listener from an h3 one. Emit the plain naive+ form too, one
+		// per network the inbound actually listens on -- an unset network means
+		// both.
+		var schemes []string
+		switch network, _ := inbound["network"].(string); network {
+		case "tcp":
+			schemes = []string{"naive+https"}
+		case "udp":
+			schemes = []string{"naive+quic"}
+		default:
+			schemes = []string{"naive+https", "naive+quic"}
+		}
+		// Userinfo has its own escaping set; QueryEscape would turn a space into
+		// a '+', which reads back as a literal '+' here.
+		userInfo := url.UserPassword(username, password).String()
+		for _, scheme := range schemes {
+			// Every link for one address would otherwise carry the same remark and
+			// reach the client as identically named nodes. Only the new ones get a
+			// suffix; the legacy link keeps its bare remark so it stays the same
+			// node for clients that already have it.
+			suffix := "-h2"
+			if scheme == "naive+quic" {
+				suffix = "-h3"
+			}
+			plainUri := fmt.Sprintf("%s://%s@%s:%.0f", scheme, userInfo, addr["server"].(string), port)
+			links = append(links, addParams(plainUri, params, addr["remark"].(string)+suffix))
+		}
 	}
 	return links
 }

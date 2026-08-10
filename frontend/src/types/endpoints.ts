@@ -77,6 +77,11 @@ const defaultValues: Record<EpType, Endpoint> = {
 }
 
 export function createEndpoint<T extends Endpoint>(type: string,json?: Partial<T>): Endpoint {
-  const defaultObject: Endpoint = { ...defaultValues[type], ...(json || {}) }
+  // Deep copy: a shallow spread hands every new endpoint the very same nested
+  // address and peers arrays, so filling in one form rewrites the defaults the
+  // next one starts from. The clone is annotated because spreading JSON.parse's
+  // `any` would make the literal `any` too and stop TypeScript from checking it.
+  const base: Endpoint = JSON.parse(JSON.stringify(defaultValues[type] ?? {}))
+  const defaultObject: Endpoint = { ...base, ...(json || {}) }
   return defaultObject
 }
