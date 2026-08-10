@@ -1,4 +1,4 @@
-// Verbatim copy of sing-box v1.13.14 protocol/hysteria2/inbound.go, moved into this
+// Verbatim copy of sing-box protocol/hysteria2/inbound.go, moved into this
 // module so the panel can reach the unexported `service`/`users` fields that
 // the sing-box Inbound type does not expose. That access is what lets
 // core.UpdateInboundUsers swap an inbound's user table in place instead of
