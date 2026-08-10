@@ -24,6 +24,10 @@ func (s *ClientService) Get(id string) (*[]model.Client, error) {
 	return s.getById(id)
 }
 
+// getById returns the whole row on purpose — do NOT narrow it to
+// clientListColumns. The drawer edits from this shape, and the counters it
+// omits have no omitempty, so a projection here would send zeros the client
+// would then echo back as an intentional-looking value.
 func (s *ClientService) getById(id string) (*[]model.Client, error) {
 	db := database.GetDB()
 	var client []model.Client
@@ -39,7 +43,28 @@ func (s *ClientService) GetAll() (*[]model.Client, error) {
 	db := database.GetDB()
 	var clients []model.Client
 	err := db.Model(model.Client{}).
-		Select("`id`, `enable`, `name`, `desc`, `group`, `remark`, `inbounds`, `up`, `down`, `volume`, `expiry`, `created_at`, `online_at`").
+		Select(clientListColumns).
+		Scan(&clients).Error
+	if err != nil {
+		return nil, err
+	}
+	return &clients, nil
+}
+
+// clientListColumns deliberately omits config and links: both are large and
+// config carries every protocol's credentials. This projection feeds the client
+// list, the websocket full payload and every save response, so anything added
+// here is paid on all three. Consumers needing the full row fetch it by id.
+const clientListColumns = "`id`, `enable`, `name`, `desc`, `group`, `remark`, `inbounds`, `up`, `down`, `volume`, `expiry`, `created_at`, `online_at`"
+
+// GetAllWithConfig adds config for the cluster reconcile diff only: clientDiffers
+// compares it, and an absent key reads as "always different", which would re-push
+// every client every round. Reached solely by the node-facing apiv2 clients read.
+func (s *ClientService) GetAllWithConfig() (*[]model.Client, error) {
+	db := database.GetDB()
+	var clients []model.Client
+	err := db.Model(model.Client{}).
+		Select(clientListColumns + ", `config`").
 		Scan(&clients).Error
 	if err != nil {
 		return nil, err
@@ -58,6 +83,31 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 		if err != nil {
 			return nil, err
 		}
+		if act == "edit" {
+			// Only a name actually changing is validated, so a duplicate that
+			// predates this check stays editable on its other fields — same
+			// stance as the node-name bracket rule.
+			var oldName string
+			if err = tx.Model(model.Client{}).Select("name").
+				Where("id = ?", client.Id).Scan(&oldName).Error; err != nil {
+				return nil, err
+			}
+			if oldName != client.Name {
+				if err = s.ensureNameAvailable(tx, client.Name, client.Id); err != nil {
+					return nil, err
+				}
+			}
+		} else if client.Group != clusterGroup {
+			// A cluster push is exempt: runReconcile aborts the WHOLE round on a
+			// failed push, so one name a node happens to use locally would stop
+			// that node syncing entirely — a worse failure than the duplicate
+			// this check exists to prevent. A same-group duplicate cannot reach
+			// here anyway: actualClusterClients would have found it and the
+			// master would be pushing an edit instead of a new.
+			if err = s.ensureNameAvailable(tx, client.Name, 0); err != nil {
+				return nil, err
+			}
+		}
 		if err = setConfigIdentity(&client); err != nil {
 			return nil, err
 		}
@@ -71,8 +121,9 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 			if err != nil {
 				return nil, err
 			}
-			// Preserve managed timestamps (immutable createdAt, stats-managed onlineAt)
-			s.preserveTimestamps(tx, &client)
+			if err = s.preserveServerManagedFields(tx, &client, payloadFields(data)); err != nil {
+				return nil, err
+			}
 		} else {
 			client.CreatedAt = time.Now().Unix()
 			err = json.Unmarshal(client.Inbounds, &inboundIds)
@@ -91,6 +142,26 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 			return nil, err
 		}
 		now := time.Now().Unix()
+		// Name check for the whole batch in one query rather than per client —
+		// this path imports hundreds at a time. `seen` covers duplicates within
+		// the batch, which the table cannot show: none of them are committed yet.
+		names := make([]string, 0, len(clients))
+		seen := make(map[string]bool, len(clients))
+		for _, client := range clients {
+			if seen[client.Name] {
+				return nil, common.NewErrorf("duplicate client name in this batch: %q", client.Name)
+			}
+			seen[client.Name] = true
+			names = append(names, client.Name)
+		}
+		var taken []string
+		if err = tx.Model(model.Client{}).Where("name in ?", names).
+			Pluck("name", &taken).Error; err != nil {
+			return nil, err
+		}
+		if len(taken) > 0 {
+			return nil, common.NewErrorf("client name %q already exists", taken[0])
+		}
 		for _, client := range clients {
 			if err = setConfigIdentity(client); err != nil {
 				return nil, err
@@ -116,6 +187,45 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 		if err != nil {
 			return nil, err
 		}
+		// Renames are validated as a batch — one query for the stored names,
+		// then a conflict check only for the ones actually changing. The SPA
+		// never renames through this path (it submits the list projection
+		// unchanged), so the common case costs a single extra query.
+		ids := make([]uint, 0, len(clients))
+		for _, client := range clients {
+			if client.Id != 0 {
+				ids = append(ids, client.Id)
+			}
+		}
+		oldNameById := make(map[uint]string, len(ids))
+		if len(ids) > 0 {
+			var stored []struct {
+				Id   uint
+				Name string
+			}
+			if err = tx.Model(model.Client{}).Select("id", "name").
+				Where("id in ?", ids).Scan(&stored).Error; err != nil {
+				return nil, err
+			}
+			for _, row := range stored {
+				oldNameById[row.Id] = row.Name
+			}
+		}
+		renamedTo := make(map[string]bool)
+		for _, client := range clients {
+			if oldNameById[client.Id] == client.Name {
+				continue
+			}
+			// Two rows renamed to the same new name would both pass the DB
+			// check — neither is committed yet.
+			if renamedTo[client.Name] {
+				return nil, common.NewErrorf("duplicate client name in this batch: %q", client.Name)
+			}
+			renamedTo[client.Name] = true
+			if err = s.ensureNameAvailable(tx, client.Name, client.Id); err != nil {
+				return nil, err
+			}
+		}
 		for _, client := range clients {
 			changedInboundIds, err := s.findInboundsChanges(tx, client, true)
 			if err != nil {
@@ -124,7 +234,11 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 			if err = setConfigIdentity(client); err != nil {
 				return nil, err
 			}
-			s.preserveTimestamps(tx, client)
+			// nil: the bulk payload is the list projection, so none of the
+			// counters it carries are authoritative — take them all from the row.
+			if err = s.preserveServerManagedFields(tx, client, nil); err != nil {
+				return nil, err
+			}
 			if len(changedInboundIds) > 0 {
 				inboundIds = common.UnionUintArray(inboundIds, changedInboundIds)
 			}
@@ -188,14 +302,77 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 	return inboundIds, nil
 }
 
-func (s *ClientService) preserveTimestamps(tx *gorm.DB, client *model.Client) {
+// ensureNameAvailable rejects a duplicate client name. The name is the cluster's
+// identity key — expectedClients and actualClusterClients both map by it — so two
+// clients sharing one means only ever syncing whichever the map iteration kept,
+// silently and forever. There is no unique index to lean on (the column predates
+// the cluster feature and existing installs may already hold duplicates), and the
+// only guard until now was the SPA's own check, which apiv2 callers bypass. Same
+// loud-failure stance as the adoption tag-collision check. excludeId skips the row
+// being edited; pass 0 for a create.
+func (s *ClientService) ensureNameAvailable(tx *gorm.DB, name string, excludeId uint) error {
+	q := tx.Model(model.Client{}).Where("name = ?", name)
+	if excludeId != 0 {
+		q = q.Where("id <> ?", excludeId)
+	}
+	var count int64
+	if err := q.Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return common.NewErrorf("client name %q already exists", name)
+	}
+	return nil
+}
+
+// preserveServerManagedFields restores columns the server owns from the stored
+// row. createdAt/onlineAt always; the traffic counters only when the request did
+// not carry them, which is what separates the two kinds of caller: a master's
+// node push omits them (they would unmarshal as zero and wipe the node's
+// totals), while the SPA sends them — and its per-client "Reset" button works by
+// sending zeroed ones, so overwriting those would silently undo the reset.
+// payloadHas nil means "carried nothing", i.e. preserve every counter.
+func (s *ClientService) preserveServerManagedFields(tx *gorm.DB, client *model.Client, payloadHas map[string]bool) error {
 	var existing model.Client
-	if err := tx.Model(model.Client{}).Select("created_at", "online_at").
-		Where("id = ?", client.Id).First(&existing).Error; err != nil {
-		return
+	err := tx.Model(model.Client{}).Select("created_at", "online_at", "up", "down", "total_up", "total_down").
+		Where("id = ?", client.Id).First(&existing).Error
+	if err != nil {
+		// ErrRecordNotFound included, deliberately: failing open here would write
+		// the payload's zeroed counters and destroy the node's traffic history,
+		// and an edit whose row vanished has nothing to preserve onto anyway.
+		// Both callers load the row via findInboundsChanges first, so in practice
+		// this only fires on a concurrent delete.
+		return err
 	}
 	client.CreatedAt = existing.CreatedAt
 	client.OnlineAt = existing.OnlineAt
+	if !payloadHas["up"] {
+		client.Up = existing.Up
+	}
+	if !payloadHas["down"] {
+		client.Down = existing.Down
+	}
+	if !payloadHas["totalUp"] {
+		client.TotalUp = existing.TotalUp
+	}
+	if !payloadHas["totalDown"] {
+		client.TotalDown = existing.TotalDown
+	}
+	return nil
+}
+
+// payloadFields reports which keys the request object actually carried, so an
+// omitted server-managed value is preserved rather than written as zero.
+func payloadFields(data json.RawMessage) map[string]bool {
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return nil
+	}
+	fields := make(map[string]bool, len(raw))
+	for k := range raw {
+		fields[k] = true
+	}
+	return fields
 }
 
 func (s *ClientService) updateLinksWithFixedInbounds(tx *gorm.DB, clients []*model.Client, hostname string) error {
@@ -226,6 +403,60 @@ func (s *ClientService) updateLinksWithFixedInbounds(tx *gorm.DB, clients []*mod
 		inboundById[inbounds[i].Id] = &inbounds[i]
 	}
 
+	// Node links are system-owned (refreshNodeLinks rewrites them), so for an
+	// existing client they come from the stored row, not the request payload: a
+	// tab loaded before the last reconcile would otherwise strip them all, and
+	// nothing repairs that until the next reconcile touches this node.
+	var nodeNames []string
+	if err := tx.Model(model.Node{}).Pluck("name", &nodeNames).Error; err != nil {
+		return err
+	}
+
+	// Replica inbounds the payload still references, by tag. A node link is
+	// re-attached only while its inbound is still bound to the client:
+	// otherwise revoking access would leave a working link in the subscription
+	// until refreshNodeLinks next runs, which needs that node to be online — so
+	// revoking a user from an offline node would not take effect at all.
+	replicaTagById := map[uint]string{}
+	if len(allIds) > 0 {
+		var replicas []model.Inbound
+		if err := tx.Model(model.Inbound{}).Select("id", "tag").
+			Where("id in ? and node_id IS NOT NULL", allIds).Find(&replicas).Error; err != nil {
+			return err
+		}
+		for _, r := range replicas {
+			replicaTagById[r.Id] = r.Tag
+		}
+	}
+
+	// Stored links for the existing clients, in one query rather than one per
+	// client — editbulk submits the whole selection through here. An id missing
+	// from the map is a row that vanished concurrently: nothing to re-attach.
+	storedLinksById := map[uint]json.RawMessage{}
+	if len(nodeNames) > 0 {
+		var ids []uint
+		for _, client := range clients {
+			if client.Id != 0 {
+				ids = append(ids, client.Id)
+			}
+		}
+		if len(ids) > 0 {
+			var rows []struct {
+				Id    uint
+				Links json.RawMessage
+			}
+			if err := tx.Model(model.Client{}).Select("id", "links").
+				Where("id in ?", ids).Scan(&rows).Error; err != nil {
+				// Failing open would persist the list with every node link
+				// stripped — the exact loss this re-attach exists to prevent.
+				return err
+			}
+			for _, r := range rows {
+				storedLinksById[r.Id] = r.Links
+			}
+		}
+	}
+
 	for index, client := range clients {
 		var clientLinks []map[string]string
 		if err := json.Unmarshal(client.Links, &clientLinks); err != nil {
@@ -248,10 +479,44 @@ func (s *ClientService) updateLinksWithFixedInbounds(tx *gorm.DB, clients []*mod
 			}
 		}
 
-		// Add non local links
+		// A client being created has no stored row to re-attach from, so its
+		// payload links are kept verbatim — filtering them would drop a
+		// user-authored link whose remark merely looks node-owned.
+		reattach := client.Id != 0 && len(nodeNames) > 0
+
+		// Add non local links (node-owned ones re-attach from the DB below)
 		for _, clientLink := range clientLinks {
-			if clientLink["type"] != "local" {
-				newClientLinks = append(newClientLinks, clientLink)
+			if clientLink["type"] == "local" {
+				continue
+			}
+			if reattach && isNodeOwnedRemark(clientLink["remark"], nodeNames) {
+				continue
+			}
+			newClientLinks = append(newClientLinks, clientLink)
+		}
+		if stored := storedLinksById[client.Id]; reattach && len(stored) > 0 {
+			var storedLinks []map[string]string
+			if err := json.Unmarshal(stored, &storedLinks); err != nil {
+				return err
+			}
+			keptTags := map[string]bool{}
+			for _, id := range clientInboundIds[index] {
+				if tag, ok := replicaTagById[id]; ok {
+					keptTags[tag] = true
+				}
+			}
+			for _, l := range storedLinks {
+				// type must be checked too: a local inbound tagged like a
+				// node prefix is regenerated above, and re-appending the
+				// stored copy would duplicate it once per save, forever.
+				if l["type"] == "local" || !isNodeOwnedRemark(l["remark"], nodeNames) {
+					continue
+				}
+				sep := strings.Index(l["remark"], "] ")
+				if sep < 0 || !keptTags[l["remark"][sep+2:]] {
+					continue // inbound no longer bound to this client
+				}
+				newClientLinks = append(newClientLinks, l)
 			}
 		}
 
@@ -328,6 +593,12 @@ func (s *ClientService) UpdateClientsOnInboundDelete(tx *gorm.DB, id uint, tag s
 	if err != nil {
 		return err
 	}
+	// Needed to recognise this inbound's node-owned links below; hoisted out of
+	// the loop since it does not vary per client.
+	var nodeNames []string
+	if err = tx.Model(model.Node{}).Pluck("name", &nodeNames).Error; err != nil {
+		return err
+	}
 	for _, client := range clients {
 		// Delete inbounds
 		var clientInbounds, newClientInbounds []uint
@@ -341,13 +612,17 @@ func (s *ClientService) UpdateClientsOnInboundDelete(tx *gorm.DB, id uint, tag s
 		if err != nil {
 			return err
 		}
-		// Delete links
+		// Delete links. A node link for the same inbound carries the tag behind
+		// a "[<node>] " prefix, so an exact match alone would leave it behind
+		// for good: nothing else strips links for an inbound that is gone.
 		var clientLinks, newClientLinks []map[string]string
 		json.Unmarshal(client.Links, &clientLinks)
 		for _, clientLink := range clientLinks {
-			if clientLink["remark"] != tag {
-				newClientLinks = append(newClientLinks, clientLink)
+			remark := clientLink["remark"]
+			if remark == tag || isNodeLinkFor(remark, tag, nodeNames) {
+				continue
 			}
+			newClientLinks = append(newClientLinks, clientLink)
 		}
 		client.Links, err = json.MarshalIndent(newClientLinks, "", "  ")
 		if err != nil {
@@ -408,14 +683,17 @@ func (s *ClientService) UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]mode
 }
 
 // DepleteClients disables clients over quota or past expiry and returns both
-// the affected local inbound ids (to hot-restart) and the disabled client names
-// (so the caller can fan the disable out to nodes). With cluster totals folded
-// into up/down, the quota check is already a whole-cluster judgement.
+// the affected local inbound ids (to hot-restart) and the names whose enable
+// state changed, so the caller can fan those out to nodes. That second list
+// covers BOTH directions: the depletion disable below and the periodic reset's
+// re-enable inside ResetClients — a round that only re-enables still has to
+// reach the nodes, or they keep rejecting a paid-up user. With cluster totals
+// folded into up/down, the quota check is already a whole-cluster judgement.
 func (s *ClientService) DepleteClients() ([]uint, []string, error) {
 	var err error
 	var clients []model.Client
 	var changes []model.Changes
-	var users []string
+	var enableChanged []string
 	var inboundIds []uint
 
 	dt := time.Now().Unix()
@@ -436,7 +714,7 @@ func (s *ClientService) DepleteClients() ([]uint, []string, error) {
 	}()
 
 	// Reset clients
-	inboundIds, err = s.ResetClients(tx, dt)
+	inboundIds, enableChanged, err = s.ResetClients(tx, dt)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -449,7 +727,7 @@ func (s *ClientService) DepleteClients() ([]uint, []string, error) {
 
 	for _, client := range clients {
 		logger.Debug("Client ", client.Name, " is going to be disabled")
-		users = append(users, client.Name)
+		enableChanged = append(enableChanged, client.Name)
 		var userInbounds []uint
 		json.Unmarshal(client.Inbounds, &userInbounds)
 		// Find changed inbounds
@@ -476,19 +754,24 @@ func (s *ClientService) DepleteClients() ([]uint, []string, error) {
 		MarkLastUpdate(dt)
 	}
 
-	return inboundIds, users, nil
+	return inboundIds, enableChanged, nil
 }
 
-func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
+// ResetClients applies the per-client periodic reset. It returns the affected
+// local inbound ids (to hot-restart) and the names it re-enabled, which the
+// caller has to fan out to nodes for the same reason DepleteJob fans out a
+// disable: the node keeps rejecting a paid-up user until it hears otherwise.
+func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, []string, error) {
 	var err error
 	var resetClients, allClients []*model.Client
 	var changes []model.Changes
 	var inboundIds []uint
+	var reenabled []string
 	// Set delay start without periodic reset
 	err = tx.Model(model.Client{}).
 		Where("enable = true AND delay_start = true AND auto_reset = false AND (Up + Down) > 0").Find(&resetClients).Error
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, client := range resetClients {
 		client.Expiry = dt + (int64(client.ResetDays) * 86400)
@@ -507,7 +790,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	err = tx.Model(model.Client{}).
 		Where("enable = true AND delay_start = true AND auto_reset = true AND (Up + Down) > 0").Find(&resetClients).Error
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, client := range resetClients {
 		client.NextReset = dt + (int64(client.ResetDays) * 86400)
@@ -526,7 +809,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	err = tx.Model(model.Client{}).
 		Where("delay_start = false AND auto_reset = true AND next_reset < ?", dt).Find(&resetClients).Error
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, client := range resetClients {
 		client.NextReset = dt + (int64(client.ResetDays) * 86400)
@@ -536,6 +819,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 		client.Down = 0
 		if !client.Enable {
 			client.Enable = true
+			reenabled = append(reenabled, client.Name)
 			var clientInboundIds []uint
 			json.Unmarshal(client.Inbounds, &clientInboundIds)
 			inboundIds = common.UnionUintArray(inboundIds, clientInboundIds)
@@ -547,7 +831,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	if len(allClients) > 0 {
 		err = tx.Save(allClients).Error
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
@@ -555,11 +839,11 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	if len(changes) > 0 {
 		err = tx.Model(model.Changes{}).Create(&changes).Error
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		MarkLastUpdate(dt)
 	}
-	return inboundIds, nil
+	return inboundIds, reenabled, nil
 }
 
 // ResetAllClientsTraffic zeroes up/down for every client (accumulating into the
@@ -631,8 +915,16 @@ func (s *ClientService) findInboundsChanges(tx *gorm.DB, client *model.Client, f
 		return nil, err
 	}
 	if fillOmitted {
+		// The bulk path submits the client list projection, which cannot carry
+		// these columns; the payload's zero values would silently wipe them —
+		// switching off periodic auto-reset and zeroing next_reset, so
+		// ResetClientsTraffic's "next_reset < now" scan never matches again.
 		client.Links = oldClient.Links
 		client.Config = oldClient.Config
+		client.AutoReset = oldClient.AutoReset
+		client.ResetDays = oldClient.ResetDays
+		client.NextReset = oldClient.NextReset
+		client.DelayStart = oldClient.DelayStart
 	}
 	err = json.Unmarshal(oldClient.Inbounds, &oldInboundIds)
 	if err != nil {
