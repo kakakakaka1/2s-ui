@@ -1,9 +1,9 @@
 # <img src="frontend/public/assets/favicon.svg" width="44" height="44" align="texttop" alt=""> 2S-UI
 [English](README.md) · [فارسی](README.fa.md) · [Tiếng Việt](README.vi.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [Русский](README.ru.md)
 
-2S-UI 是一個開源的 [Sing-Box](https://github.com/SagerNet/sing-box) 管理面板，面向自架代理服務的部署與維運。協定設定、路由規則、使用者與訂閱、流量統計集中於同一套介面，支援六種語言與深淺雙主題；單機即可運行，多台亦可組成叢集統一管理。
+2S-UI 是一個開源的 [Sing-Box](https://github.com/SagerNet/sing-box) 管理面板，它提供簡潔、多語言的介面，用於部署、設定和監控各種代理與 VPN 協定——從單台 VPS 到多節點部署。
 
-2S-UI 由 [s-ui](https://github.com/alireza0/s-ui) 分支而來，重寫了整套前端，並引入多節點叢集、ACME 憑證自動簽發與續期、面板內一鍵升級，以及不中斷連線的使用者熱更新。
+2S-UI 由 s-ui 分支而來，重寫了整套前端，新增了許多提升使用體驗的功能。
 
 ![](https://img.shields.io/github/v/release/shenaba/2s-ui.svg)
 [![Docker Pulls](https://img.shields.io/docker/pulls/shenaba/2s-ui.svg)](https://hub.docker.com/r/shenaba/2s-ui)
@@ -13,32 +13,23 @@
 
 > **免責聲明：** 本專案僅供個人學習與交流使用，請勿用於非法用途，請勿用於正式環境。
 
-**如果你覺得這個專案有幫助，可以給一個** :star2:
-
 ## 功能
 
-- **多協定** —— 入站出站支援 VLESS、VMess、Trojan、Shadowsocks、Hysteria2、TUIC、
-  AnyTLS 等，另有 WireGuard / WARP / Tailscale 三類 Endpoint（[完整列表](#protocols)）
-- **TLS 集中管理** —— Reality、uTLS 指紋、XTLS；憑證註冊一次，之後依入站選用
-- **路由規則** —— 依網域、IP、連接埠、協定、行程、使用者或 rule-set 比對，可 and/or 組合。
-  DNS 有自己獨立的一套規則。
-- **多入站用戶端** —— 一個用戶端可掛在多個入站上，各帶流量上限與到期時間，超量或過期
-  自動停用
-- **配額自動化** —— 可以從首次使用才開始計時，也可以每 N 天自動重置，跑滿的用戶端到期
-  自動恢復
-- **每用戶端 IP 數限制** —— 限制單一用戶端同時使用的來源 IP 數量，超出的會被斷線並短暫
-  拒絕重連，不依賴 fail2ban
-- **使用者熱更新** —— 改用戶端時原地改寫入站的使用者表，不重建監聽器，其他人不會斷線
-- **訂閱連結** —— 支援 `link`、`json`、`clash` 三種格式，回傳用量與到期時間，可併入外部
-  連結
-- **多節點叢集** —— 監控其他 2S-UI 面板、跨節點共用使用者、各節點線路合併進同一條訂閱
-  （[詳見下文](#多節點叢集)）
-- **HTTPS 自動化** —— Let's Encrypt 自動簽發續期，並自動產生 nginx 反向代理
-  （[詳見下文](#網域與憑證)）
-- **一鍵更新** —— 面板內原地升級，帶總和檢查碼驗證
-- **即時儀表板** —— 系統資源、流量、協定佔比、網路吞吐、節點健康，每塊卡片都能單獨開關
-- **帳號與語言** —— 支援多個面板管理員、帶到期時間的
-  [API Token](https://github.com/shenaba/2s-ui/wiki/API-Documentation)、深色/淺色佈景主題、六種語言
+- **多協定** —— VLESS、VMess、Trojan、Shadowsocks、Hysteria2、TUIC、AnyTLS 等入站與
+  出站，以及 WireGuard、WARP、Tailscale 端點（[完整列表](#protocols)）。
+- **TLS 集中管理** —— Reality、uTLS 指紋、XTLS，以及一次註冊、依入站選用的憑證。
+- **路由規則** —— 依網域、IP、連接埠、協定、行程、使用者和 rule-set 比對，支援 and/or
+  組合，DNS 規則獨立成套。
+- **用戶端管理** —— 流量配額、到期日期、IP 限制、即時在線狀態，以及一鍵分享連結、
+  QR Code 和訂閱。
+- **流量統計** —— 按入站、按用戶端、按出站統計，並支援重置控制。
+- **訂閱連結** —— `link`、`json`、`clash` 三種格式，回傳用量與到期時間，並可併入外部連結。
+- **多節點叢集** —— 節點狀態監控、跨節點共用使用者、多節點線路合併進同一條訂閱
+  （[詳見下文](#多節點叢集)）。
+- **HTTPS 自動化** —— Let's Encrypt 自動簽發與續期，以及自動產生的 nginx 反向代理
+  （[詳見下文](#網域與憑證)）。
+- **一鍵更新** —— 面板內原地升級，帶總和檢查碼驗證。
+- **全新介面** —— 從零重寫的前端、自研元件、深淺雙佈景主題、六種語言（含 RTL）。
 
 <details id="protocols">
   <summary>支援的協定</summary>
@@ -56,21 +47,35 @@ amd64、arm64、armv7 與 386 上帶這個協定。在 armv6、armv5、s390x 上
 
 </details>
 
-<details>
-  <summary>語言</summary>
+## 語言
 
 English · Farsi · Vietnamese · Chinese (Simplified) · Chinese (Traditional) · Russian
 
-</details>
+## 支援平台
 
-<details>
-  <summary>螢幕截圖</summary>
+| 平台 | 架構 | 狀態 |
+| ---- | ---- | ---- |
+| Linux | amd64, arm64, armv7, armv6, armv5, 386, s390x | 支援 |
+| Windows | amd64, 386, arm64 | 支援 |
+| macOS | amd64, arm64 | 實驗性 |
+
+## 螢幕截圖
 
 !["Main"](frontend/media/main.png)
 
-更多螢幕截圖：[frontend/screenshots.md](frontend/screenshots.md)
+[更多 UI 截圖](frontend/screenshots.md)
 
-</details>
+## API 文件
+
+[API Documentation Wiki](https://github.com/shenaba/2s-ui/wiki/API-Documentation)
+
+## 預設安裝資訊
+
+| | 預設值 |
+| --- | --- |
+| 面板 | 連接埠 `2095`，路徑 `/app/` |
+| 訂閱 | 連接埠 `2096`，路徑 `/sub/` |
+| 使用者名稱 / 密碼 | `admin` / `admin` |
 
 ## 安裝
 
@@ -80,20 +85,19 @@ English · Farsi · Vietnamese · Chinese (Simplified) · Chinese (Traditional) 
 bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/main/install.sh)
 ```
 
-裝好後開啟 `http://<你的伺服器>:2095/app/`，以 `admin` / `admin` 登入。
-
-| | 預設值 |
-| --- | --- |
-| 面板 | 連接埠 `2095`，路徑 `/app/` |
-| 訂閱 | 連接埠 `2096`，路徑 `/sub/` |
-| 使用者名稱 / 密碼 | `admin` / `admin` |
-
-同時支援 systemd 與 OpenRC（Alpine），安裝腳本會自動選擇。腳本支援與面板相同的六種
-語言：`en`、`fa`、`ru`、`vi`、`zhcn`、`zhtw`，預設跟隨系統 `$LANG`，也可以手動指定，
-之後 `s-ui` 選單會沿用該語言：
+語言預設跟隨 `$LANG`，也可指定 `en`、`fa`、`ru`、`vi`、`zhcn`、`zhtw`：
 
 ```sh
 SUI_LANG=zhtw bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/main/install.sh)
+```
+
+### Alpine Linux
+
+Alpine 不預裝 `bash` 和 `curl`，先補上；腳本會識別 Alpine 並裝成 OpenRC 服務：
+
+```sh
+apk add bash curl
+bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/main/install.sh)
 ```
 
 ### Windows
@@ -170,7 +174,7 @@ VERSION=v1.5.5 && bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-u
 5. 依安裝精靈操作
 6. 透過 http://localhost:2095/app 存取面板
 
-**解除安裝**
+**解除安裝（systemd）**
 
 ```sh
 sudo -i
@@ -179,6 +183,19 @@ systemctl disable s-ui  --now
 
 rm -f /etc/systemd/system/sing-box.service
 systemctl daemon-reload
+
+rm -fr /usr/local/s-ui
+rm /usr/bin/s-ui
+```
+
+**解除安裝（OpenRC / Alpine）**
+
+```sh
+sudo -i
+
+rc-service s-ui stop
+rc-update del s-ui default
+rm -f /etc/init.d/s-ui
 
 rm -fr /usr/local/s-ui
 rm /usr/bin/s-ui
@@ -195,14 +212,6 @@ GitHub 也會提示。Linux 上（systemd 或 Docker）點一下即可原地升�
 > Windows 上執行中的 `.exe` 無法自我替換，版本標籤只會連到 release 頁面。
 > Docker 裡新的執行檔寫在容器可寫層：`docker restart` 後仍在，但重建容器會退回映像
 > 檔自帶的版本——想長期生效請拉取新映像檔。
-
-### 支援平台
-
-| 平台 | 架構 | 狀態 |
-| ---- | ---- | ---- |
-| Linux | amd64, arm64, armv7, armv6, armv5, 386, s390x | 支援 |
-| Windows | amd64, 386, arm64 | 支援 |
-| macOS | amd64, arm64 | 實驗性 |
 
 ## 多節點叢集
 

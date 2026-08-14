@@ -1,9 +1,9 @@
 # <img src="frontend/public/assets/favicon.svg" width="44" height="44" align="texttop" alt=""> 2S-UI
 [English](README.md) · [فارسی](README.fa.md) · [Tiếng Việt](README.vi.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [Русский](README.ru.md)
 
-2S-UI is an open-source management panel for [sing-box](https://github.com/SagerNet/sing-box), built for deploying and operating self-hosted proxy services. Protocol configuration, routing rules, users and subscriptions, and traffic statistics all live in one interface, in six languages and both themes; it runs on a single machine or across a cluster.
+2S-UI is an open-source management panel for [sing-box](https://github.com/SagerNet/sing-box). It gives you a clean, multilingual interface for deploying, configuring and monitoring a wide range of proxy and VPN protocols — from a single VPS to a multi-node deployment.
 
-2S-UI began as a fork of [s-ui](https://github.com/alireza0/s-ui). It rewrites the frontend in full and introduces multi-node clustering, automatic ACME certificate issuance and renewal, in-panel upgrades, and live user updates that leave established connections intact.
+2S-UI began as a fork of s-ui. The frontend is rewritten in full, with a range of features added on top to make the panel nicer to use.
 
 ![](https://img.shields.io/github/v/release/shenaba/2s-ui.svg)
 [![Docker Pulls](https://img.shields.io/docker/pulls/shenaba/2s-ui.svg)](https://hub.docker.com/r/shenaba/2s-ui)
@@ -13,37 +13,29 @@
 
 > **Disclaimer:** This project is only for personal learning and communication, please do not use it for illegal purposes, please do not use it in a production environment
 
-**If you think this project is helpful to you, you may wish to give a**:star2:
-
 ## Features
 
 - **Multi-protocol** — VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC,
-  AnyTLS and more, in and out, plus WireGuard/WARP/Tailscale endpoints
-  ([full list](#protocols))
-- **Central TLS** — Reality, uTLS fingerprints, XTLS; register a certificate
-  once, then pick it per inbound
-- **Routing rules** — match on domain, IP, port, protocol, process, user or
-  rule-set, combined with and/or. DNS gets its own rule list.
-- **Multi-inbound clients** — one client on many inbounds, each with a traffic
-  cap and expiry date; over either one it is disabled automatically
-- **Quota automation** — the clock can start on first use, and reset every N
-  days, bringing a depleted client back on its own
-- **Per-client IP cap** — bound how many source IPs one client may use at once;
-  the excess is disconnected and held off briefly, no fail2ban involved
-- **Live user updates** — editing a client rewrites the inbound's user table in
-  place instead of rebuilding the listener, so nobody else drops
+  AnyTLS and more, inbound and outbound, plus WireGuard, WARP and Tailscale
+  endpoints ([full list](#protocols)).
+- **Central TLS** — Reality, uTLS fingerprints, XTLS, and certificates
+  registered once then picked per inbound.
+- **Routing rules** — matching on domain, IP, port, protocol, process, user and
+  rule-set, combined with and/or, with a separate rule list for DNS.
+- **Client management** — traffic quota, expiry date, IP limit, live online
+  status, plus one-click share links, QR codes and subscriptions.
+- **Traffic statistics** — per inbound, per client and per outbound, with reset
+  controls.
 - **Subscriptions** — `link`, `json` and `clash` formats, usage and expiry
-  reported back to the client app, external links folded in
-- **Multi-node cluster** — monitor other 2S-UI panels, share users across them,
-  merge their servers into one subscription ([details](#multi-node-cluster))
+  reported back to the client app, external links folded in.
+- **Multi-node cluster** — node health monitoring, users shared across nodes,
+  every node's servers merged into one subscription
+  ([details](#multi-node-cluster)).
 - **Automatic HTTPS** — Let's Encrypt issuance and renewal, plus an automatic
-  nginx reverse proxy ([details](#domains--certificates))
-- **One-click updates** — upgrade in place from the panel, checksum-verified
-- **Live dashboard** — system resources, traffic, protocol mix, network
-  throughput, node health; every tile toggleable
-- **Access & locales** — several panel admins, expiring
-  [API tokens](https://github.com/shenaba/2s-ui/wiki/API-Documentation),
-  dark/light theme, six languages
+  nginx reverse proxy ([details](#domains--certificates)).
+- **One-click updates** — in-place upgrades from the panel, checksum-verified.
+- **Rebuilt interface** — a from-scratch frontend, hand-built components, dark
+  and light themes, six languages including RTL.
 
 <details id="protocols">
   <summary>Supported protocols</summary>
@@ -61,21 +53,35 @@ outbound reports that the binary was built without it.
 
 </details>
 
-<details>
-  <summary>Languages</summary>
+## Languages
 
 English · Farsi · Vietnamese · Chinese (Simplified) · Chinese (Traditional) · Russian
 
-</details>
+## Supported platforms
 
-<details>
-  <summary>Screenshots</summary>
+| Platform | Architecture | Status |
+|----------|--------------|---------|
+| Linux    | amd64, arm64, armv7, armv6, armv5, 386, s390x | ✅ Supported |
+| Windows  | amd64, 386, arm64 | ✅ Supported |
+| macOS    | amd64, arm64 | 🚧 Experimental |
+
+## Screenshots
 
 !["Main"](frontend/media/main.png)
 
-More screenshots: [frontend/screenshots.md](frontend/screenshots.md)
+[Other UI Screenshots](frontend/screenshots.md)
 
-</details>
+## API Documentation
+
+[API-Documentation Wiki](https://github.com/shenaba/2s-ui/wiki/API-Documentation)
+
+## Default Installation Information
+
+| | Default |
+| --- | --- |
+| Panel | port `2095`, path `/app/` |
+| Subscription | port `2096`, path `/sub/` |
+| User / password | `admin` / `admin` |
 
 ## Install
 
@@ -85,21 +91,21 @@ More screenshots: [frontend/screenshots.md](frontend/screenshots.md)
 bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/main/install.sh)
 ```
 
-Then open `http://<your-server>:2095/app/` and log in with `admin` / `admin`.
-
-| | Default |
-| --- | --- |
-| Panel | port `2095`, path `/app/` |
-| Subscription | port `2096`, path `/sub/` |
-| User / password | `admin` / `admin` |
-
-systemd and OpenRC (Alpine) are both supported; the installer picks the right
-one for your system. It speaks the same six languages as the panel — `en`, `fa`,
-`ru`, `vi`, `zhcn`, `zhtw` — following your system `$LANG`, or you can pick one,
-which the `s-ui` menu then remembers:
+The language follows `$LANG`, or pass `en`, `fa`, `ru`, `vi`, `zhcn` or
+`zhtw`:
 
 ```sh
 SUI_LANG=zhcn bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/main/install.sh)
+```
+
+### Alpine Linux
+
+Alpine ships neither `bash` nor `curl`. Add them first; the installer then
+detects Alpine and sets the panel up as an OpenRC service:
+
+```sh
+apk add bash curl
+bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-ui/main/install.sh)
 ```
 
 ### Windows
@@ -176,7 +182,7 @@ VERSION=v1.5.5 && bash <(curl -Ls https://raw.githubusercontent.com/shenaba/2s-u
 5. Follow the installation wizard
 6. Access the panel at http://localhost:2095/app
 
-**Uninstall**
+**Uninstall — systemd**
 
 ```sh
 sudo -i
@@ -185,6 +191,19 @@ systemctl disable s-ui  --now
 
 rm -f /etc/systemd/system/sing-box.service
 systemctl daemon-reload
+
+rm -fr /usr/local/s-ui
+rm /usr/bin/s-ui
+```
+
+**Uninstall — OpenRC (Alpine)**
+
+```sh
+sudo -i
+
+rc-service s-ui stop
+rc-update del s-ui default
+rm -f /etc/init.d/s-ui
 
 rm -fr /usr/local/s-ui
 rm /usr/bin/s-ui
@@ -204,14 +223,6 @@ binary, then replaces it and restarts. No SSH.
 > the release page. In Docker the new binary lives in the container's writable
 > layer: it survives `docker restart`, but recreating the container reverts to
 > the image's version — pull a new image to make it stick.
-
-### Supported platforms
-
-| Platform | Architecture | Status |
-|----------|--------------|---------|
-| Linux    | amd64, arm64, armv7, armv6, armv5, 386, s390x | ✅ Supported |
-| Windows  | amd64, 386, arm64 | ✅ Supported |
-| macOS    | amd64, arm64 | 🚧 Experimental |
 
 ## Multi-Node Cluster
 
