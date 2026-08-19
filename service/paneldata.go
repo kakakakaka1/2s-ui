@@ -24,11 +24,50 @@ type PanelDataService struct {
 	ServerService
 }
 
-// OnlinesPayload is the per-flush live data: which tags are online, plus the
+// OnlinesPayload is onlinesHalf plus the client list — the per-flush live push
+// and api/load's live answer, both of which have to carry it themselves.
+//
+// Everything here runs on the caller's goroutine, which is what lets
+// HubAfterStatsFlush call it straight after SaveStats and still read
+// onlineResources unsynchronized (see onlinesHalf). Keep it that way: moving
+// either read off this goroutine widens that access.
+func (s *PanelDataService) OnlinesPayload() (map[string]interface{}, error) {
+	data, err := s.onlinesHalf()
+	if err != nil {
+		return nil, err
+	}
+	// Client up/down is rewritten by every stats flush, which does not mark
+	// LastUpdate -- so it rides the live payload rather than waiting for a
+	// config push that may never come on a panel nobody is editing. Sending it
+	// here is what keeps the traffic columns, quota bars and per-client totals
+	// moving.
+	//
+	// Versioned off the same counter the config half uses, and allocated BEFORE
+	// the read for the same reason: the two payload kinds are built on
+	// different goroutines, so a list read here can still be enqueued after a
+	// full payload built later, and applying it would put pre-change rows back
+	// on screen. One shared counter gives both kinds a total order, so the
+	// client can always tell which list was read last.
+	clientsSeq := configSeq.Add(1)
+	clients, err := s.ClientService.GetAll()
+	if err != nil {
+		return nil, err
+	}
+	data["clients"] = clients
+	data["clientsSeq"] = clientsSeq
+	return data, nil
+}
+
+// onlinesHalf is the per-flush live data: which tags are online, plus the
 // newest core log line when sing-box is down (the UI surfaces it as a toast).
 // Callers that run on the StatsJob goroutine right after SaveStats get a value
 // snapshot of onlineResources before anything crosses a goroutine boundary.
-func (s *PanelDataService) OnlinesPayload() (map[string]interface{}, error) {
+//
+// Split out of OnlinesPayload for FullPayload's sake: that one takes its client
+// list from the config half, so going through OnlinesPayload had it scan the
+// whole clients table only to overwrite the result a few lines later — and on a
+// config-cache hit that discarded scan was the only query the call ran.
+func (s *PanelDataService) onlinesHalf() (map[string]interface{}, error) {
 	data := make(map[string]interface{})
 	onlines, err := s.StatsService.GetOnlines()
 
@@ -100,6 +139,16 @@ var configSeq atomic.Uint64
 
 func init() {
 	configSeq.Store(uint64(time.Now().UnixMilli()))
+}
+
+// NextConfigSeq allocates a version for a client list assembled outside this
+// package — api/save and api/clients answer with the whole list, and an
+// unversioned one leaves the SPA's high-water mark untouched, so a live push
+// that read the table before the save could still land after it and put the old
+// rows back. Call it BEFORE the read, for the same reason configHalf does: the
+// version has to order this read against a later one.
+func NextConfigSeq() uint64 {
+	return configSeq.Add(1)
 }
 
 // configCacheUsable is the whole staleness decision, kept pure so it can be
@@ -214,8 +263,10 @@ func (s *PanelDataService) FullPayload(hostname string) (map[string]interface{},
 		return nil, err
 	}
 	// The live half is never cached — onlines and the core's last log move on
-	// their own schedule, not the config's.
-	data, err := s.OnlinesPayload()
+	// their own schedule, not the config's. onlinesHalf rather than
+	// OnlinesPayload: the client list below comes from cfg, so reading a second
+	// one here would only be overwritten.
+	data, err := s.onlinesHalf()
 	if err != nil {
 		return nil, err
 	}
@@ -224,6 +275,10 @@ func (s *PanelDataService) FullPayload(hostname string) (map[string]interface{},
 	}
 	data["lu"] = stamp
 	data["cseq"] = seq
+	// The client list came from cfg, so its version is the config half's --
+	// claiming a newer read than the rows actually carry would make the next
+	// live push look stale.
+	data["clientsSeq"] = seq
 	s.attachNodesStatus(data)
 	return data, nil
 }
