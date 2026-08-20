@@ -39,6 +39,8 @@ type ApiService struct {
 	service.LoginGuardService
 }
 
+const twoFaIssuer = "2s-ui"
+
 func (a *ApiService) UpdateInfo(c *gin.Context) {
 	canUpdate, reason := a.UpdateService.CanSelfUpdate()
 	jsonObj(c, map[string]interface{}{
@@ -385,14 +387,14 @@ func (a *ApiService) TwoFaSetup(c *gin.Context) {
 	}
 
 	// The host goes in the account name so a phone enrolled against several
-	// panels shows which is which -- they would otherwise all read "s-ui: admin".
+	// panels shows which is which -- they would otherwise all read "2s-ui: admin".
 	account := loginUser
 	if host := getHostname(c); host != "" {
 		account += "@" + host
 	}
 	jsonObj(c, map[string]interface{}{
 		"secret": secret,
-		"uri":    util.TOTPKeyURI(secret, account, config.GetName()),
+		"uri":    util.TOTPKeyURI(secret, account, twoFaIssuer),
 	}, nil)
 }
 
