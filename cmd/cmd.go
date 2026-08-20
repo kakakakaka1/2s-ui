@@ -26,6 +26,8 @@ func ParseCmd() {
 	var subPath string
 	var reset bool
 	var show bool
+	var disableTwoFa bool
+	var unlockLogin bool
 	var output string
 	var exclude string
 	backupCmd.StringVar(&output, "output", "", "backup output file path (use - for stdout)")
@@ -41,6 +43,8 @@ func ParseCmd() {
 	adminCmd.BoolVar(&reset, "reset", false, "reset first admin credentials")
 	adminCmd.StringVar(&username, "username", "", "set login username")
 	adminCmd.StringVar(&password, "password", "", "set login password")
+	adminCmd.BoolVar(&disableTwoFa, "disable-2fa", false, "turn off two-factor authentication (recovery for a lost authenticator)")
+	adminCmd.BoolVar(&unlockLogin, "unlock", false, "clear login rate-limit counts and bans")
 
 	oldUsage := flag.Usage
 	flag.Usage = func() {
@@ -87,6 +91,10 @@ func ParseCmd() {
 			showAdmin()
 		case reset:
 			resetAdmin()
+		case disableTwoFa:
+			disableAdminTwoFa()
+		case unlockLogin:
+			unlockAdminLogin()
 		default:
 			updateAdmin(username, password)
 			showAdmin()
