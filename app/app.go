@@ -10,6 +10,8 @@ import (
 	"github.com/shenaba/2s-ui/database"
 	"github.com/shenaba/2s-ui/logger"
 	"github.com/shenaba/2s-ui/service"
+	"github.com/shenaba/2s-ui/service/notify"
+	"github.com/shenaba/2s-ui/service/tgbot"
 	"github.com/shenaba/2s-ui/sub"
 	"github.com/shenaba/2s-ui/web"
 
@@ -96,6 +98,18 @@ func (a *APP) Start() error {
 	// the web server accepts the first upgrade.
 	service.StartHub()
 
+	// Notifications come up alongside the hub and before the cron jobs, so the
+	// very first node probe or core start already has somewhere to report to.
+	// GetNotifyConfig is passed as a method value rather than a snapshot: it is
+	// called per event, which is what makes a settings change take effect
+	// without a restart.
+	notify.Start(a.SettingService.GetNotifyConfig)
+
+	// The interactive bot supervises itself: it stays idle while switched off
+	// and reconnects on its own when the token changes, so there is nothing to
+	// re-read here on a settings save.
+	tgbot.Start()
+
 	err = a.cronJob.Start(loc, trafficAge, statsBucketSeconds, globalReset)
 	if err != nil {
 		return err
@@ -171,6 +185,10 @@ func (a *APP) Stop() {
 	// race the teardown. Shutdown ignores hijacked connections — closing the
 	// live sockets is the hub's job, or every restart leaks them.
 	service.StopHub()
+	// After the servers and before the core: a core teardown that reports a
+	// failure should still find the notifier up.
+	tgbot.Stop()
+	notify.Stop()
 	err = a.configService.StopCore()
 	if err != nil {
 		logger.Warning("stop Core err:", err)
