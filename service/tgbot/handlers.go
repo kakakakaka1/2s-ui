@@ -1,6 +1,7 @@
 package tgbot
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strconv"
@@ -39,6 +40,8 @@ const (
 
 // dispatch is the single entry point the SDK calls for every update.
 func dispatch(ctx context.Context, b *bot.Bot, update *models.Update) {
+	// Once per update, not once per translated string -- see langCache.
+	refreshLang()
 	switch {
 	case update.CallbackQuery != nil:
 		onCallback(ctx, b, update.CallbackQuery)
@@ -52,6 +55,19 @@ func onMessage(ctx context.Context, b *bot.Bot, msg *models.Message) {
 	r, boundClient := roleOf(chatID)
 	text := strings.TrimSpace(msg.Text)
 
+	// A contact chosen from the picker arrives as a service message carrying no
+	// text, so it has to be taken before the form below, which would otherwise
+	// read it as an empty answer and complain. Admin-only, like every other way
+	// of writing a binding: the reply names somebody else's account.
+	if msg.UsersShared != nil {
+		if r == roleAdmin {
+			onUsersShared(ctx, b, chatID, msg.UsersShared)
+		}
+		return
+	}
+
+	cmd, arg := parseCommand(text)
+
 	// A form in progress consumes plain text; a command cancels it, so a stuck
 	// conversation is always escapable by typing /start. Only admins ever have
 	// one -- nothing an end user can reach asks a question.
@@ -62,10 +78,22 @@ func onMessage(ctx context.Context, b *bot.Bot, msg *models.Message) {
 				return
 			}
 		}
-		forms.clear(chatID)
+		// /start only. It is the cancel the binding prompt names, and the one
+		// command that means "abandon this" rather than "show me that" -- so it
+		// is the one that takes the contact picker away and says so. Disarming
+		// on every command turned /clients and /status into abandonments the
+		// operator never asked for.
+		if cmd == "start" {
+			disarmBindPrompt(ctx, b, chatID)
+		}
+		// /id is the exception, because it belongs to this workflow rather than
+		// interrupting it: the prompt invites a typed id, and the comment below
+		// is about how someone finds theirs. Clearing here left the operator
+		// with no form to answer into.
+		if cmd != "id" {
+			forms.clear(chatID)
+		}
 	}
-
-	cmd, arg := parseCommand(text)
 
 	// Answered for everybody, before the role check. Binding a client needs
 	// their numeric id, and the person who has it is the one who cannot read
@@ -281,8 +309,11 @@ func sendBackup(ctx context.Context, b *bot.Bot, chatID int64) {
 	}
 	name := "2s-ui-" + notify.Host() + ".db"
 	if _, err := b.SendDocument(ctx, &bot.SendDocumentParams{
+		// bytes, not strings.NewReader(string(data)): the export is already a
+		// []byte and a database is tens of megabytes, so the conversion was a
+		// second full copy held for the length of the upload.
 		ChatID:   chatID,
-		Document: &models.InputFileUpload{Filename: name, Data: strings.NewReader(string(data))},
+		Document: &models.InputFileUpload{Filename: name, Data: bytes.NewReader(data)},
 	}); err != nil {
 		reply(ctx, b, chatID, t("backup.failed", p("detail", err.Error())), mainMenu())
 	}

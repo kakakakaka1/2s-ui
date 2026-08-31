@@ -1,6 +1,8 @@
 package tgbot
 
 import (
+	"sync/atomic"
+
 	"github.com/shenaba/2s-ui/service"
 	"github.com/shenaba/2s-ui/service/notify"
 )
@@ -55,6 +57,7 @@ var botMessages = map[string]map[string]string{
 		"btn.search":    "Search",
 		"btn.prev":      "‹ Prev",
 		"btn.next":      "Next ›",
+		"btn.links":     "Links",
 
 		"unknownCmd": "Unknown command.",
 		"expired":    "That button has expired. Open the menu again with /start.",
@@ -114,6 +117,7 @@ var botMessages = map[string]map[string]string{
 		"client.upDown":       "Up {up} · Down {down}",
 		"client.group":        "Group: {group}",
 		"client.telegram":     "Telegram: {id}",
+		"client.desc":         "Description: {desc}",
 
 		"client.confirmToggleOn":  "Enable client {name}?",
 		"client.confirmToggleOff": "Disable client {name}?",
@@ -122,10 +126,14 @@ var botMessages = map[string]map[string]string{
 		"client.doneDisabled":     "{name}: disabled.",
 		"client.doneReset":        "{name}: traffic reset.",
 
-		"bind.prompt":  "Send the Telegram user id to bind to {name}.\nSend 0 to unbind. /start cancels.",
-		"bind.invalid": "Send a numeric Telegram user id, or 0 to unbind.",
-		"bind.removed": "{name}: Telegram binding removed.",
-		"bind.done":    "{name}: bound to Telegram id {id}.",
+		"bind.prompt":    "Choose {name}'s Telegram account below, or send the numeric user id.\nSend 0 to unbind. /start cancels.",
+		"bind.pick":      "Choose from contacts",
+		"bind.pickEmpty": "Nobody was chosen. Nothing changed.",
+		"bind.pickStale": "That client no longer exists. Nothing changed.",
+		"bind.invalid":   "Send a numeric Telegram user id, or 0 to unbind.",
+		"bind.removed":   "{name}: Telegram binding removed.",
+		"bind.done":      "{name}: bound to Telegram id {id}.",
+		"bind.taken":     "Telegram id {id} is already bound to {name}. Unbind it there first.",
 
 		"form.name":       "New client — send a name.\nSend /start at any point to cancel.",
 		"form.nameEmpty":  "The name cannot be empty. Send a name.",
@@ -151,6 +159,14 @@ var botMessages = map[string]map[string]string{
 		"self.unlimited":   "Traffic: {used} / unlimited",
 		"self.disabled":    "Status: disabled",
 		"self.sub":         "Subscription:",
+		"links.none":       "No links for this client yet.",
+		"links.title":      "Subscriptions and links ({count}) - pick one for its QR code",
+		"links.subBase":    "Subscription",
+		"links.subClash":   "Subscription (Clash)",
+		"links.subJson":    "Subscription (sing-box)",
+		"links.more":       "and {count} more, in the panel",
+		"links.unnamed":    "Link {n}",
+		"links.noQr":       "That link could not be turned into a QR code, but the text above works.",
 	},
 	"zhHans": {
 		"cmd.start":    "显示菜单",
@@ -190,6 +206,7 @@ var botMessages = map[string]map[string]string{
 		"btn.search":    "搜索",
 		"btn.prev":      "‹ 上一页",
 		"btn.next":      "下一页 ›",
+		"btn.links":     "链接",
 
 		"unknownCmd": "未知命令。",
 		"expired":    "这个按钮已过期，发 /start 重新打开菜单。",
@@ -249,6 +266,7 @@ var botMessages = map[string]map[string]string{
 		"client.upDown":       "上行 {up} · 下行 {down}",
 		"client.group":        "分组：{group}",
 		"client.telegram":     "Telegram：{id}",
+		"client.desc":         "描述：{desc}",
 
 		"client.confirmToggleOn":  "启用客户端 {name}？",
 		"client.confirmToggleOff": "停用客户端 {name}？",
@@ -257,10 +275,14 @@ var botMessages = map[string]map[string]string{
 		"client.doneDisabled":     "{name}：已停用。",
 		"client.doneReset":        "{name}：流量已重置。",
 
-		"bind.prompt":  "发送要绑定到 {name} 的 Telegram 用户 ID。\n发 0 解除绑定，发 /start 取消。",
-		"bind.invalid": "请发送数字形式的 Telegram 用户 ID，或发 0 解除绑定。",
-		"bind.removed": "{name}：已解除 Telegram 绑定。",
-		"bind.done":    "{name}：已绑定到 Telegram ID {id}。",
+		"bind.prompt":    "在下方选择 {name} 的 Telegram 账号，或直接发送数字用户 ID。\n发送 0 解除绑定。/start 取消。",
+		"bind.pick":      "从联系人选择",
+		"bind.pickEmpty": "没有选择任何人，未做改动。",
+		"bind.pickStale": "这个客户端已不存在，未做改动。",
+		"bind.invalid":   "请发送数字形式的 Telegram 用户 ID，或发 0 解除绑定。",
+		"bind.removed":   "{name}：已解除 Telegram 绑定。",
+		"bind.done":      "{name}：已绑定到 Telegram ID {id}。",
+		"bind.taken":     "Telegram ID {id} 已经绑定在 {name} 上，请先在那边解绑。",
 
 		"form.name":       "新建客户端 — 请发送名称。\n任何时候发 /start 都可取消。",
 		"form.nameEmpty":  "名称不能为空，请发送一个名称。",
@@ -286,6 +308,14 @@ var botMessages = map[string]map[string]string{
 		"self.unlimited":   "流量：{used} / 不限",
 		"self.disabled":    "状态：已停用",
 		"self.sub":         "订阅地址：",
+		"links.none":       "这个客户端还没有链接。",
+		"links.title":      "订阅与链接（{count}）- 选一条查看二维码",
+		"links.subBase":    "订阅（通用）",
+		"links.subClash":   "订阅（Clash）",
+		"links.subJson":    "订阅（sing-box）",
+		"links.more":       "另有 {count} 条，请在面板查看",
+		"links.unnamed":    "链接 {n}",
+		"links.noQr":       "这条链接无法生成二维码，但上面的文本可以直接用。",
 	},
 	"zhHant": {
 		"cmd.start":    "顯示選單",
@@ -325,6 +355,7 @@ var botMessages = map[string]map[string]string{
 		"btn.search":    "搜尋",
 		"btn.prev":      "‹ 上一頁",
 		"btn.next":      "下一頁 ›",
+		"btn.links":     "連結",
 
 		"unknownCmd": "未知指令。",
 		"expired":    "這個按鈕已過期，發送 /start 重新開啟選單。",
@@ -384,6 +415,7 @@ var botMessages = map[string]map[string]string{
 		"client.upDown":       "上行 {up} · 下行 {down}",
 		"client.group":        "分組：{group}",
 		"client.telegram":     "Telegram：{id}",
+		"client.desc":         "描述：{desc}",
 
 		"client.confirmToggleOn":  "啟用客戶端 {name}？",
 		"client.confirmToggleOff": "停用客戶端 {name}？",
@@ -392,10 +424,14 @@ var botMessages = map[string]map[string]string{
 		"client.doneDisabled":     "{name}：已停用。",
 		"client.doneReset":        "{name}：流量已重設。",
 
-		"bind.prompt":  "傳送要綁定到 {name} 的 Telegram 使用者 ID。\n發送 0 解除綁定，發送 /start 取消。",
-		"bind.invalid": "請傳送數字形式的 Telegram 使用者 ID，或發送 0 解除綁定。",
-		"bind.removed": "{name}：已解除 Telegram 綁定。",
-		"bind.done":    "{name}：已綁定到 Telegram ID {id}。",
+		"bind.prompt":    "在下方選擇 {name} 的 Telegram 帳號，或直接傳送數字使用者 ID。\n傳送 0 解除綁定。/start 取消。",
+		"bind.pick":      "從聯絡人選擇",
+		"bind.pickEmpty": "沒有選擇任何人，未做改動。",
+		"bind.pickStale": "這個客戶端已不存在，未做改動。",
+		"bind.invalid":   "請傳送數字形式的 Telegram 使用者 ID，或發送 0 解除綁定。",
+		"bind.removed":   "{name}：已解除 Telegram 綁定。",
+		"bind.done":      "{name}：已綁定到 Telegram ID {id}。",
+		"bind.taken":     "Telegram ID {id} 已經綁定在 {name} 上，請先在那邊解除綁定。",
 
 		"form.name":       "新增客戶端 — 請傳送名稱。\n任何時候發送 /start 都可取消。",
 		"form.nameEmpty":  "名稱不能為空，請傳送一個名稱。",
@@ -421,6 +457,14 @@ var botMessages = map[string]map[string]string{
 		"self.unlimited":   "流量：{used} / 不限",
 		"self.disabled":    "狀態：已停用",
 		"self.sub":         "訂閱網址：",
+		"links.none":       "這個客戶端還沒有連結。",
+		"links.title":      "訂閱與連結（{count}）- 選一條查看 QR code",
+		"links.subBase":    "訂閱（通用）",
+		"links.subClash":   "訂閱（Clash）",
+		"links.subJson":    "訂閱（sing-box）",
+		"links.more":       "另有 {count} 條，請在面板查看",
+		"links.unnamed":    "連結 {n}",
+		"links.noQr":       "這條連結無法產生 QR code，但上面的文字可以直接用。",
 	},
 	"ru": {
 		"cmd.start":               "Показать меню",
@@ -459,6 +503,7 @@ var botMessages = map[string]map[string]string{
 		"btn.search":              "Поиск",
 		"btn.prev":                "‹ Назад",
 		"btn.next":                "Вперёд ›",
+		"btn.links":               "Ссылки",
 		"unknownCmd":              "Неизвестная команда.",
 		"expired":                 "Кнопка устарела. Откройте меню заново через /start.",
 		"cancelled":               "Отменено.",
@@ -513,16 +558,21 @@ var botMessages = map[string]map[string]string{
 		"client.upDown":           "Отдача {up} · Приём {down}",
 		"client.group":            "Группа: {group}",
 		"client.telegram":         "Telegram: {id}",
+		"client.desc":             "Описание: {desc}",
 		"client.confirmToggleOn":  "Включить клиента {name}?",
 		"client.confirmToggleOff": "Отключить клиента {name}?",
 		"client.confirmReset":     "Сбросить счётчики трафика для {name}?",
 		"client.doneEnabled":      "{name}: включён.",
 		"client.doneDisabled":     "{name}: отключён.",
 		"client.doneReset":        "{name}: трафик сброшен.",
-		"bind.prompt":             "Отправьте Telegram id для привязки к {name}.\n0 — отвязать, /start — отмена.",
+		"bind.prompt":             "Выберите аккаунт Telegram для {name} ниже или отправьте числовой id.\nОтправьте 0, чтобы отвязать. /start отменяет.",
+		"bind.pick":               "Выбрать из контактов",
+		"bind.pickEmpty":          "Никто не выбран. Ничего не изменилось.",
+		"bind.pickStale":          "Такого клиента больше нет. Ничего не изменилось.",
 		"bind.invalid":            "Отправьте числовой Telegram id или 0, чтобы отвязать.",
 		"bind.removed":            "{name}: привязка Telegram снята.",
 		"bind.done":               "{name}: привязан к Telegram id {id}.",
+		"bind.taken":              "Telegram id {id} уже привязан к {name}. Сначала отвяжите его там.",
 		"form.name":               "Новый клиент — отправьте имя.\nВ любой момент /start отменит.",
 		"form.nameEmpty":          "Имя не может быть пустым. Отправьте имя.",
 		"form.nameTaken":          "Клиент {name} уже существует. Отправьте другое имя.",
@@ -546,6 +596,14 @@ var botMessages = map[string]map[string]string{
 		"self.unlimited":          "Трафик: {used} / без лимита",
 		"self.disabled":           "Статус: отключён",
 		"self.sub":                "Подписка:",
+		"links.none":              "У этого клиента ещё нет ссылок.",
+		"links.title":             "Подписки и ссылки ({count}) - выберите одну для QR-кода",
+		"links.subBase":           "Подписка",
+		"links.subClash":          "Подписка (Clash)",
+		"links.subJson":           "Подписка (sing-box)",
+		"links.more":              "и ещё {count}, в панели",
+		"links.unnamed":           "Ссылка {n}",
+		"links.noQr":              "Для этой ссылки не удалось создать QR-код, но текст выше рабочий.",
 	},
 	"fa": {
 		"cmd.start":               "نمایش منو",
@@ -584,6 +642,7 @@ var botMessages = map[string]map[string]string{
 		"btn.search":              "جستجو",
 		"btn.prev":                "‹ قبلی",
 		"btn.next":                "بعدی ›",
+		"btn.links":               "لینک‌ها",
 		"unknownCmd":              "دستور ناشناخته.",
 		"expired":                 "این دکمه منقضی شده است. با /start منو را دوباره باز کنید.",
 		"cancelled":               "لغو شد.",
@@ -638,16 +697,21 @@ var botMessages = map[string]map[string]string{
 		"client.upDown":           "ارسال {up} · دریافت {down}",
 		"client.group":            "گروه: {group}",
 		"client.telegram":         "تلگرام: {id}",
+		"client.desc":             "توضیح: {desc}",
 		"client.confirmToggleOn":  "کاربر {name} فعال شود؟",
 		"client.confirmToggleOff": "کاربر {name} غیرفعال شود؟",
 		"client.confirmReset":     "ترافیک {name} صفر شود؟",
 		"client.doneEnabled":      "{name}: فعال شد.",
 		"client.doneDisabled":     "{name}: غیرفعال شد.",
 		"client.doneReset":        "{name}: ترافیک صفر شد.",
-		"bind.prompt":             "شناسه کاربری تلگرام را برای اتصال به {name} بفرستید.\n۰ برای قطع اتصال، /start برای لغو.",
+		"bind.prompt":             "حساب تلگرام {name} را از پایین انتخاب کنید یا شناسه عددی را بفرستید.\nبرای حذف اتصال 0 بفرستید. /start لغو می‌کند.",
+		"bind.pick":               "انتخاب از مخاطبین",
+		"bind.pickEmpty":          "کسی انتخاب نشد. چیزی تغییر نکرد.",
+		"bind.pickStale":          "این کاربر دیگر وجود ندارد. چیزی تغییر نکرد.",
 		"bind.invalid":            "یک شناسه عددی تلگرام بفرستید، یا ۰ برای قطع اتصال.",
 		"bind.removed":            "{name}: اتصال تلگرام قطع شد.",
 		"bind.done":               "{name}: به شناسه تلگرام {id} متصل شد.",
+		"bind.taken":              "شناسه تلگرام {id} از قبل به {name} متصل است. اول آن را قطع کنید.",
 		"form.name":               "کاربر جدید — یک نام بفرستید.\nهر لحظه با /start لغو می‌شود.",
 		"form.nameEmpty":          "نام نمی‌تواند خالی باشد. یک نام بفرستید.",
 		"form.nameTaken":          "کاربری با نام {name} از قبل وجود دارد. نام دیگری بفرستید.",
@@ -671,6 +735,14 @@ var botMessages = map[string]map[string]string{
 		"self.unlimited":          "ترافیک: {used} / نامحدود",
 		"self.disabled":           "وضعیت: غیرفعال",
 		"self.sub":                "اشتراک:",
+		"links.none":              "هنوز لینکی برای این کاربر وجود ندارد.",
+		"links.title":             "اشتراک‌ها و لینک‌ها ({count}) - یکی را برای کد QR انتخاب کنید",
+		"links.subBase":           "اشتراک",
+		"links.subClash":          "اشتراک (Clash)",
+		"links.subJson":           "اشتراک (sing-box)",
+		"links.more":              "و {count} مورد دیگر، در پنل",
+		"links.unnamed":           "لینک {n}",
+		"links.noQr":              "برای این لینک نمی‌توان کد QR ساخت، اما متن بالا کار می‌کند.",
 	},
 	"vi": {
 		"cmd.start":               "Hiện menu",
@@ -709,6 +781,7 @@ var botMessages = map[string]map[string]string{
 		"btn.search":              "Tìm kiếm",
 		"btn.prev":                "‹ Trước",
 		"btn.next":                "Sau ›",
+		"btn.links":               "Liên kết",
 		"unknownCmd":              "Lệnh không xác định.",
 		"expired":                 "Nút này đã hết hạn. Gửi /start để mở lại menu.",
 		"cancelled":               "Đã hủy.",
@@ -763,16 +836,21 @@ var botMessages = map[string]map[string]string{
 		"client.upDown":           "Lên {up} · Xuống {down}",
 		"client.group":            "Nhóm: {group}",
 		"client.telegram":         "Telegram: {id}",
+		"client.desc":             "Mô tả: {desc}",
 		"client.confirmToggleOn":  "Bật client {name}?",
 		"client.confirmToggleOff": "Tắt client {name}?",
 		"client.confirmReset":     "Đặt lại bộ đếm lưu lượng cho {name}?",
 		"client.doneEnabled":      "{name}: đã bật.",
 		"client.doneDisabled":     "{name}: đã tắt.",
 		"client.doneReset":        "{name}: đã đặt lại lưu lượng.",
-		"bind.prompt":             "Gửi Telegram id để liên kết với {name}.\nGửi 0 để hủy liên kết, /start để hủy bỏ.",
+		"bind.prompt":             "Chọn tài khoản Telegram của {name} bên dưới, hoặc gửi user id dạng số.\nGửi 0 để hủy liên kết. /start để hủy.",
+		"bind.pick":               "Chọn từ danh bạ",
+		"bind.pickEmpty":          "Chưa chọn ai. Không có gì thay đổi.",
+		"bind.pickStale":          "Client đó không còn tồn tại. Không có gì thay đổi.",
 		"bind.invalid":            "Gửi một Telegram id dạng số, hoặc 0 để hủy liên kết.",
 		"bind.removed":            "{name}: đã hủy liên kết Telegram.",
 		"bind.done":               "{name}: đã liên kết với Telegram id {id}.",
+		"bind.taken":              "Telegram id {id} đã liên kết với {name}. Hãy hủy liên kết ở đó trước.",
 		"form.name":               "Client mới — gửi một tên.\nGửi /start bất cứ lúc nào để hủy.",
 		"form.nameEmpty":          "Tên không được để trống. Gửi một tên.",
 		"form.nameTaken":          "Đã có client tên {name}. Gửi tên khác.",
@@ -796,23 +874,52 @@ var botMessages = map[string]map[string]string{
 		"self.unlimited":          "Lưu lượng: {used} / không giới hạn",
 		"self.disabled":           "Trạng thái: đã tắt",
 		"self.sub":                "Đăng ký:",
+		"links.none":              "Client này chưa có liên kết nào.",
+		"links.title":             "Đăng ký và liên kết ({count}) - chọn một để xem mã QR",
+		"links.subBase":           "Đăng ký",
+		"links.subClash":          "Đăng ký (Clash)",
+		"links.subJson":           "Đăng ký (sing-box)",
+		"links.more":              "và {count} nữa, xem trong panel",
+		"links.unnamed":           "Liên kết {n}",
+		"links.noQr":              "Không tạo được mã QR cho liên kết này, nhưng văn bản ở trên vẫn dùng được.",
 	},
 }
 
-// t translates one key into the operator's notification language.
+// langCache holds the language for the update being handled. Always a string.
 //
-// The language is read per message rather than captured at connect, for the
-// same reason the admin list is: a settings change should take effect on the
-// next message, not on the next reconnect.
-func t(key string, params map[string]string) string {
+// t() is called once per button label and once per line of every listing -- a
+// full client list is around fifty -- and each call used to read the settings
+// table for a value that cannot change halfway through composing one reply.
+// refreshLang resolves it when the update arrives instead, so the read happens
+// once per message rather than once per word. A settings change still takes
+// effect on the next message, which is all the per-call read ever bought.
+var langCache atomic.Value
+
+// refreshLang re-resolves the language for one update. Called from dispatch,
+// and from runSession before the command menus go out, which is the one place
+// wording is produced outside an update.
+func refreshLang() {
 	var settingService service.SettingService
-	return notify.Translate(botMessages, settingService.GetBotConfig().Lang, key, params)
+	langCache.Store(settingService.GetBotConfig().Lang)
 }
 
-// botLang is the language every reply is rendered in.
+// botLang is the language every reply is rendered in. It falls back to reading
+// the setting so that anything reached before the first refresh -- a test, an
+// early error path -- still renders in the operator's language rather than
+// English.
 func botLang() string {
+	if lang, ok := langCache.Load().(string); ok && lang != "" {
+		return lang
+	}
 	var settingService service.SettingService
-	return settingService.GetBotConfig().Lang
+	lang := settingService.GetBotConfig().Lang
+	langCache.Store(lang)
+	return lang
+}
+
+// t translates one key into the operator's notification language.
+func t(key string, params map[string]string) string {
+	return notify.Translate(botMessages, botLang(), key, params)
 }
 
 // nodeStateText translates the probe states NodeStatus reports.

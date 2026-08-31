@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -33,20 +32,20 @@ func onCallback(ctx context.Context, b *bot.Bot, q *models.CallbackQuery) {
 		logger.Warning("tgbot: ignoring a callback from unauthorised chat ", chatID)
 		return
 	}
-	// Always answer, even when the action fails: an unanswered callback leaves
-	// a spinner on the button until Telegram times it out.
-	defer func() {
-		if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: q.ID}); err != nil {
-			logger.Debug("tgbot: answering the callback failed: ", err)
-		}
-	}()
+	// Answered before the action runs, not after it: an unanswered callback
+	// leaves a spinner on the button until Telegram times it out, and the
+	// actions worth pressing are the slow ones -- a database upload, a QR
+	// render, a core restart. Deferring this until they finished meant the
+	// answer arrived after the spinner had already timed out, against a
+	// callback id Telegram had expired. Failing to answer is cosmetic, so it
+	// must not stop the action either.
+	if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: q.ID}); err != nil {
+		logger.Debug("tgbot: answering the callback failed: ", err)
+	}
 
 	data := q.Data
 	if r == roleClient {
-		// The only button an end user is ever sent.
-		if data == staticPrefix+"self" {
-			sendSelfUsage(ctx, b, chatID, boundClient)
-		}
+		onClientCallback(ctx, b, chatID, boundClient, data)
 		return
 	}
 
@@ -66,7 +65,51 @@ func onCallback(ctx context.Context, b *bot.Bot, q *models.CallbackQuery) {
 	}
 }
 
+// onClientCallback handles the buttons an end user is sent.
+//
+// None of them carries a client name: every one acts on the client roleOf
+// resolved from the chat. That is the same rule the message path follows -- with
+// no name in the input there is nothing to point at somebody else's account --
+// and it is why the link buttons here carry only an index.
+func onClientCallback(ctx context.Context, b *bot.Bot, chatID int64, name, data string) {
+	switch {
+	case data == staticPrefix+"self":
+		sendSelfUsage(ctx, b, chatID, name)
+	case data == staticPrefix+"self.links":
+		sendClientLinks(ctx, b, chatID, name, true)
+	case strings.HasPrefix(data, payloadPrefix):
+		payload, ok := payloads.get(strings.TrimPrefix(data, payloadPrefix))
+		if !ok {
+			reply(ctx, b, chatID, t("expired", nil), nil)
+			return
+		}
+		verb, arg, _ := strings.Cut(payload, "|")
+		if verb != "selflink" {
+			return
+		}
+		index, err := strconv.Atoi(arg)
+		if err != nil {
+			return
+		}
+		sendClientLink(ctx, b, chatID, name, index, true)
+	}
+}
+
 func onStaticCallback(ctx context.Context, b *bot.Bot, chatID int64, action string) {
+	// A button press navigates away from whatever was in progress, exactly as a
+	// typed command does. Without this a bind prompt left behind by an earlier
+	// tap stayed live, and the next bare number the operator sent for something
+	// else was swallowed as its answer. The contact picker is left alone --
+	// only an explicit cancel withdraws a binding -- which is why the disarm
+	// has to read the form before it goes. The two actions that raise a form
+	// set it again in the switch below.
+	//
+	// onPayloadCallback does the same for the buttons that carry an argument;
+	// the two have to stay in step, because between them they are every button
+	// this bot draws.
+	cancelled := action == "cancel" && disarmBindPrompt(ctx, b, chatID)
+	forms.clear(chatID)
+
 	switch action {
 	case "status":
 		reply(ctx, b, chatID, service.StatusDigest(botLang()), mainMenu())
@@ -111,7 +154,12 @@ func onStaticCallback(ctx context.Context, b *bot.Bot, chatID int64, action stri
 		forms.set(chatID, stepClientName, clientDraft{})
 		reply(ctx, b, chatID, t("form.name", nil), nil)
 	case "cancel":
-		forms.clear(chatID)
+		// A cancelled binding has already been answered by the removal above,
+		// and the card that raised the prompt still carries its own buttons --
+		// a second "cancelled" with the menu under it would only repeat itself.
+		if cancelled {
+			return
+		}
 		reply(ctx, b, chatID, t("cancelled", nil), mainMenu())
 	}
 }
@@ -120,6 +168,20 @@ func onStaticCallback(ctx context.Context, b *bot.Bot, chatID int64, action stri
 // verb|argument; a trailing ! on the verb means the operator has confirmed.
 func onPayloadCallback(ctx context.Context, b *bot.Bot, chatID int64, payload string) {
 	verb, arg, _ := strings.Cut(payload, "|")
+	// The same rule onStaticCallback follows, and the half that matters more:
+	// tapping a client's name is a payload callback, so without this a bind
+	// prompt raised for one client stayed live while another client's card was
+	// on screen, and the next number typed bound the one no longer being looked
+	// at. The picker is left alone here too -- only an explicit cancel
+	// withdraws a binding.
+	//
+	// client.create! is the exception: it is the confirm button for the very
+	// form it is about to read. bind needs no exception, because it replaces
+	// the form immediately afterwards.
+	if verb != "client.create!" {
+		forms.clear(chatID)
+	}
+
 	switch verb {
 	case "client":
 		sendClientCard(ctx, b, chatID, arg)
@@ -163,11 +225,30 @@ func onPayloadCallback(ctx context.Context, b *bot.Bot, chatID int64, payload st
 			return "client.doneReset", nil
 		})
 
+	case "links":
+		sendClientLinks(ctx, b, chatID, arg, false)
+	case "link":
+		// index|name, and the name goes last because it is the part that may
+		// itself contain the separator.
+		indexText, name, _ := strings.Cut(arg, "|")
+		index, err := strconv.Atoi(indexText)
+		if err != nil {
+			reply(ctx, b, chatID, t("expired", nil), mainMenu())
+			return
+		}
+		sendClientLink(ctx, b, chatID, name, index, false)
+
 	case "bind":
-		// Stored on the draft's Name because that is the field the next
-		// message resolves against; nothing else about the draft is used here.
-		forms.set(chatID, stepBindTgId, clientDraft{Name: arg})
-		reply(ctx, b, chatID, t("bind.prompt", p("name", arg)), nil)
+		c, err := findClient(arg)
+		if err != nil {
+			reply(ctx, b, chatID, err.Error(), mainMenu())
+			return
+		}
+		// Stored on the draft's Name because that is the field a typed answer
+		// resolves against; nothing else about the draft is used here. The
+		// picker answer carries its own client id and does not need it.
+		forms.set(chatID, stepBindTgId, clientDraft{Name: c.Name})
+		sendBindPrompt(ctx, b, chatID, *c)
 
 	case "client.create!":
 		createClient(ctx, b, chatID)
@@ -209,31 +290,49 @@ func findClient(name string) (*model.Client, error) {
 // websocket, and skip the inbound reload -- leaving the panel showing one thing
 // while the core enforces another.
 func applyClient(ctx context.Context, b *bot.Bot, chatID int64, name string, mutate func(*model.Client) (string, map[string]string)) {
+	applyClientWith(ctx, b, chatID, name, mainMenu(), mutate)
+}
+
+// applyClientWith is applyClient with the keyboard the outcome carries.
+//
+// The binding flow needs its own: it puts a reply keyboard up to offer the
+// contact picker, and a reply keyboard is not dismissed by an inline one -- so
+// without a ReplyKeyboardRemove on the way out, a "choose from contacts" button
+// sits under the input box long after the binding is done.
+func applyClientWith(ctx context.Context, b *bot.Bot, chatID int64, name string, markup models.ReplyMarkup, mutate func(*model.Client) (string, map[string]string)) {
+	reply(ctx, b, chatID, editClient(chatID, name, mutate), markup)
+}
+
+// editClient loads a client, applies mutate and saves it, returning the message
+// to answer with -- success and failure alike, already translated.
+//
+// Split from the reply so a caller that has to serialise the read-modify-write
+// can hold its lock across just the database work and answer Telegram outside
+// it: a send is a round trip on a 60s client, which is not something to make
+// another operator wait behind. See bindClient.
+func editClient(chatID int64, name string, mutate func(*model.Client) (string, map[string]string)) string {
 	c, err := findClient(name)
 	if err != nil {
-		reply(ctx, b, chatID, err.Error(), mainMenu())
-		return
+		// Already a translated sentence -- findClient builds it from
+		// client.notFound.
+		return err.Error()
 	}
 	doneKey, extra := mutate(c)
 
 	data, err := json.Marshal(c)
 	if err != nil {
-		reply(ctx, b, chatID, t("err.save", p("detail", err.Error())), mainMenu())
-		return
+		return t("err.save", p("detail", err.Error()))
 	}
 	if err := save(chatID, "clients", "edit", data); err != nil {
-		reply(ctx, b, chatID, t("err.save", p("detail", err.Error())), mainMenu())
-		return
+		return t("err.save", p("detail", err.Error()))
 	}
 	params := p("name", c.Name)
 	for k, v := range extra {
 		params[k] = v
 	}
-	reply(ctx, b, chatID, t(doneKey, params), mainMenu())
+	return t(doneKey, params)
 }
 
-// save is the bot's single write path. actor records which Telegram chat asked,
-// so the panel's change log can attribute it.
 func save(chatID int64, obj, act string, data json.RawMessage) error {
 	var configService service.ConfigService
 	var nodeSync service.NodeSyncService
@@ -327,13 +426,15 @@ func sendClientList(ctx context.Context, b *bot.Bot, chatID int64, query string,
 	} else {
 		text.WriteString(t("client.listTitle", nil))
 	}
+	picks := make([]models.InlineKeyboardButton, 0, len(clients))
 	for _, c := range clients {
 		text.WriteString("\n" + clientLine(c))
-		rows = append(rows, []models.InlineKeyboardButton{{
+		picks = append(picks, models.InlineKeyboardButton{
 			Text:         c.Name,
 			CallbackData: payloadPrefix + payloads.put("client|"+c.Name),
-		}})
+		})
 	}
+	rows = append(rows, buttonGrid(picks)...)
 
 	end := offset + len(clients)
 	if int64(end) < total || offset > 0 {
@@ -366,6 +467,28 @@ func sendClientList(ctx context.Context, b *bot.Bot, chatID int64, query string,
 	reply(ctx, b, chatID, text.String(), &models.InlineKeyboardMarkup{InlineKeyboard: rows})
 }
 
+// buttonGrid packs picker buttons into rows.
+//
+// Three across while the list is short, two once it is long enough that names
+// start crowding each other -- the same rule 3x-ui uses, and for the same
+// reason: a full page of one-button rows is a screen of scrolling to reach the
+// last name, and client names are short enough to sit two or three abreast.
+func buttonGrid(buttons []models.InlineKeyboardButton) [][]models.InlineKeyboardButton {
+	cols := 3
+	if len(buttons) >= 6 {
+		cols = 2
+	}
+	rows := make([][]models.InlineKeyboardButton, 0, (len(buttons)+cols-1)/cols)
+	for i := 0; i < len(buttons); i += cols {
+		end := i + cols
+		if end > len(buttons) {
+			end = len(buttons)
+		}
+		rows = append(rows, buttons[i:end])
+	}
+	return rows
+}
+
 // clientPagePayload encodes one page button. The search term goes last because
 // it is the only part that may contain the separator.
 func clientPagePayload(query string, offset int) string {
@@ -393,7 +516,10 @@ func sendClientCard(ctx context.Context, b *bot.Bot, chatID int64, name string) 
 			{Text: toggle, CallbackData: payloadPrefix + payloads.put("toggle|"+c.Name)},
 			{Text: t("btn.reset", nil), CallbackData: payloadPrefix + payloads.put("reset|"+c.Name)},
 		},
-		{{Text: bindLabel(c.TgId), CallbackData: payloadPrefix + payloads.put("bind|"+c.Name)}},
+		{
+			{Text: t("btn.links", nil), CallbackData: payloadPrefix + payloads.put("links|"+c.Name)},
+			{Text: bindLabel(c.TgId), CallbackData: payloadPrefix + payloads.put("bind|"+c.Name)},
+		},
 		{{Text: t("btn.back", nil), CallbackData: staticPrefix + "clients"}},
 	}}
 	reply(ctx, b, chatID, clientDetail(*c), markup)
@@ -427,23 +553,15 @@ func clientDetail(c model.Client) string {
 		b.WriteString("\n" + t("client.telegram", p("id", strconv.FormatInt(c.TgId, 10))))
 	}
 	if c.Desc != "" {
-		b.WriteString("\n" + c.Desc)
+		b.WriteString("\n" + t("client.desc", p("desc", c.Desc)))
 	}
 	return b.String()
 }
 
-func humanBytes(b int64) string {
-	const unit = 1024
-	if b < unit {
-		return strconv.FormatInt(b, 10) + " B"
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit && exp < 4; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTP"[exp])
-}
+// humanBytes is notify's, not a second copy: the operator reads a client card
+// from here and an expiry alert about that same client from there, and the two
+// must not disagree about the figure.
+func humanBytes(b int64) string { return notify.HumanBytes(b) }
 
 func timeText(unix int64) string {
 	return time.Unix(unix, 0).Format("2006-01-02 15:04")
