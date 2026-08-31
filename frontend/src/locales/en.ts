@@ -365,6 +365,17 @@ export default {
     notifyMemory: "Memory threshold (%)",
     notifyNodeFlap: "Failed probes before \"down\"",
     notifyNodeFlapHint: "Nodes are probed every 5s",
+    notifyOutboundUrl: "Outbound probe URL",
+    notifyOutboundUrlHint: "Fetched through each outbound every 5 min",
+    notifySchedule: "Scheduled report",
+    notifyReport: "Report schedule",
+    // The @ has to be written as {'@'} in every locale. vue-i18n reads a bare @
+    // as the start of a linked message and refuses to compile the string, and a
+    // message that fails to compile throws while the component renders -- which
+    // takes the whole notification tab down, not just this one hint.
+    notifyReportHint: "Cron or {'@'}daily; empty turns it off. Takes effect after a restart",
+    notifyBackup: "Attach a database backup",
+    notifyBackupDesc: "Uploads the database to Telegram once a day",
     notifyTgToken: "Bot token",
     notifyTgChatId: "Chat ID",
     notifyTgApiServer: "Bot API server",
@@ -389,6 +400,8 @@ export default {
     notifyKindNodeUp: "Node came back",
     notifyKindCoreCrash: "Core failed to start",
     notifyKindCoreUp: "Core recovered",
+    notifyKindOutboundDown: "Outbound unreachable",
+    notifyKindOutboundUp: "Outbound recovered",
     notifyKindClientDepleted: "Client ran out",
     notifyKindClientExpiring: "Client running low",
     notifyKindCpuHigh: "CPU over threshold",
