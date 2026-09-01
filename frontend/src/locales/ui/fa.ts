@@ -56,6 +56,8 @@ export default {
   svcNew: "سرویس جدید",
   svcSub: "سرویس کمکی sing-box",
   tlsNew: "پیکربندی TLS جدید",
+  certProviderNew: "ارائه‌دهندهٔ گواهی جدید",
+  httpClientNew: "کلاینت HTTP جدید",
   tlsSub: "پیکربندی گواهی قابل استفادهٔ مجدد",
   uuid: "UUID",
   flow: "جریان",

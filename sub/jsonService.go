@@ -56,7 +56,7 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 		return nil, nil, err
 	}
 
-	outbounds, outTags, err := j.getOutbounds(client.Config, inDatas)
+	outbounds, outTags, err := j.getOutbounds(client.Config, inDatas, client.Remark)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -75,8 +75,17 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 
 	jsonConfig["outbounds"] = outbounds
 
-	// Add other objects from settings
-	j.addOthers(&jsonConfig)
+	// Add other objects from settings.
+	//
+	// The error is not optional: addOthers returns before it writes `route` on
+	// every failure path, so ignoring it served a config with no route section
+	// at all -- no rules, no final -- and the subscriber had no way to tell
+	// their operator's routing had silently gone missing. Failing the fetch
+	// says so instead, and the operator finds out from the first client that
+	// cannot refresh rather than never.
+	if err = j.addOthers(&jsonConfig, *outbounds); err != nil {
+		return nil, nil, err
+	}
 
 	result, _ := json.MarshalIndent(jsonConfig, "", "  ")
 	resultStr := string(result)
@@ -113,7 +122,7 @@ func (j *JsonService) getData(subId string) (*model.Client, []*model.Inbound, er
 	return client, inbounds, nil
 }
 
-func (j *JsonService) getOutbounds(clientConfig json.RawMessage, inbounds []*model.Inbound) (*[]map[string]interface{}, *[]string, error) {
+func (j *JsonService) getOutbounds(clientConfig json.RawMessage, inbounds []*model.Inbound, clientRemark string) (*[]map[string]interface{}, *[]string, error) {
 	var outbounds []map[string]interface{}
 	var configs map[string]interface{}
 	var outTags []string
@@ -135,6 +144,12 @@ func (j *JsonService) getOutbounds(clientConfig json.RawMessage, inbounds []*mod
 		if outTlsBase, ok := outbound["tls"].(map[string]interface{}); ok {
 			util.StripServerTlsFields(outTlsBase)
 		}
+		// Stored out_json may predate the IPv6 normalisation in FillOutJson and
+		// still hold a bracketed literal, which sing-box would resolve as a
+		// domain name (#1220). It is only rewritten when the inbound is saved.
+		if server, ok := outbound["server"].(string); ok {
+			outbound["server"] = util.NormalizeHost(server)
+		}
 		protocol, _ := outbound["type"].(string)
 
 		// Shadowsocks
@@ -153,6 +168,19 @@ func (j *JsonService) getOutbounds(clientConfig json.RawMessage, inbounds []*mod
 			pass, _ := configs[util.ShadowsocksClientConfigKey(method)].(map[string]interface{})["password"].(string)
 			userPass = append(userPass, pass)
 			outbound["password"] = strings.Join(userPass, ":")
+
+			// A shadowsocks listener restricted to one network can only carry
+			// that network, and "network" is an outbound option too -- so the
+			// restriction belongs in the client config rather than being left
+			// for the client to discover by timing out. It also feeds the Clash
+			// converter's udp decision, which has no other way to learn what
+			// the inbound actually listens on. An explicit out_json value is
+			// the operator's own override and wins.
+			if _, set := outbound["network"]; !set {
+				if network, ok := inbOptions["network"].(string); ok && network != "" {
+					outbound["network"] = network
+				}
+			}
 		} else { // Other protocols
 			config, _ := configs[protocol].(map[string]interface{})
 			for key, value := range config {
@@ -180,9 +208,10 @@ func (j *JsonService) getOutbounds(clientConfig json.RawMessage, inbounds []*mod
 		}
 		tag, _ := outbound["tag"].(string)
 		if len(addrs) == 0 {
+			tag = util.JoinRemark(clientRemark, tag)
+			outbound["tag"] = tag
 			// For mixed protocol, use separated socks and http
 			if protocol == "mixed" {
-				outbound["tag"] = tag
 				j.pushMixed(&outbounds, &outTags, outbound)
 			} else {
 				outTags = append(outTags, tag)
@@ -205,7 +234,8 @@ func (j *JsonService) getOutbounds(clientConfig json.RawMessage, inbounds []*mod
 					newOut["tls"] = tlsCopy
 				}
 				// Change and push copied config
-				newOut["server"], _ = addr["server"].(string)
+				server, _ := addr["server"].(string)
+				newOut["server"] = util.NormalizeHost(server)
 				port, _ := addr["server_port"].(float64)
 				newOut["server_port"] = int(port)
 
@@ -224,7 +254,7 @@ func (j *JsonService) getOutbounds(clientConfig json.RawMessage, inbounds []*mod
 				}
 
 				remark, _ := addr["remark"].(string)
-				newTag := fmt.Sprintf("%d.%s%s", index+1, tag, remark)
+				newTag := fmt.Sprintf("%d.%s", index+1, util.JoinRemark(clientRemark, tag+remark))
 				newOut["tag"] = newTag
 				// For mixed protocol, use separated socks and http
 				if protocol == "mixed" {
@@ -319,7 +349,7 @@ func (j *JsonService) addDefaultOutbounds(outbounds *[]map[string]interface{}, o
 	*outbounds = append(outbound, *outbounds...)
 }
 
-func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
+func (j *JsonService) addOthers(jsonConfig *map[string]interface{}, outbounds []map[string]interface{}) error {
 	// Default routing rules, used only when the template doesn't define its own.
 	// When the template provides `rules`, they are used verbatim so the user has
 	// full control over ordering (e.g. rules before sniff) and which rules exist.
@@ -372,21 +402,140 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 	if _, ok := othersJson["rule_set"]; ok {
 		route["rule_set"] = othersJson["rule_set"]
 	}
+	// Before addHTTPClients: the client it may declare has to name the default
+	// outbound, and that is whatever route.final ends up being.
+	if final, ok := othersJson["final"].(string); ok && final != "" {
+		route["final"] = final
+	}
+	j.addHTTPClients(jsonConfig, route, othersJson, outbounds)
 	if settingRules, ok := othersJson["rules"].([]interface{}); ok {
 		route["rules"] = settingRules
 	}
-	if defaultDomainResolver, ok := othersJson["default_domain_resolver"].(string); ok {
+	if defaultDomainResolver, ok := othersJson["default_domain_resolver"].(string); ok && defaultDomainResolver != "" {
 		route["default_domain_resolver"] = defaultDomainResolver
+	} else if fallback := fallbackDomainResolver(othersJson); fallback != "" {
+		// With more than one DNS server and no resolver named for dial fields,
+		// sing-box has to guess which one resolves outbound server domains and
+		// reports the guess as deprecated. The template's final server is the
+		// one it would have to fall back to anyway.
+		route["default_domain_resolver"] = fallback
 	}
 	if v, ok := othersJson["override_android_vpn"]; ok {
 		route["override_android_vpn"] = v
 	}
-	if final, ok := othersJson["final"].(string); ok && final != "" {
-		route["final"] = final
-	}
 	(*jsonConfig)["route"] = route
 
 	return nil
+}
+
+// fallbackDomainResolver returns the DNS server dial fields should resolve
+// through when the template names none, or "" when the config has too few
+// servers for the choice to matter.
+func fallbackDomainResolver(othersJson map[string]interface{}) string {
+	dns, ok := othersJson["dns"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	servers, ok := dns["servers"].([]interface{})
+	if !ok || len(servers) < 2 {
+		return ""
+	}
+	if final, ok := dns["final"].(string); ok && final != "" {
+		return final
+	}
+	// No final server either: the first one is what sing-box treats as default.
+	if first, ok := servers[0].(map[string]interface{}); ok {
+		tag, _ := first["tag"].(string)
+		return tag
+	}
+	return ""
+}
+
+// defaultHTTPClientTag names the HTTP client the generated config declares for
+// downloading remote rule-sets.
+const defaultHTTPClientTag = "default"
+
+// addHTTPClients carries the template's HTTP clients across and, when the
+// config downloads remote rule-sets without naming a client for them, declares
+// one, so sing-box 1.14 stops reporting the implicit fallback as deprecated.
+//
+// The declared client has to reproduce that fallback rather than replace it.
+// sing-box builds its implicit client with DefaultOutbound set -- it dials
+// through the default outbound -- and that field has no JSON name, so the only
+// way to say it in a config is a detour naming route.final. A bare
+// {"tag": "default"} leaves it unset and dials directly instead, which on a
+// subscriber's device means the rule-sets stop being downloaded through the
+// proxy: exactly the reachability the subscription exists to provide.
+func (j *JsonService) addHTTPClients(jsonConfig *map[string]interface{}, route map[string]interface{}, othersJson map[string]interface{}, outbounds []map[string]interface{}) {
+	if clients, ok := othersJson["http_clients"]; ok {
+		(*jsonConfig)["http_clients"] = clients
+	}
+	if defaultClient, ok := othersJson["default_http_client"].(string); ok && defaultClient != "" {
+		route["default_http_client"] = defaultClient
+		return
+	}
+	// A template that brings its own clients decides for itself.
+	if _, ok := (*jsonConfig)["http_clients"]; ok {
+		return
+	}
+	if !needsDefaultHTTPClient(route) {
+		return
+	}
+	finalTag, _ := route["final"].(string)
+	if finalTag == "" {
+		return
+	}
+	client := map[string]interface{}{"tag": defaultHTTPClientTag}
+	// A detour to a plain direct outbound is what sing-box rejects, and it is
+	// also what no detour already means, so it is left out.
+	if finalOutbound, found := outboundByTag(outbounds, finalTag); found && !util.IsPlainDirectOutbound(finalOutbound) {
+		client["detour"] = finalTag
+	} else if !found {
+		// route.final names an outbound this config does not carry; sing-box
+		// refuses that on its own terms and a second broken reference to the
+		// same tag would only obscure it.
+		return
+	}
+	(*jsonConfig)["http_clients"] = []interface{}{client}
+	route["default_http_client"] = defaultHTTPClientTag
+}
+
+// outboundByTag finds a generated outbound by tag.
+//
+// The list is passed down from GetJson rather than read back out of jsonConfig:
+// it lands there as the pointer getOutbounds returned, and a type assertion on
+// that would start silently finding nothing the day anyone stores it by value
+// or round-trips the config through JSON. Threading the typed value through
+// makes the compiler answer instead.
+func outboundByTag(outbounds []map[string]interface{}, tag string) (map[string]interface{}, bool) {
+	for _, outbound := range outbounds {
+		if outboundTag, _ := outbound["tag"].(string); outboundTag == tag {
+			return outbound, true
+		}
+	}
+	return nil, false
+}
+
+// needsDefaultHTTPClient reports whether any remote rule-set would fall back to
+// the implicit default HTTP client.
+func needsDefaultHTTPClient(route map[string]interface{}) bool {
+	ruleSets, ok := route["rule_set"].([]interface{})
+	if !ok {
+		return false
+	}
+	for _, entry := range ruleSets {
+		ruleSet, isObject := entry.(map[string]interface{})
+		if !isObject {
+			continue
+		}
+		if ruleSetType, _ := ruleSet["type"].(string); ruleSetType != "remote" {
+			continue
+		}
+		if _, hasClient := ruleSet["http_client"]; !hasClient {
+			return true
+		}
+	}
+	return false
 }
 
 func (j *JsonService) pushMixed(outbounds *[]map[string]interface{}, outTags *[]string, out map[string]interface{}) {

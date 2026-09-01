@@ -44,7 +44,9 @@
 
       <!-- ===================== Server side ===================== -->
       <template v-if="side === 's'">
-        <template v-if="inbound.type != inTypes.Tun">
+        <!-- tun brings its own interface options; cloudflared dials out to the
+             Cloudflare edge and sing-box rejects listen fields on it. -->
+        <template v-if="!NoListen.includes(inbound.type)">
           <Listen :data="inbound" :in-tags="inTags" />
           <hr class="form-divider" />
         </template>
@@ -57,6 +59,8 @@
         <Tuic v-if="inbound.type == inTypes.TUIC" direction="in" :data="inbound" />
         <Tun v-if="inbound.type == inTypes.Tun" :data="inbound" />
         <AnyTls v-if="inbound.type == inTypes.AnyTls" direction="in" :data="inbound" />
+        <Snell v-if="inbound.type == inTypes.Snell" direction="in" :data="inbound" />
+        <Cloudflared v-if="inbound.type == inTypes.Cloudflared" :data="inbound" />
         <TProxy v-if="inbound.type == inTypes.TProxy" :inbound="inbound" />
         <Transport v-if="Object.hasOwn(inbound, 'transport')" :data="inbound" />
         <Users v-if="hasUser" :clients="clients" :data="initUsers" />
@@ -123,6 +127,8 @@ import ShadowTls from '@/components/forms/in/ShadowTls.vue'
 import Tuic from '@/components/forms/in/Tuic.vue'
 import Tun from '@/components/forms/in/Tun.vue'
 import AnyTls from '@/components/forms/in/AnyTls.vue'
+import Cloudflared from '@/components/forms/in/Cloudflared.vue'
+import Snell from '@/components/forms/out/protocols/Snell.vue'
 import TProxy from '@/components/forms/in/TProxy.vue'
 import Transport from '@/components/forms/out/Transport.vue'
 import Users from '@/components/forms/in/Users.vue'
@@ -156,6 +162,7 @@ const proxyTypes = [
   InTypes.TUIC,
   InTypes.Naive,
   InTypes.AnyTls,
+  InTypes.Snell,
 ]
 const localTypes = [
   InTypes.Mixed,
@@ -165,11 +172,12 @@ const localTypes = [
   InTypes.Tun,
   InTypes.Redirect,
   InTypes.TProxy,
+  InTypes.Cloudflared,
 ]
 
 // same capability sets as the legacy modal (layouts/modals/Inbound.vue)
 const inboundWithUsers = [
-  'mixed', 'socks', 'http', 'shadowsocks', 'vmess', 'trojan', 'naive',
+  'mixed', 'socks', 'http', 'shadowsocks', 'snell', 'vmess', 'trojan', 'naive',
   'hysteria', 'shadowtls', 'tuic', 'hysteria2', 'vless', 'anytls',
 ]
 const HasInData = [
@@ -177,6 +185,7 @@ const HasInData = [
   InTypes.HTTP,
   InTypes.Mixed,
   InTypes.Shadowsocks,
+  InTypes.Snell,
   InTypes.VMess,
   InTypes.ShadowTLS,
   InTypes.Trojan,
@@ -204,6 +213,7 @@ const MuxAvailable = [
   InTypes.Trojan,
   InTypes.Shadowsocks,
 ]
+const NoListen = [InTypes.Tun, InTypes.Cloudflared]
 
 const inbound = ref<any>(createInbound('direct', { id: 0, tag: '' }))
 const loading = ref(false)
@@ -272,16 +282,26 @@ const updateData = (id: number) => {
 
 const changeType = () => {
   if (!inbound.value.listen_port) inbound.value.listen_port = RandomUtil.randomIntRange(10000, 60000)
-  // Tag change only in add inbound
-  const tag = props.id > 0 ? inbound.value.tag : inbound.value.type + '-' + inbound.value.listen_port
-  // Use previous data
-  const prevConfig = {
-    id: inbound.value.id,
-    tag: tag,
-    listen: inbound.value.listen ?? '::',
-    listen_port: inbound.value.listen_port,
-  }
-  inbound.value = createInbound(inbound.value.type, inbound.value.type != InTypes.Tun ? prevConfig : { tag: tag })
+  // Same list the Listen section is gated on: a type that does not listen must
+  // not carry the listen settings over either, or sing-box rejects them as
+  // unknown fields on a form that no longer shows them.
+  const noListen = NoListen.includes(inbound.value.type)
+  // Tag change only in add inbound. Without a port there is nothing to make the
+  // tag unique, so fall back to a random suffix.
+  const tag = props.id > 0
+    ? inbound.value.tag
+    : inbound.value.type + '-' + (noListen ? RandomUtil.randomSeq(3) : inbound.value.listen_port)
+  // Use previous data. `id` is kept in both branches: dropping it turns the
+  // save into a create and leaves the original row behind.
+  const prevConfig = noListen
+    ? { id: inbound.value.id, tag: tag }
+    : {
+        id: inbound.value.id,
+        tag: tag,
+        listen: inbound.value.listen ?? '::',
+        listen_port: inbound.value.listen_port,
+      }
+  inbound.value = createInbound(inbound.value.type, prevConfig)
   if (HasInData.includes(inbound.value.type)) {
     inbound.value.addrs = []
     inbound.value.out_json = {}

@@ -69,7 +69,7 @@ func (s *ClashService) GetClash(subId string) (*string, []string, error) {
 		return nil, nil, err
 	}
 
-	outbounds, outTags, err := s.getOutbounds(client.Config, inDatas)
+	outbounds, outTags, err := s.getOutbounds(client.Config, inDatas, client.Remark)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -107,6 +107,9 @@ func (s *ClashService) getClashConfig() (string, error) {
 func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, basicConfig string) (string, error) {
 	var proxies []interface{}
 	proxyTags := make([]string, 0)
+	// One read for all three: they are needed on every subscription fetch and
+	// were three separate SELECTs on the settings table.
+	noDefGrp, sprtAll, defaultUdp, _ := s.SettingService.GetSubClashFlags()
 	for _, obMap := range *outbounds {
 
 		t, _ := obMap["type"].(string)
@@ -118,11 +121,11 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 		proxy["name"] = obMap["tag"]
 		proxy["type"] = t
 
+		// Bare form only: yaml.Marshal quotes an IPv6 literal by itself, while a
+		// bracketed one round-trips as the literal string "[::1]" and reaches
+		// mihomo as a domain name (#1220).
 		server, _ := obMap["server"].(string)
-		if len(server) > 0 && strings.Contains(server, ":") && !strings.Contains(server, ".") && !(strings.HasPrefix(server, "[") && strings.HasSuffix(server, "]")) {
-			server = "'[" + server + "]'"
-		}
-		proxy["server"] = server
+		proxy["server"] = util.NormalizeHost(server)
 
 		proxy["port"] = obMap["server_port"]
 
@@ -194,14 +197,50 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 			proxy["type"] = "ss"
 			proxy["cipher"] = obMap["method"]
 			proxy["password"] = obMap["password"]
-			if network, ok := obMap["network"].(string); ok && network != "tcp" {
-				proxy["udp"] = true
-			}
+			// The plain-UDP default is decided below with every other protocol;
+			// this branch used to answer for itself whenever the listener was
+			// not TCP-only, which made subClashUdp mean nothing here.
+			//
+			// UDP over TCP is the exception and turns udp on by itself: it is
+			// not a default anyone can opt out of later, it is the operator
+			// having already said this client carries UDP, and mihomo reads
+			// udp-over-tcp only when udp is set. It is also the one form that
+			// works on a TCP-only listener -- carrying UDP inside the TCP
+			// stream is the whole point -- so the network check below must not
+			// gate it.
 			if uot, ok := obMap["udp_over_tcp"].(bool); ok && uot {
+				proxy["udp"] = true
 				proxy["udp-over-tcp"] = true
 			}
 		default:
 			continue
+		}
+
+		// Mihomo keeps UDP off unless the proxy opts in, and subClashUdp is the
+		// single switch that decides it -- shadowsocks included, which is why
+		// the case above no longer answers for itself. A default, not an
+		// override: an outbound restricted to TCP keeps its answer, since
+		// getOutbounds copies a TCP-only shadowsocks listener's network onto
+		// it even when the operator never opened the client-config tab.
+		network, _ := obMap["network"].(string)
+		if defaultUdp && network != "tcp" {
+			switch proxy["type"] {
+			case "vmess", "vless":
+				proxy["udp"] = true
+				// The panel lets the operator pick the packet encoding per
+				// inbound and the sing-box subscription serves it verbatim;
+				// hardcoding xudp here would make the two subscriptions
+				// disagree about the same inbound. Absent means "none" in the
+				// form, and mihomo needs an encoding to carry UDP at all, so
+				// only that case falls back to xudp.
+				if pe, ok := obMap["packet_encoding"].(string); ok && pe != "" {
+					proxy["packet-encoding"] = pe
+				} else {
+					proxy["packet-encoding"] = "xudp"
+				}
+			case "trojan", "ss", "socks5":
+				proxy["udp"] = true
+			}
 		}
 
 		// TLS params
@@ -397,8 +436,6 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 		output["proxies"] = proxies
 	}
 
-	noDefGrp, _ := s.SettingService.GetSubClashNoDefGrp()
-	sprtAll, _ := s.SettingService.GetSubClashSprtAll()
 	if err := buildProxyGroups(output, proxyTags, noDefGrp, sprtAll); err != nil {
 		return "", err
 	}

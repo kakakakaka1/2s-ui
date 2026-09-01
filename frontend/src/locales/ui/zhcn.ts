@@ -56,6 +56,8 @@ export default {
   svcNew: "新建服务",
   svcSub: "sing-box 辅助服务",
   tlsNew: "新建 TLS 配置",
+  certProviderNew: "新建证书提供者",
+  httpClientNew: "新建 HTTP 客户端",
   tlsSub: "可复用的证书配置",
   uuid: "UUID",
   flow: "流控",

@@ -14,6 +14,7 @@ import (
 	"github.com/shenaba/2s-ui/logger"
 	"github.com/shenaba/2s-ui/network"
 	"github.com/shenaba/2s-ui/service/notify"
+	"github.com/shenaba/2s-ui/util"
 	"github.com/shenaba/2s-ui/util/common"
 )
 
@@ -46,16 +47,30 @@ type ConfigService struct {
 	NodeService
 }
 
+// SingBoxConfig is the shape GetConfig decodes the stored base config into
+// before filling in the objects held in the database. Every top-level sing-box
+// key has to be listed here: anything missing is silently dropped on the way
+// through, even when the operator wrote it by hand.
 type SingBoxConfig struct {
-	Log          json.RawMessage   `json:"log"`
-	Dns          json.RawMessage   `json:"dns"`
-	Ntp          json.RawMessage   `json:"ntp"`
-	Inbounds     []json.RawMessage `json:"inbounds"`
-	Outbounds    []json.RawMessage `json:"outbounds"`
-	Services     []json.RawMessage `json:"services"`
-	Endpoints    []json.RawMessage `json:"endpoints"`
-	Route        json.RawMessage   `json:"route"`
-	Experimental json.RawMessage   `json:"experimental"`
+	Schema string          `json:"$schema,omitempty"`
+	Log    json.RawMessage `json:"log"`
+	Dns    json.RawMessage `json:"dns"`
+	Ntp    json.RawMessage `json:"ntp"`
+	// Global certificate store settings, and the shared certificate providers
+	// referenced by tag from a TLS config's certificate_provider. Providers are
+	// edited alongside the TLS configs but stored in the base config.
+	Certificate          json.RawMessage   `json:"certificate,omitempty"`
+	CertificateProviders []json.RawMessage `json:"certificate_providers,omitempty"`
+	// Named HTTP clients, referenced by remote rule-sets and by
+	// route.default_http_client.
+	HTTPClients       []json.RawMessage `json:"http_clients,omitempty"`
+	NetworkNamespaces []json.RawMessage `json:"network_namespaces,omitempty"`
+	Inbounds          []json.RawMessage `json:"inbounds"`
+	Outbounds         []json.RawMessage `json:"outbounds"`
+	Services          []json.RawMessage `json:"services"`
+	Endpoints         []json.RawMessage `json:"endpoints"`
+	Route             json.RawMessage   `json:"route"`
+	Experimental      json.RawMessage   `json:"experimental"`
 }
 
 func NewConfigService(c *core.Core) *ConfigService {
@@ -96,11 +111,172 @@ func (s *ConfigService) GetConfig(data string) (*[]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err = ensureDefaultHTTPClient(&singboxConfig); err != nil {
+		return nil, err
+	}
 	rawConfig, err := json.MarshalIndent(singboxConfig, "", "  ")
 	if err != nil {
 		return nil, err
 	}
 	return &rawConfig, nil
+}
+
+// defaultHTTPClientTag names the HTTP client remote rule-sets download over
+// when the operator has not set one up.
+const defaultHTTPClientTag = "default"
+
+// ensureDefaultHTTPClient declares an HTTP client for remote rule-sets that
+// name none, so sing-box 1.14 stops reporting the implicit fallback as
+// deprecated. It is added to the generated config rather than to the stored
+// one, so it also covers rule-sets added later.
+//
+// The declared client has to reproduce the fallback, not merely replace it.
+// sing-box's implicit client is built with DefaultOutbound set, which dials
+// through the default outbound; that field has no JSON name (option/http.go),
+// so the only way to say the same thing in a config is a detour naming the
+// default outbound explicitly. Declaring a bare {"tag": "default"} instead
+// leaves DefaultOutbound false, and dialer.NewWithOptions then falls through to
+// a plain system dialer -- rule-set downloads would silently stop going through
+// the operator's egress.
+//
+// Which outbound that is can only be named when route.final is set. Without it
+// sing-box picks the first outbound it created, which depends on creation order
+// the panel does not model, so the client is not declared at all and the
+// deprecation line stays -- a log line beats a wrong dial path.
+//
+// An operator who named a default themselves is left alone; one who only
+// declared clients still gets a default, since otherwise the rule-sets that
+// name none keep falling back.
+func ensureDefaultHTTPClient(config *SingBoxConfig) error {
+	if len(config.Route) == 0 {
+		return nil
+	}
+	var route map[string]json.RawMessage
+	if err := json.Unmarshal(config.Route, &route); err != nil {
+		// A route section the panel cannot read is passed through untouched.
+		return nil
+	}
+	if raw, ok := route["default_http_client"]; ok && !isEmptyRawJSON(raw) {
+		return nil
+	}
+	if !hasImplicitHTTPClientRuleSet(route["rule_set"]) {
+		return nil
+	}
+	var finalTag string
+	if raw, ok := route["final"]; ok {
+		if err := json.Unmarshal(raw, &finalTag); err != nil {
+			return nil
+		}
+	}
+	if finalTag == "" {
+		return nil
+	}
+	// Endpoints count: sing-box resolves a detour through
+	// outbound.Manager.Outbound, which falls back to the endpoint manager, and
+	// route.final may name a wireguard or tailscale endpoint just as well as an
+	// outbound. Searching only outbounds would skip declaring the client for a
+	// perfectly valid config.
+	finalOutbound, found := outboundByTag(config.Outbounds, finalTag)
+	if !found {
+		finalOutbound, found = outboundByTag(config.Endpoints, finalTag)
+	}
+	if !found {
+		// route.final names nothing this config defines; sing-box will refuse
+		// it on its own terms, and guessing here would only add a second
+		// broken reference.
+		return nil
+	}
+
+	tagName := unusedHTTPClientTag(config.HTTPClients)
+	fields := map[string]string{"tag": tagName}
+	// A detour to a plain direct outbound is what sing-box rejects, and it is
+	// also what no detour already means, so it is left out.
+	if !util.IsPlainDirectOutbound(finalOutbound) {
+		fields["detour"] = finalTag
+	}
+	client, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	tag, err := json.Marshal(tagName)
+	if err != nil {
+		return err
+	}
+	route["default_http_client"] = tag
+	encodedRoute, err := json.Marshal(route)
+	if err != nil {
+		return err
+	}
+	config.HTTPClients = append(config.HTTPClients, client)
+	config.Route = encodedRoute
+	return nil
+}
+
+// outboundByTag finds a generated outbound or endpoint by its tag. Both are
+// rendered in the same sing-box shape (type, tag, then the options), so one
+// lookup serves both lists.
+func outboundByTag(outbounds []json.RawMessage, tag string) (map[string]interface{}, bool) {
+	for _, raw := range outbounds {
+		var outbound map[string]interface{}
+		if err := json.Unmarshal(raw, &outbound); err != nil {
+			continue
+		}
+		if outboundTag, _ := outbound["tag"].(string); outboundTag == tag {
+			return outbound, true
+		}
+	}
+	return nil, false
+}
+
+// unusedHTTPClientTag names the added client without colliding with one the
+// operator declared.
+func unusedHTTPClientTag(clients []json.RawMessage) string {
+	taken := make(map[string]struct{}, len(clients))
+	for _, client := range clients {
+		var fields struct {
+			Tag string `json:"tag"`
+		}
+		if err := json.Unmarshal(client, &fields); err == nil && fields.Tag != "" {
+			taken[fields.Tag] = struct{}{}
+		}
+	}
+	tag := defaultHTTPClientTag
+	for i := 2; ; i++ {
+		if _, exists := taken[tag]; !exists {
+			return tag
+		}
+		tag = defaultHTTPClientTag + "-" + strconv.Itoa(i)
+	}
+}
+
+// hasImplicitHTTPClientRuleSet reports whether any remote rule-set would fall
+// back to the implicit default HTTP client.
+func hasImplicitHTTPClientRuleSet(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var ruleSets []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &ruleSets); err != nil {
+		return false
+	}
+	for _, ruleSet := range ruleSets {
+		var ruleSetType string
+		if err := json.Unmarshal(ruleSet["type"], &ruleSetType); err != nil || ruleSetType != "remote" {
+			continue
+		}
+		if httpClient, ok := ruleSet["http_client"]; !ok || isEmptyRawJSON(httpClient) {
+			return true
+		}
+	}
+	return false
+}
+
+func isEmptyRawJSON(raw json.RawMessage) bool {
+	switch string(raw) {
+	case "", "null", `""`, "{}", "[]":
+		return true
+	}
+	return false
 }
 
 func (s *ConfigService) StartCore() error {
@@ -112,8 +288,12 @@ func (s *ConfigService) StartCore() error {
 		startCoreMu.Unlock()
 		return nil
 	}
-	if time.Since(lastStartFailTime) < startCooldown {
-		logger.Info("start core cooldown ", startCooldown/time.Second, " seconds")
+	if remaining := startCooldown - time.Since(lastStartFailTime); remaining > 0 {
+		// Not startCooldown/time.Second: dividing a Duration by a Duration
+		// yields a Duration, so that printed "15ns" for a 15s cooldown. And
+		// checkCoreJob lands here every 5s, so the useful number is what is
+		// left rather than the constant.
+		logger.Info("start core in cooldown, retrying in ", remaining.Truncate(time.Second))
 		startCoreMu.Unlock()
 		return nil
 	}

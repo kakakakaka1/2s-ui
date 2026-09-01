@@ -56,6 +56,8 @@ export default {
   svcNew: "New service",
   svcSub: "Auxiliary sing-box service",
   tlsNew: "New TLS config",
+  certProviderNew: "New certificate provider",
+  httpClientNew: "New HTTP client",
   tlsSub: "Reusable certificate configuration",
   uuid: "UUID",
   flow: "Flow",
