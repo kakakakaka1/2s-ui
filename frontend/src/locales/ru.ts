@@ -470,6 +470,10 @@ export default {
       hostKey: "Ключи хоста",
       algorithm: "Алгоритмы ключей",
       clientVer: "Версия клиента",
+      crypto: "Алгоритмы рукопожатия",
+      cipher: "Шифры",
+      mac: "MAC",
+      kex: "Обмен ключами",
       options: "Параметры SSH",
     },
     tor: {
@@ -487,6 +491,10 @@ export default {
       ifName: "Имя интерфейса",
       excludeMptcp: "Исключить MPTCP",
       fallbackRuleIndex: "Индекс правила iproute2 fallback",
+      dnsMode: "Режим DNS",
+      dnsAddress: "Адрес DNS",
+      includeMac: "Включить MAC-адреса",
+      excludeMac: "Исключить MAC-адреса",
     },
     vless: {
       flow: "Поток",
@@ -536,6 +544,12 @@ export default {
       allowLanAccess: "Разрешить доступ LAN",
       advRoutes: "Рекламируемые маршруты",
       advExitNode: "Рекламируемый выходной узел",
+      advTags: "Анонсируемые теги",
+      taildrop: "Каталог Taildrop",
+      sshServer: "SSH-сервер",
+      sshDisablePty: "Отключить PTY",
+      sshDisableSftp: "Отключить SFTP",
+      sshDisableForwarding: "Отключить проброс",
       udpTimeout: "Таймаут UDP",
     },
     ocm: {
@@ -775,6 +789,12 @@ export default {
       errNoFile: "Файл не выбран.",
       errNoArraysInFile: 'В файле нет "rules" или "rule_set".',
     },
+  },
+  udpNat: {
+    title: "UDP NAT",
+    mapping: "Поведение отображения",
+    filtering: "Поведение фильтрации",
+    max: "Макс. сессий",
   },
   ruleset: {
     initialPath: "Путь к начальному файлу",

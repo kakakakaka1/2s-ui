@@ -469,6 +469,10 @@ export default {
       hostKey: "کلیدهای هاست‌ها",
       algorithm: "الگوریتم‌ها",
       clientVer: "نسخه کلاینت",
+      crypto: "الگوریتم‌های دست‌دادن",
+      cipher: "رمزها",
+      mac: "MAC‌ها",
+      kex: "تبادل کلید",
       options: "گزینه‌های SSH",
     },
     tor: {
@@ -486,6 +490,10 @@ export default {
       ifName: "نام اینترفیس",
       excludeMptcp: "حذف MPTCP",
       fallbackRuleIndex: "شاخص قوانین fallback در iproute2",
+      dnsMode: "حالت DNS",
+      dnsAddress: "نشانی DNS",
+      includeMac: "شامل نشانی MAC",
+      excludeMac: "استثنای نشانی MAC",
     },
     vless: {
       flow: "جریان",
@@ -535,6 +543,12 @@ export default {
       allowLanAccess: "دسترسی به LAN",
       advRoutes: "تبلیغ مسیرها",
       advExitNode: "تبلیغ درگاه خروج",
+      advTags: "تگ‌های اعلام‌شده",
+      taildrop: "پوشهٔ Taildrop",
+      sshServer: "سرور SSH",
+      sshDisablePty: "غیرفعال‌سازی PTY",
+      sshDisableSftp: "غیرفعال‌سازی SFTP",
+      sshDisableForwarding: "غیرفعال‌سازی فورواردینگ",
       udpTimeout: "مهلت UDP",
     },
     ocm: {
@@ -774,6 +788,12 @@ export default {
       errNoFile: "فایلی انتخاب نشده است.",
       errNoArraysInFile: 'در فایل «rules» یا «rule_set» یافت نشد.',
     },
+  },
+  udpNat: {
+    title: "NAT برای UDP",
+    mapping: "رفتار نگاشت",
+    filtering: "رفتار فیلترینگ",
+    max: "بیشینهٔ نشست‌ها",
   },
   ruleset: {
     initialPath: "مسیر فایل اولیه",
