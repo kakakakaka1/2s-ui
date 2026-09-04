@@ -575,6 +575,13 @@ export default {
       minInterval: "最小間隔",
       maxInterval: "最大間隔",
     },
+    hysteriaRealm: {
+      users: "用戶",
+      usersHint: "realm 至少需要一個同時填了名稱和令牌的用戶。缺任一項的行在儲存時會被丟棄。",
+      userName: "名稱",
+      userToken: "令牌",
+      maxRealms: "最大 realm 數（0 為不限）",
+    },
     api: {
       secret: "金鑰",
       allowOrigin: "允許來源",

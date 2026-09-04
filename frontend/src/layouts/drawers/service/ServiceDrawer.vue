@@ -30,6 +30,7 @@
     <Ccm v-if="srv.type == srvTypes.CCM" :data="srv" />
     <Api v-if="srv.type == srvTypes.API" :data="srv" />
     <OomKiller v-if="srv.type == srvTypes.OOMKiller" :data="srv" />
+    <HysteriaRealm v-if="srv.type == srvTypes.HysteriaRealm" :data="srv" />
     <InTLS v-if="HasTls.includes(srv.type)" :inbound="srv" :tlsConfigs="tlsConfigs" />
     <MHint v-if="srv.type == srvTypes.Resolved">{{ $t('ui.noFields') }}</MHint>
   </MDrawer>
@@ -51,6 +52,7 @@ import Ccm from '@/components/forms/out/services/Ccm.vue'
 import SSMapi from '@/components/forms/out/services/SSMAPI.vue'
 import Api from '@/components/forms/out/services/Api.vue'
 import OomKiller from '@/components/forms/out/services/OomKiller.vue'
+import HysteriaRealm from '@/components/forms/out/services/HysteriaRealm.vue'
 import InTLS from '@/components/forms/in/InTLS.vue'
 
 const props = defineProps<{
@@ -65,7 +67,7 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>()
 
 const srvTypes = SrvTypes
-const HasTls = [SrvTypes.DERP, SrvTypes.SSMAPI, SrvTypes.OCM, SrvTypes.CCM, SrvTypes.API]
+const HasTls = [SrvTypes.DERP, SrvTypes.SSMAPI, SrvTypes.OCM, SrvTypes.CCM, SrvTypes.API, SrvTypes.HysteriaRealm]
 const NoListen = [SrvTypes.OOMKiller]
 
 const srv = ref<Srv>(createSrv('derp', { tag: '' }))
@@ -117,9 +119,18 @@ const saveChanges = async () => {
     delete (<any>srv.value).tls_id
   }
 
+  // A realm user with a blank name or token stops the core from starting, so an
+  // unfinished row is dropped on the way out rather than saved. The filter runs
+  // on a copy: dropping a half-typed row from srv itself would lose the name
+  // the operator had entered if the save then failed.
+  let payload: any = srv.value
+  if (srv.value.type === SrvTypes.HysteriaRealm && Array.isArray((<any>srv.value).users)) {
+    payload = { ...srv.value, users: (<any>srv.value).users.filter((u: any) => u?.name && u?.token) }
+  }
+
   // save data
   loading.value = true
-  const success = await Data().save('services', props.id == 0 ? 'new' : 'edit', srv.value)
+  const success = await Data().save('services', props.id == 0 ? 'new' : 'edit', payload)
   if (success) emit('close')
   loading.value = false
 }
