@@ -768,7 +768,6 @@ export default {
     cacheCapacity: "快取容量",
     disableCache: "停用快取",
     disableExpire: "停用過期",
-    independentCache: "獨立快取",
     reverseMapping: "反向映射",
     domainStrategy: "域名策略",
     local: { preferGo: "優先使用 Go" },
@@ -778,6 +777,7 @@ export default {
       inet4Range: "IPv4 範圍",
       inet6Range: "IPv6 範圍",
       acceptDefault: "接受默認",
+      legacyStrategy: "sing-box 1.14 已棄用，1.16 移除。在任何規則用到 query_type 或 ip_version 之前先清空它——兩者同時存在 sing-box 會拒絕啟動。它的替代品正是 query_type。",
       action: {
         title: "操作",
         route: "路由",

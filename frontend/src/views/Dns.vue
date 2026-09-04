@@ -71,7 +71,6 @@
           <div style="display: flex; gap: 24px; flex-wrap: wrap; margin-top: 16px;">
             <CheckLabel v-model="disableCache" :label="$t('dns.disableCache')" />
             <CheckLabel v-model="disableExpire" :label="$t('dns.disableExpire')" />
-            <CheckLabel v-model="independentCache" :label="$t('dns.independentCache')" />
             <CheckLabel v-model="reverseMapping" :label="$t('dns.reverseMapping')" />
           </div>
         </div>
@@ -287,11 +286,6 @@ const disableCache = computed({
 const disableExpire = computed({
   get: () => dns.value?.disable_expire ?? false,
   set: (v: boolean) => { dns.value.disable_expire = v },
-})
-
-const independentCache = computed({
-  get: () => dns.value?.independent_cache ?? false,
-  set: (v: boolean) => { dns.value.independent_cache = v },
 })
 
 const reverseMapping = computed({
