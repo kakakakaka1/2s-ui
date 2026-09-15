@@ -118,7 +118,13 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	group_apiv2 := engine.Group(base_url + "apiv2")
 	apiv2 := api.NewAPIv2Handler(group_apiv2)
 
+	// SameOrigin goes on this group and not on apiv2: v1 authenticates with a
+	// cookie, which a browser attaches to a cross-site request as readily as to
+	// one of the panel's own pages. apiv2 authenticates with a Token header,
+	// which such a page cannot set without a CORS preflight this panel never
+	// answers.
 	group_api := engine.Group(base_url + "api")
+	group_api.Use(middleware.SameOrigin())
 	api.NewAPIHandler(group_api, apiv2)
 
 	// Push channel for the SPA. Static sibling of api/apiv2 — registering it
@@ -240,6 +246,17 @@ func (s *Server) Start() (err error) {
 
 	s.httpServer = &http.Server{
 		Handler: engine,
+		// Without a header deadline a peer that opens a connection and never
+		// finishes its request headers holds a goroutine and a file descriptor
+		// for the life of the process, and nothing here ever reclaims it.
+		//
+		// The body and response limits are deliberately generous rather than
+		// tight: ImportDB uploads a whole database file and checkOutbound runs
+		// a fifteen second probe, both through this server.
+		ReadHeaderTimeout: 20 * time.Second,
+		ReadTimeout:       5 * time.Minute,
+		WriteTimeout:      5 * time.Minute,
+		IdleTimeout:       2 * time.Minute,
 	}
 
 	go func() {
