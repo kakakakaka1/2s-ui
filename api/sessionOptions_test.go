@@ -17,8 +17,13 @@ func TestBaseSessionOptions(t *testing.T) {
 	if !o.HttpOnly {
 		t.Error("the session cookie must be HttpOnly: an XSS anywhere in the panel would otherwise hand the session over")
 	}
-	if o.SameSite != http.SameSiteStrictMode {
-		t.Errorf("SameSite = %v, want Strict", o.SameSite)
+	// Lax, not Strict: the two differ only on a top-level navigation the user
+	// performed themselves, and Strict withholds the cookie there too -- so
+	// following a link to the panel from anywhere else lands on the login form
+	// despite a live session. Lax still withholds it from every cross-site
+	// POST, which is the shape of the attack.
+	if o.SameSite != http.SameSiteLaxMode {
+		t.Errorf("SameSite = %v, want Lax", o.SameSite)
 	}
 	if o.Path != "/" {
 		t.Errorf("Path = %q, want /", o.Path)

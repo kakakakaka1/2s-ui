@@ -34,14 +34,23 @@ func init() {
 // frontend reads the cookie -- the router has never consulted it, unlike
 // upstream's -- so this costs nothing here.
 //
-// SameSite=Strict has nothing to do with TLS and is safe in HTTP mode too. It
-// stops a cross-site request carrying the session at all, which is the half of
-// the CSRF answer that does not depend on the panel checking anything.
+// SameSite has nothing to do with TLS and is safe in HTTP mode too. It is the
+// half of the CSRF answer that does not depend on the panel checking anything:
+// the browser refuses to attach the session to a cross-site POST, which is the
+// shape of the attack.
+//
+// Lax rather than Strict. The two differ only on a top-level navigation the
+// user performed themselves -- following a link to the panel from a chat
+// message, a wiki, an email -- and Strict withholds the cookie there too, so
+// the operator lands on the login form despite a live session and has to reload
+// to get past it. That reads as "the panel logged me out" and buys nothing:
+// Lax already withholds the cookie from every cross-site POST, and
+// middleware.SameOrigin answers the rest.
 func BaseSessionOptions(maxAgeMinutes int) sessions.Options {
 	o := sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 	}
 	if maxAgeMinutes > 0 {
 		o.MaxAge = maxAgeMinutes * 60

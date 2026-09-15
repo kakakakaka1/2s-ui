@@ -1,18 +1,21 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 )
 
-func sameOriginStatus(t *testing.T, method, host string, headers map[string]string) int {
+func sameOriginRecord(t *testing.T, method, host string, headers map[string]string,
+	behindProxy bool, panelDomain string) *httptest.ResponseRecorder {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
-	engine.Use(SameOrigin())
+	engine.Use(SameOrigin(behindProxy, panelDomain))
 	handle := func(c *gin.Context) { c.Status(http.StatusOK) }
 	engine.GET("/x", handle)
 	engine.POST("/x", handle)
@@ -24,7 +27,14 @@ func sameOriginStatus(t *testing.T, method, host string, headers map[string]stri
 	}
 	rec := httptest.NewRecorder()
 	engine.ServeHTTP(rec, req)
-	return rec.Code
+	return rec
+}
+
+// sameOriginStatus is the directly-exposed panel: nothing in front, so the Host
+// the request carries is the browser's own statement of where it went.
+func sameOriginStatus(t *testing.T, method, host string, headers map[string]string) int {
+	t.Helper()
+	return sameOriginRecord(t, method, host, headers, false, "").Code
 }
 
 func TestSameOrigin(t *testing.T) {
@@ -124,5 +134,105 @@ func TestSameOriginIgnoresThePort(t *testing.T) {
 				t.Errorf("Host %q, Origin %q -> %d, want %d", tt.host, tt.origin, got, tt.want)
 			}
 		})
+	}
+}
+
+// Behind a reverse proxy, c.Request.Host is whatever that proxy chose to send.
+// nginx's own default is `proxy_set_header Host $proxy_host`, i.e. the address
+// the vhost dials the panel on, which names nothing a browser ever typed --
+// comparing an Origin against it refuses every write on a panel that works,
+// and the login POST with them, so there is nowhere left to fix it from.
+func TestSameOriginBehindAProxy(t *testing.T) {
+	// What a vhost without `proxy_set_header Host $host;` leaves behind.
+	const rewritten = "127.0.0.1:2095"
+	const public = "panel.example.com"
+
+	tests := []struct {
+		name        string
+		host        string
+		headers     map[string]string
+		behindProxy bool
+		panelDomain string
+		want        int
+	}{
+		{"the proxy forwards the real host", rewritten,
+			map[string]string{"Origin": "https://" + public, "X-Forwarded-Host": public},
+			true, "", http.StatusOK},
+		{"and still refuses a foreign origin", rewritten,
+			map[string]string{"Origin": "https://evil.example", "X-Forwarded-Host": public},
+			true, "", http.StatusForbidden},
+		// A chain of proxies appends; any host the request actually passed
+		// through is a host the browser may have dialled.
+		{"a forwarded chain", rewritten,
+			map[string]string{"Origin": "https://" + public, "X-Forwarded-Host": public + ", edge.example.com"},
+			true, "", http.StatusOK},
+		// The port belongs to the browser, not to the forwarded name.
+		{"forwarded host without the browser's port", rewritten,
+			map[string]string{"Origin": "https://" + public + ":8443", "X-Forwarded-Host": public},
+			true, "", http.StatusOK},
+
+		// The configured domain answers the same question, and is what an
+		// operator whose proxy forwards nothing can set.
+		{"the panel domain stands in", rewritten,
+			map[string]string{"Origin": "https://" + public}, true, public, http.StatusOK},
+		{"the panel domain still refuses a foreign origin", rewritten,
+			map[string]string{"Origin": "https://evil.example"}, true, public, http.StatusForbidden},
+
+		// Neither: the panel does not know its own name, so it stands down
+		// rather than locking the operator out. SameSite on the cookie is what
+		// guards the request in that configuration.
+		{"a proxy that forwards nothing", rewritten,
+			map[string]string{"Origin": "https://" + public}, true, "", http.StatusOK},
+
+		// X-Forwarded-Host is client input unless something in front
+		// overwrote it, which is the same rule getRemoteIp applies to
+		// X-Forwarded-For.
+		{"forwarded host is ignored without the proxy setting", public,
+			map[string]string{"Origin": "https://evil.example", "X-Forwarded-Host": "evil.example"},
+			false, "", http.StatusForbidden},
+
+		// A correctly configured proxy sends Host and nothing else; the domain
+		// is what says the panel is reachable there.
+		{"proxy forwards Host, domain configured", public,
+			map[string]string{"Origin": "https://" + public}, true, public, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sameOriginRecord(t, http.MethodPost, tt.host, tt.headers,
+				tt.behindProxy, tt.panelDomain).Code
+			if got != tt.want {
+				t.Errorf("Host %q, headers %v, behindProxy=%v, domain %q -> %d, want %d",
+					tt.host, tt.headers, tt.behindProxy, tt.panelDomain, got, tt.want)
+			}
+		})
+	}
+}
+
+// A refusal has to say which two names failed to match. An empty 403 reaches
+// the operator as "Request failed with status code 403", which names neither --
+// and httputil only reads a body carrying all three of success, msg and obj.
+func TestSameOriginRefusalCarriesTheMsgShape(t *testing.T) {
+	rec := sameOriginRecord(t, http.MethodPost, "panel.example.com",
+		map[string]string{"Origin": "https://evil.example"}, false, "")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body %q is not JSON: %v", rec.Body.String(), err)
+	}
+	for _, key := range []string{"success", "msg", "obj"} {
+		if _, ok := body[key]; !ok {
+			t.Errorf("body is missing %q: %v", key, body)
+		}
+	}
+	if body["success"] != false {
+		t.Errorf("success = %v, want false", body["success"])
+	}
+	msg, _ := body["msg"].(string)
+	if !strings.Contains(msg, "evil.example") || !strings.Contains(msg, "panel.example.com") {
+		t.Errorf("msg = %q, want both the origin and the expected host named", msg)
 	}
 }

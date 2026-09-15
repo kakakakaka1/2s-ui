@@ -28,7 +28,20 @@ const healthCheckTimeout = 3 * time.Second
 // depending on what is configured, and a check that assumed one would fail on
 // the other. A listening socket is the question being asked.
 func healthCheck() {
-	if err := database.InitDB(config.GetDBPath()); err != nil {
+	// OpenDB, not InitDB. This runs every thirty seconds under the Dockerfile's
+	// HEALTHCHECK, in a second process, against the database the panel is
+	// writing to -- and InitDB is the start-up path: dedupStats scans the whole
+	// stats table (a row per resource, tag, bucket and direction over a
+	// thirty-day window, so millions on an active panel), AutoMigrate walks
+	// fourteen models, and initUser would recreate admin/admin if it ever saw an
+	// empty users table -- which ImportDB, swapping the file underneath, briefly
+	// can. All of that to read two settings rows, under a five-second check
+	// timeout that a slow scan blows through: three of those in a row and the
+	// orchestrator kills a container that was serving fine.
+	//
+	// OpenDB alone installs the handle SettingService reads through, which is
+	// the whole requirement here.
+	if err := database.OpenDB(config.GetDBPath()); err != nil {
 		fmt.Println("healthcheck: unable to open the database:", err)
 		os.Exit(1)
 	}

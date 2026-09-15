@@ -123,8 +123,19 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	// one of the panel's own pages. apiv2 authenticates with a Token header,
 	// which such a page cannot set without a CORS preflight this panel never
 	// answers.
+	//
+	// Both settings are read once here, like the webDomain DomainValidator is
+	// built with above: a change to either already needs a panel restart to
+	// take effect, since that is what rebuilds this router. GetWebNginx is the
+	// unguarded read getRemoteIp uses, not the `runtime.GOOS != "windows" &&`
+	// form further down -- that one is about which side terminates TLS, while
+	// this one is about who wrote the Host header.
+	webNginx, err := s.settingService.GetWebNginx()
+	if err != nil {
+		return nil, err
+	}
 	group_api := engine.Group(base_url + "api")
-	group_api.Use(middleware.SameOrigin())
+	group_api.Use(middleware.SameOrigin(webNginx, webDomain))
 	api.NewAPIHandler(group_api, apiv2)
 
 	// Push channel for the SPA. Static sibling of api/apiv2 — registering it
