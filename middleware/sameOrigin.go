@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -33,14 +34,27 @@ import (
 // panel reachable on anything but 443. DomainValidator already strips the port
 // before its own comparison, for the same deployment.
 //
-// behindProxy is the webNginx setting and panelDomain is webDomain; both decide
-// what the panel is allowed to believe about its own public name. See
-// expectedHosts -- getting that wrong refuses every write on a working install.
-//
+// Options carries what the panel knows about its own public identity. All of it
+// is read once when the router is built, the way DomainValidator is: changing
+// any of these already needs a panel restart, since that is what rebuilds the
+// router.
+type Options struct {
+	// BehindProxy is the webNginx setting: something in front wrote the Host
+	// header, so it is not by itself the browser's statement of where it went.
+	BehindProxy bool
+	// PanelDomain is webDomain, "" when unset.
+	PanelDomain string
+	// Listen and Port are webListen and webPort -- the socket the panel bound.
+	// They are what tells a forwarded Host from the panel's own address; see
+	// hostIsOwnSocket.
+	Listen string
+	Port   int
+}
+
 // Mounted on the cookie-authenticated group only. apiv2 authenticates with a
 // Token header, which a cross-site page cannot set without a CORS preflight the
 // panel never answers.
-func SameOrigin(behindProxy bool, panelDomain string) gin.HandlerFunc {
+func SameOrigin(opt Options) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		switch c.Request.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
@@ -70,12 +84,12 @@ func SameOrigin(behindProxy bool, panelDomain string) gin.HandlerFunc {
 			return
 		}
 
-		expected, known := expectedHosts(c, behindProxy, panelDomain)
-		if !known {
-			warnProxyHidesHost(c.Request.Host)
-			c.Next()
-			return
-		}
+		// Match first, and against every name the panel could answer to --
+		// c.Request.Host included, whatever wrote it. A proxy that forwards the
+		// browser's Host makes this the whole check, and one that rewrote it to
+		// the panel's own address can only match an operator browsing that
+		// address directly, which is same-origin anyway.
+		expected := expectedHosts(c, opt)
 		from := hostname(u.Host)
 		for _, host := range expected {
 			if strings.EqualFold(from, host) {
@@ -83,50 +97,101 @@ func SameOrigin(behindProxy bool, panelDomain string) gin.HandlerFunc {
 				return
 			}
 		}
+
+		// A mismatch only means something if the names it was compared against
+		// mean something.
+		if inconclusive(c, opt) {
+			warnProxyHidesHost(c.Request.Host)
+			c.Next()
+			return
+		}
 		rejectCrossSite(c, from, expected)
 	}
 }
 
-// expectedHosts returns the hostnames a browser may legitimately have dialled
-// to reach this panel, and whether the answer is worth anything.
+// expectedHosts returns every hostname a browser may legitimately have dialled
+// to reach this panel.
 //
-// Directly exposed, the Host header is the browser's own statement of where it
-// went, so it is the whole answer. Behind a reverse proxy it is whatever that
-// proxy chose to send, and nginx's default is `proxy_set_header Host
-// $proxy_host` -- the panel's own listen address, which names nothing a browser
-// ever typed. Comparing an Origin against that refuses every write on a panel
-// that works perfectly, with the operator locked out of the only interface they
-// have: the login POST is refused too, so there is nowhere to go and fix it
-// from.
+// c.Request.Host is always one of them. Directly exposed it is the browser's own
+// statement of where it went, and behind a proxy that forwards it, it still is;
+// behind one that rewrote it, it names the panel's own socket, which only an
+// operator browsing that address directly can match -- and that is same-origin.
 //
-// Two things can still say what the public name is behind a proxy, so both are
-// accepted: the configured domain, and X-Forwarded-Host. The header is read
-// only with the reverse-proxy setting on -- the same rule getRemoteIp applies to
-// X-Forwarded-For, and for the same reason. It is safe here regardless of which
-// entry of a chain is taken, because it is not a CORS-safelisted header: a
-// cross-site page cannot set one without a preflight this panel never answers,
-// so a request carrying it did not come from the attack this guards against.
+// X-Forwarded-Host is read only with the reverse-proxy setting on, the same rule
+// getRemoteIp applies to X-Forwarded-For. Which entry of a chain is taken does
+// not matter, because it is not a CORS-safelisted header: a cross-site page
+// cannot set one without a preflight this panel never answers, so a request
+// carrying it did not come from the attack this guards against.
 //
-// When neither says anything, known is false and the caller stands down. That
-// is the honest answer -- the panel does not know its own name -- and standing
-// down leaves SameSite on the cookie, which browsers have enforced for years,
-// as the guard rather than bricking the install. It does not cost the panel's
-// own deployment anything: EnsureVhost refuses to generate a vhost without a
-// domain, so webNginx being on with webDomain empty means a proxy this panel
-// did not write and knows nothing about.
-func expectedHosts(c *gin.Context, behindProxy bool, panelDomain string) (hosts []string, known bool) {
-	if panelDomain != "" {
-		hosts = append(hosts, hostname(panelDomain))
+// The configured domain is accepted too -- though behind a proxy that rewrote
+// Host it cannot be reached, because DomainValidator compares that same Host
+// against the same domain and aborts first. What it does here is make the answer
+// conclusive; see inconclusive.
+func expectedHosts(c *gin.Context, opt Options) []string {
+	hosts := []string{hostname(c.Request.Host)}
+	if opt.PanelDomain != "" {
+		hosts = append(hosts, hostname(opt.PanelDomain))
 	}
-	if !behindProxy {
-		return append(hosts, hostname(c.Request.Host)), true
-	}
-	for _, forwarded := range strings.Split(c.GetHeader("X-Forwarded-Host"), ",") {
-		if forwarded = strings.TrimSpace(forwarded); forwarded != "" {
-			hosts = append(hosts, hostname(forwarded))
+	if opt.BehindProxy {
+		for _, forwarded := range strings.Split(c.GetHeader("X-Forwarded-Host"), ",") {
+			if forwarded = strings.TrimSpace(forwarded); forwarded != "" {
+				hosts = append(hosts, hostname(forwarded))
+			}
 		}
 	}
-	return hosts, len(hosts) > 0
+	return hosts
+}
+
+// inconclusive reports whether a mismatch proves nothing, because the only name
+// the panel had to compare against was a Host header it can see was written by
+// the proxy rather than by the browser.
+//
+// nginx's default is `proxy_set_header Host $proxy_host` -- the address the
+// vhost dials the panel on -- so on a proxied panel that was not told to forward
+// the real one, Host names nothing a browser ever typed and refusing on it
+// refuses every write on an install that works, the login POST with them: there
+// is then nowhere left to go and fix it from.
+//
+// Proven, not assumed. The panel knows the socket it bound, so a Host naming
+// that socket is its own upstream address; any other Host came from somewhere
+// that had to know the public name, and a mismatch against it is real. Without
+// that half this stood down for every proxied panel with no configured domain,
+// including the many whose vhost carries `proxy_set_header Host $host;` and
+// were checked correctly before.
+//
+// A configured domain or a forwarded host settles the question by itself, so
+// neither reaches this.
+func inconclusive(c *gin.Context, opt Options) bool {
+	if !opt.BehindProxy || opt.PanelDomain != "" {
+		return false
+	}
+	if strings.TrimSpace(c.GetHeader("X-Forwarded-Host")) != "" {
+		return false
+	}
+	return hostIsOwnSocket(c.Request.Host, opt.Listen, opt.Port)
+}
+
+// hostIsOwnSocket reports whether host names the address this panel is listening
+// on, which is what $proxy_host expands to.
+//
+// The port has to match: a Host carrying some other port is not this socket. A
+// Host with no port at all is the shape nginx's `Host $host` produces for a
+// browser on 443, so it is not one of ours either.
+func hostIsOwnSocket(host, listen string, port int) bool {
+	h, p, err := net.SplitHostPort(host)
+	if err != nil || p != strconv.Itoa(port) {
+		return false
+	}
+	if listen != "" && listen != "0.0.0.0" && listen != "::" {
+		// Bound to one address, so that address is the only one a proxy on
+		// another host can dial -- and loopback below may not even be bound.
+		return strings.EqualFold(h, listen)
+	}
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && ip.IsLoopback()
 }
 
 // proxyHostWarned keeps the stand-down to one line in the log. It is reached on
@@ -136,10 +201,15 @@ var proxyHostWarned sync.Once
 
 func warnProxyHidesHost(host string) {
 	proxyHostWarned.Do(func() {
+		// Only the two header fixes. Setting the panel domain looks like a
+		// third way out and is the opposite: it mounts DomainValidator, which
+		// compares this same rewritten Host and aborts *every* request, GETs
+		// included, so the panel stops serving the login page at all.
 		logger.Warning("the reverse proxy in front of this panel forwards neither",
 			" the browser's Host nor X-Forwarded-Host (this request arrived as \"", host,
 			"\"), so the same-origin check cannot run. Add",
-			" `proxy_set_header Host $host;` to the vhost, or set the panel domain.")
+			" `proxy_set_header Host $host;` or `proxy_set_header X-Forwarded-Host $host;`",
+			" to the vhost.")
 	})
 }
 

@@ -124,18 +124,42 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	// which such a page cannot set without a CORS preflight this panel never
 	// answers.
 	//
-	// Both settings are read once here, like the webDomain DomainValidator is
-	// built with above: a change to either already needs a panel restart to
-	// take effect, since that is what rebuilds this router. GetWebNginx is the
-	// unguarded read getRemoteIp uses, not the `runtime.GOOS != "windows" &&`
-	// form further down -- that one is about which side terminates TLS, while
-	// this one is about who wrote the Host header.
-	webNginx, err := s.settingService.GetWebNginx()
-	if err != nil {
-		return nil, err
+	// Every input is read once here, like the webDomain DomainValidator is
+	// built with above: a change to any of them already needs a panel restart
+	// to take effect, since that is what rebuilds this router. GetWebNginx is
+	// the unguarded read getRemoteIp uses, not the `runtime.GOOS != "windows"
+	// &&` form further down -- that one is about which side terminates TLS,
+	// while this one is about who wrote the Host header.
+	//
+	// A read that fails is logged and defaulted rather than returned, which is
+	// also what getRemoteIp does with the same setting. These three only tune
+	// how much the check is allowed to believe; refusing to build the router
+	// over one of them would turn a settings row a caller can write through
+	// api/save -- webNginx is stored verbatim, so `strconv.ParseBool` can fail
+	// on it -- into a panel that will not boot, with no `sui setting` flag to
+	// undo it. The defaults are the strict reading: nothing in front, so the
+	// Host header is taken at face value.
+	// A failed read leaves the field at its zero value, which is why each one
+	// assigns only on success -- and why none of them touches err, which the
+	// rest of this function still owns.
+	sameOrigin := middleware.Options{PanelDomain: webDomain}
+	if v, readErr := s.settingService.GetWebNginx(); readErr != nil {
+		logger.Warning("read reverse-proxy setting for the same-origin check:", readErr)
+	} else {
+		sameOrigin.BehindProxy = v
+	}
+	if v, readErr := s.settingService.GetListen(); readErr != nil {
+		logger.Warning("read panel listen address for the same-origin check:", readErr)
+	} else {
+		sameOrigin.Listen = v
+	}
+	if v, readErr := s.settingService.GetPort(); readErr != nil {
+		logger.Warning("read panel port for the same-origin check:", readErr)
+	} else {
+		sameOrigin.Port = v
 	}
 	group_api := engine.Group(base_url + "api")
-	group_api.Use(middleware.SameOrigin(webNginx, webDomain))
+	group_api.Use(middleware.SameOrigin(sameOrigin))
 	api.NewAPIHandler(group_api, apiv2)
 
 	// Push channel for the SPA. Static sibling of api/apiv2 — registering it

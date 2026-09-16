@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/shenaba/2s-ui/config"
+	"github.com/shenaba/2s-ui/util"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -17,26 +17,12 @@ import (
 // b. The gates below used plain string compares, which break once a segment
 // reaches two digits ("1.5.10" < "1.5.7" lexically). Missing or non-numeric
 // segments count as 0, so "1.5" == "1.5.0" and "" sorts first.
+//
+// The ordering itself lives in util so the self-updater can answer the same
+// question -- "is that release actually newer than this binary" -- without a
+// second copy to drift against.
 func versionBefore(a, b string) bool {
-	as := strings.Split(a, ".")
-	bs := strings.Split(b, ".")
-	n := len(as)
-	if len(bs) > n {
-		n = len(bs)
-	}
-	for i := 0; i < n; i++ {
-		av, bv := 0, 0
-		if i < len(as) {
-			av, _ = strconv.Atoi(as[i])
-		}
-		if i < len(bs) {
-			bv, _ = strconv.Atoi(bs[i])
-		}
-		if av != bv {
-			return av < bv
-		}
-	}
-	return false
+	return util.VersionBefore(a, b)
 }
 
 // MigrateDb applies the one-off data repairs older releases left pending and

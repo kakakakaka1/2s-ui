@@ -11,11 +11,11 @@ import (
 )
 
 func sameOriginRecord(t *testing.T, method, host string, headers map[string]string,
-	behindProxy bool, panelDomain string) *httptest.ResponseRecorder {
+	opt Options) *httptest.ResponseRecorder {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
-	engine.Use(SameOrigin(behindProxy, panelDomain))
+	engine.Use(SameOrigin(opt))
 	handle := func(c *gin.Context) { c.Status(http.StatusOK) }
 	engine.GET("/x", handle)
 	engine.POST("/x", handle)
@@ -34,7 +34,7 @@ func sameOriginRecord(t *testing.T, method, host string, headers map[string]stri
 // the request carries is the browser's own statement of where it went.
 func sameOriginStatus(t *testing.T, method, host string, headers map[string]string) int {
 	t.Helper()
-	return sameOriginRecord(t, method, host, headers, false, "").Code
+	return sameOriginRecord(t, method, host, headers, Options{}).Code
 }
 
 func TestSameOrigin(t *testing.T) {
@@ -142,68 +142,136 @@ func TestSameOriginIgnoresThePort(t *testing.T) {
 // the vhost dials the panel on, which names nothing a browser ever typed --
 // comparing an Origin against it refuses every write on a panel that works,
 // and the login POST with them, so there is nowhere left to fix it from.
+//
+// But standing down for every proxied panel is the other failure: most vhosts
+// do carry `proxy_set_header Host $host;`, and those were checked correctly all
+// along. So the stand-down has to be earned -- the Host has to actually name
+// the socket this panel bound.
 func TestSameOriginBehindAProxy(t *testing.T) {
 	// What a vhost without `proxy_set_header Host $host;` leaves behind.
 	const rewritten = "127.0.0.1:2095"
 	const public = "panel.example.com"
+	proxied := func(o Options) Options {
+		o.BehindProxy = true
+		if o.Port == 0 {
+			o.Port = 2095
+		}
+		return o
+	}
 
 	tests := []struct {
-		name        string
-		host        string
-		headers     map[string]string
-		behindProxy bool
-		panelDomain string
-		want        int
+		name    string
+		host    string
+		headers map[string]string
+		opt     Options
+		want    int
 	}{
 		{"the proxy forwards the real host", rewritten,
 			map[string]string{"Origin": "https://" + public, "X-Forwarded-Host": public},
-			true, "", http.StatusOK},
+			proxied(Options{}), http.StatusOK},
 		{"and still refuses a foreign origin", rewritten,
 			map[string]string{"Origin": "https://evil.example", "X-Forwarded-Host": public},
-			true, "", http.StatusForbidden},
+			proxied(Options{}), http.StatusForbidden},
 		// A chain of proxies appends; any host the request actually passed
 		// through is a host the browser may have dialled.
 		{"a forwarded chain", rewritten,
 			map[string]string{"Origin": "https://" + public, "X-Forwarded-Host": public + ", edge.example.com"},
-			true, "", http.StatusOK},
+			proxied(Options{}), http.StatusOK},
 		// The port belongs to the browser, not to the forwarded name.
 		{"forwarded host without the browser's port", rewritten,
 			map[string]string{"Origin": "https://" + public + ":8443", "X-Forwarded-Host": public},
-			true, "", http.StatusOK},
+			proxied(Options{}), http.StatusOK},
 
-		// The configured domain answers the same question, and is what an
-		// operator whose proxy forwards nothing can set.
-		{"the panel domain stands in", rewritten,
-			map[string]string{"Origin": "https://" + public}, true, public, http.StatusOK},
-		{"the panel domain still refuses a foreign origin", rewritten,
-			map[string]string{"Origin": "https://evil.example"}, true, public, http.StatusForbidden},
+		// A configured domain settles it by itself. (DomainValidator would have
+		// aborted a rewritten Host before this runs, so in practice this is the
+		// proxy that forwards Host correctly.)
+		{"the panel domain stands in", public,
+			map[string]string{"Origin": "https://" + public},
+			proxied(Options{PanelDomain: public}), http.StatusOK},
+		{"the panel domain still refuses a foreign origin", public,
+			map[string]string{"Origin": "https://evil.example"},
+			proxied(Options{PanelDomain: public}), http.StatusForbidden},
 
-		// Neither: the panel does not know its own name, so it stands down
-		// rather than locking the operator out. SameSite on the cookie is what
-		// guards the request in that configuration.
+		// The regression this function exists for: a vhost that forwards Host
+		// and nothing else, with no domain configured. The panel can see that
+		// Host is not its own socket, so the mismatch is real.
+		{"proxy forwards Host, no domain, foreign origin", public,
+			map[string]string{"Origin": "https://evil.example"},
+			proxied(Options{}), http.StatusForbidden},
+		{"proxy forwards Host, no domain, own origin", public,
+			map[string]string{"Origin": "https://" + public},
+			proxied(Options{}), http.StatusOK},
+
+		// Only here does the check stand down: Host is the panel's own socket,
+		// so it says nothing about where the browser went.
 		{"a proxy that forwards nothing", rewritten,
-			map[string]string{"Origin": "https://" + public}, true, "", http.StatusOK},
+			map[string]string{"Origin": "https://" + public},
+			proxied(Options{}), http.StatusOK},
+		{"a proxy that forwards nothing, foreign origin", rewritten,
+			map[string]string{"Origin": "https://evil.example"},
+			proxied(Options{}), http.StatusOK},
+		// ...and an operator tunnelling straight to that socket matches it
+		// outright, without needing the stand-down at all.
+		{"browsing the socket directly", rewritten,
+			map[string]string{"Origin": "http://" + rewritten},
+			proxied(Options{}), http.StatusOK},
 
 		// X-Forwarded-Host is client input unless something in front
 		// overwrote it, which is the same rule getRemoteIp applies to
 		// X-Forwarded-For.
 		{"forwarded host is ignored without the proxy setting", public,
 			map[string]string{"Origin": "https://evil.example", "X-Forwarded-Host": "evil.example"},
-			false, "", http.StatusForbidden},
-
-		// A correctly configured proxy sends Host and nothing else; the domain
-		// is what says the panel is reachable there.
-		{"proxy forwards Host, domain configured", public,
-			map[string]string{"Origin": "https://" + public}, true, public, http.StatusOK},
+			Options{}, http.StatusForbidden},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := sameOriginRecord(t, http.MethodPost, tt.host, tt.headers,
-				tt.behindProxy, tt.panelDomain).Code
+			got := sameOriginRecord(t, http.MethodPost, tt.host, tt.headers, tt.opt).Code
 			if got != tt.want {
-				t.Errorf("Host %q, headers %v, behindProxy=%v, domain %q -> %d, want %d",
-					tt.host, tt.headers, tt.behindProxy, tt.panelDomain, got, tt.want)
+				t.Errorf("Host %q, headers %v, opt %+v -> %d, want %d",
+					tt.host, tt.headers, tt.opt, got, tt.want)
+			}
+		})
+	}
+}
+
+// $proxy_host expands to whatever the vhost dialled, and that is the only Host
+// the panel is allowed to call uninformative. Anything else had to come from
+// something that knew the public name.
+func TestHostIsOwnSocket(t *testing.T) {
+	tests := []struct {
+		name   string
+		host   string
+		listen string
+		port   int
+		want   bool
+	}{
+		{"loopback on our port", "127.0.0.1:2095", "", 2095, true},
+		{"localhost on our port", "localhost:2095", "", 2095, true},
+		{"IPv6 loopback on our port", "[::1]:2095", "", 2095, true},
+		{"loopback while bound to every interface", "127.0.0.1:2095", "0.0.0.0", 2095, true},
+		{"loopback while bound to every v6 interface", "127.0.0.1:2095", "::", 2095, true},
+		// Bound to one address: that is the address a proxy elsewhere dials,
+		// and loopback may not even be bound.
+		{"the bound address", "10.0.0.5:2095", "10.0.0.5", 2095, true},
+		{"loopback while bound elsewhere", "127.0.0.1:2095", "10.0.0.5", 2095, false},
+
+		// A real public name, which is what a forwarded Host looks like.
+		{"a hostname", "panel.example.com:2095", "", 2095, false},
+		{"a hostname with no port", "panel.example.com", "", 2095, false},
+		// nginx's `Host $host` for a browser on 443 carries no port at all.
+		{"loopback with no port", "127.0.0.1", "", 2095, false},
+		{"loopback on another port", "127.0.0.1:8443", "", 2095, false},
+		// Port 0 is the "could not read the setting" default: nothing matches
+		// it, so the check never stands down on a bad read.
+		{"unknown port", "127.0.0.1:2095", "", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := hostIsOwnSocket(tt.host, tt.listen, tt.port); got != tt.want {
+				t.Errorf("hostIsOwnSocket(%q, %q, %d) = %v, want %v",
+					tt.host, tt.listen, tt.port, got, tt.want)
 			}
 		})
 	}
@@ -214,7 +282,7 @@ func TestSameOriginBehindAProxy(t *testing.T) {
 // and httputil only reads a body carrying all three of success, msg and obj.
 func TestSameOriginRefusalCarriesTheMsgShape(t *testing.T) {
 	rec := sameOriginRecord(t, http.MethodPost, "panel.example.com",
-		map[string]string{"Origin": "https://evil.example"}, false, "")
+		map[string]string{"Origin": "https://evil.example"}, Options{})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
 	}

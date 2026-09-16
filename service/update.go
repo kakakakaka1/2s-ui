@@ -21,6 +21,7 @@ import (
 
 	"github.com/shenaba/2s-ui/config"
 	"github.com/shenaba/2s-ui/logger"
+	"github.com/shenaba/2s-ui/util"
 )
 
 // Self-update runs on Linux only. Bare-metal installs restart through a
@@ -189,7 +190,7 @@ func (s *UpdateService) run() {
 	updStatus.Target = tag
 	updMu.Unlock()
 
-	if normalizeVer(tag) == normalizeVer(config.GetVersion()) {
+	if !shouldInstall(tag, config.GetVersion()) {
 		s.setStatus(UpdateDone, "already up to date")
 		return
 	}
@@ -388,6 +389,25 @@ func goarm() string {
 
 func normalizeVer(v string) string {
 	return strings.TrimPrefix(strings.TrimSpace(v), "v")
+}
+
+// shouldInstall reports whether the published release is worth replacing the
+// running binary with.
+//
+// Ordered, not "different from". config/version is embedded and bumped by hand
+// in the commit that prepares a release, so between that commit and the publish
+// -- and on every build from main -- the binary is *newer* than the newest
+// release. An equality check calls that "not up to date" and installs the older
+// tarball over it, which is a downgrade the operator asked for as an update:
+// the panel loses whatever the newer build fixed, while the database stays
+// stamped at the newer version so no migration re-runs to meet it.
+//
+// A tag whose numbers do not order as newer is left alone, which also covers
+// the shapes VersionBefore reads as zero -- a release candidate, a retagged
+// build. Refusing to install something we cannot order is the safe direction;
+// the operator can still install it by hand.
+func shouldInstall(tag, current string) bool {
+	return util.VersionBefore(normalizeVer(current), normalizeVer(tag))
 }
 
 func download(url, dest string) error {
