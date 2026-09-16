@@ -132,26 +132,21 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	// while this one is about who wrote the Host header.
 	//
 	// A read that fails is logged and defaulted rather than returned, which is
-	// also what getRemoteIp does with the same setting. These three only tune
-	// how much the check is allowed to believe; refusing to build the router
-	// over one of them would turn a settings row a caller can write through
-	// api/save -- webNginx is stored verbatim, so `strconv.ParseBool` can fail
-	// on it -- into a panel that will not boot, with no `sui setting` flag to
-	// undo it. The defaults are the strict reading: nothing in front, so the
-	// Host header is taken at face value.
+	// also what getRemoteIp does with the same setting. These only tune how much
+	// the check is allowed to believe; refusing to build the router over one of
+	// them would turn a settings row a caller can write through api/save --
+	// webNginx is stored verbatim, so `strconv.ParseBool` can fail on it -- into
+	// a panel that will not boot, with no `sui setting` flag to undo it. The
+	// defaults are the strict reading: nothing in front, so the Host header is
+	// taken at face value, and a port nothing can match.
 	// A failed read leaves the field at its zero value, which is why each one
-	// assigns only on success -- and why none of them touches err, which the
-	// rest of this function still owns.
+	// assigns only on success -- and why neither touches err, which the rest of
+	// this function still owns.
 	sameOrigin := middleware.Options{PanelDomain: webDomain}
 	if v, readErr := s.settingService.GetWebNginx(); readErr != nil {
 		logger.Warning("read reverse-proxy setting for the same-origin check:", readErr)
 	} else {
 		sameOrigin.BehindProxy = v
-	}
-	if v, readErr := s.settingService.GetListen(); readErr != nil {
-		logger.Warning("read panel listen address for the same-origin check:", readErr)
-	} else {
-		sameOrigin.Listen = v
 	}
 	if v, readErr := s.settingService.GetPort(); readErr != nil {
 		logger.Warning("read panel port for the same-origin check:", readErr)

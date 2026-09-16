@@ -44,11 +44,10 @@ type Options struct {
 	BehindProxy bool
 	// PanelDomain is webDomain, "" when unset.
 	PanelDomain string
-	// Listen and Port are webListen and webPort -- the socket the panel bound.
-	// They are what tells a forwarded Host from the panel's own address; see
-	// hostIsOwnSocket.
-	Listen string
-	Port   int
+	// Port is webPort. Together with an address no browser out on the internet
+	// could have dialled, it is what tells the panel's own upstream socket from
+	// a name something in front forwarded; see hostIsOwnSocket.
+	Port int
 }
 
 // Mounted on the cookie-authenticated group only. apiv2 authenticates with a
@@ -170,42 +169,47 @@ func inconclusive(opt Options, candidates []string) bool {
 		return false
 	}
 	for _, candidate := range candidates {
-		if !hostIsOwnSocket(candidate, opt.Listen, opt.Port) {
+		if !hostIsOwnSocket(candidate, opt.Port) {
 			return false
 		}
 	}
 	return true
 }
 
-// hostIsOwnSocket reports whether host names the address this panel is listening
-// on, which is what $proxy_host expands to.
+// hostIsOwnSocket reports whether host is the upstream address a proxy dialled
+// this panel on -- what $proxy_host expands to -- rather than anything a browser
+// could have put there itself.
 //
-// The port has to match: a Host carrying some other port is not this socket. A
-// Host with no port at all is the shape nginx's `Host $host` produces for a
-// browser on 443, so it is not one of ours either.
+// Two things have to hold. The port has to be the panel's: a Host carrying some
+// other port is not this socket, and one with no port at all is the shape
+// nginx's `Host $host` produces for a browser on 443. And the address has to be
+// one no browser out on the internet can dial -- loopback, localhost, or a
+// private or link-local address, the same three requestIsHTTPS folds when it
+// decides whether a forwarded scheme is worth believing.
 //
-// Every spelling of loopback counts, whatever webListen says, because the two
-// are not interchangeable as strings and the cost of the two answers is not
-// symmetric. A panel bound to 127.0.0.1 behind `proxy_pass http://localhost:2095`
-// -- both sides correct -- sees "localhost:2095", and reading that as somebody
-// else's name refuses every write including the login, with no way back in
-// through the UI. Reading it as ours only gives up a check that was already
-// unable to run in this configuration. Nothing is loosened by the extra
-// spellings either: a browser can only send a Host it dialled, and an Origin
-// naming the same loopback address matches outright one step earlier.
-func hostIsOwnSocket(host, listen string, port int) bool {
+// The address test is the whole point, and it is not webListen. Matching
+// webListen was wrong in both directions. A panel bound to 127.0.0.1 behind
+// `proxy_pass http://localhost:2095` -- both sides correct -- sees
+// "localhost:2095", which is not that string, so every write including the
+// login was refused with no way back in through the UI. And a panel bound to a
+// public address matched it, which is exactly when the match must not be made:
+// a public address is one the browser dials itself, so Host really is its
+// statement of where it went and a cross-site Origin against it has to be
+// refused, not waved through.
+//
+// Nothing is loosened by accepting every unroutable spelling: a browser can only
+// send a Host it dialled, and an Origin naming the same address matches outright
+// one step earlier.
+func hostIsOwnSocket(host string, port int) bool {
 	h, p, err := net.SplitHostPort(host)
 	if err != nil || p != strconv.Itoa(port) {
 		return false
-	}
-	if listen != "" && strings.EqualFold(h, listen) {
-		return true
 	}
 	if strings.EqualFold(h, "localhost") {
 		return true
 	}
 	ip := net.ParseIP(h)
-	return ip != nil && ip.IsLoopback()
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
 }
 
 // proxyHostWarned keeps the stand-down to one line in the log. It is reached on
@@ -219,8 +223,12 @@ func warnProxyHidesHost(host string) {
 		// third way out and is the opposite: it mounts DomainValidator, which
 		// compares this same rewritten Host and aborts *every* request, GETs
 		// included, so the panel stops serving the login page at all.
+		// "usable" carries its weight: this also fires for a vhost that does set
+		// X-Forwarded-Host but from $proxy_host, so it only repeats the upstream
+		// address. Saying the header is absent would send that operator looking
+		// for a line their config already has.
 		logger.Warning("the reverse proxy in front of this panel forwards neither",
-			" the browser's Host nor X-Forwarded-Host (this request arrived as \"", host,
+			" the browser's Host nor a usable X-Forwarded-Host (this request arrived as \"", host,
 			"\"), so the same-origin check cannot run. Add",
 			" `proxy_set_header Host $host;` or `proxy_set_header X-Forwarded-Host $host;`",
 			" to the vhost.")

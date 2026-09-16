@@ -219,12 +219,22 @@ func TestSameOriginBehindAProxy(t *testing.T) {
 		// The spellings are not interchangeable as strings, and both sides of
 		// each of these is correctly configured -- refusing here locks the
 		// operator out of a panel that works.
-		{"bound to loopback, proxy_pass localhost", "localhost:2095",
+		{"proxy_pass localhost", "localhost:2095",
 			map[string]string{"Origin": "https://" + public},
-			proxied(Options{Listen: "127.0.0.1"}), http.StatusOK},
-		{"bound to ::1, proxy_pass 127.0.0.1", rewritten,
+			proxied(Options{}), http.StatusOK},
+		{"proxy on another host, private upstream", "10.0.0.5:2095",
 			map[string]string{"Origin": "https://" + public},
-			proxied(Options{Listen: "::1"}), http.StatusOK},
+			proxied(Options{}), http.StatusOK},
+
+		// But a public upstream address is one the browser dials itself, so
+		// Host really is its statement of where it went and a cross-site Origin
+		// against it has to be refused rather than waved through.
+		{"public address, foreign origin", "203.0.113.10:2095",
+			map[string]string{"Origin": "https://evil.example"},
+			proxied(Options{}), http.StatusForbidden},
+		{"public address, own origin", "203.0.113.10:2095",
+			map[string]string{"Origin": "http://203.0.113.10:2095"},
+			proxied(Options{}), http.StatusOK},
 		// A vhost that sets X-Forwarded-Host from $proxy_host by mistake: the
 		// header is there but says only what Host already said.
 		{"forwarded host is the upstream address too", rewritten,
@@ -260,43 +270,46 @@ func TestSameOriginBehindAProxy(t *testing.T) {
 // something that knew the public name.
 func TestHostIsOwnSocket(t *testing.T) {
 	tests := []struct {
-		name   string
-		host   string
-		listen string
-		port   int
-		want   bool
+		name string
+		host string
+		port int
+		want bool
 	}{
-		{"loopback on our port", "127.0.0.1:2095", "", 2095, true},
-		{"localhost on our port", "localhost:2095", "", 2095, true},
-		{"IPv6 loopback on our port", "[::1]:2095", "", 2095, true},
-		{"loopback while bound to every interface", "127.0.0.1:2095", "0.0.0.0", 2095, true},
-		{"loopback while bound to every v6 interface", "127.0.0.1:2095", "::", 2095, true},
-		// Bound to one address: that is the address a proxy elsewhere dials,
-		// and loopback may not even be bound.
-		{"the bound address", "10.0.0.5:2095", "10.0.0.5", 2095, true},
-		// Loopback counts whatever webListen says: the spellings are not
-		// interchangeable as strings, and a proxy on the same host dials one of
-		// them. Refusing here is what locked the panel out.
-		{"loopback while bound elsewhere", "127.0.0.1:2095", "10.0.0.5", 2095, true},
-		{"localhost while bound to loopback", "localhost:2095", "127.0.0.1", 2095, true},
-		{"loopback while bound to the other family", "127.0.0.1:2095", "::1", 2095, true},
+		// Addresses a browser out on the internet cannot dial, so whatever put
+		// them in the Host header was something in front of the panel. Every
+		// spelling counts: they are not interchangeable as strings, and which
+		// one appears is the vhost's proxy_pass, not the panel's webListen.
+		{"loopback on our port", "127.0.0.1:2095", 2095, true},
+		{"localhost on our port", "localhost:2095", 2095, true},
+		{"IPv6 loopback on our port", "[::1]:2095", 2095, true},
+		{"elsewhere in the loopback range", "127.0.0.53:2095", 2095, true},
+		// A proxy on another host dials the panel over the LAN.
+		{"a private address", "10.0.0.5:2095", 2095, true},
+		{"an IPv6 ULA", "[fd00::1]:2095", 2095, true},
+		{"a link-local address", "169.254.1.5:2095", 2095, true},
 
+		// A public address is one the browser dials itself, so Host is its own
+		// statement and a mismatch against it is real. Matching webListen here
+		// is what let a cross-site POST straight to a publicly bound panel
+		// stand down instead of being refused.
+		{"a public address", "203.0.113.10:2095", 2095, false},
+		{"a public IPv6 address", "[2001:db8::1]:2095", 2095, false},
 		// A real public name, which is what a forwarded Host looks like.
-		{"a hostname", "panel.example.com:2095", "", 2095, false},
-		{"a hostname with no port", "panel.example.com", "", 2095, false},
+		{"a hostname", "panel.example.com:2095", 2095, false},
+		{"a hostname with no port", "panel.example.com", 2095, false},
 		// nginx's `Host $host` for a browser on 443 carries no port at all.
-		{"loopback with no port", "127.0.0.1", "", 2095, false},
-		{"loopback on another port", "127.0.0.1:8443", "", 2095, false},
+		{"loopback with no port", "127.0.0.1", 2095, false},
+		{"loopback on another port", "127.0.0.1:8443", 2095, false},
 		// Port 0 is the "could not read the setting" default: nothing matches
 		// it, so the check never stands down on a bad read.
-		{"unknown port", "127.0.0.1:2095", "", 0, false},
+		{"unknown port", "127.0.0.1:2095", 0, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := hostIsOwnSocket(tt.host, tt.listen, tt.port); got != tt.want {
-				t.Errorf("hostIsOwnSocket(%q, %q, %d) = %v, want %v",
-					tt.host, tt.listen, tt.port, got, tt.want)
+			if got := hostIsOwnSocket(tt.host, tt.port); got != tt.want {
+				t.Errorf("hostIsOwnSocket(%q, %d) = %v, want %v",
+					tt.host, tt.port, got, tt.want)
 			}
 		})
 	}
