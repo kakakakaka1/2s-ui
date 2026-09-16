@@ -202,8 +202,8 @@ func TestSameOriginBehindAProxy(t *testing.T) {
 			map[string]string{"Origin": "https://" + public},
 			proxied(Options{}), http.StatusOK},
 
-		// Only here does the check stand down: Host is the panel's own socket,
-		// so it says nothing about where the browser went.
+		// Only here does the check stand down: every name the panel has is its
+		// own socket, so none of them says where the browser went.
 		{"a proxy that forwards nothing", rewritten,
 			map[string]string{"Origin": "https://" + public},
 			proxied(Options{}), http.StatusOK},
@@ -215,6 +215,26 @@ func TestSameOriginBehindAProxy(t *testing.T) {
 		{"browsing the socket directly", rewritten,
 			map[string]string{"Origin": "http://" + rewritten},
 			proxied(Options{}), http.StatusOK},
+
+		// The spellings are not interchangeable as strings, and both sides of
+		// each of these is correctly configured -- refusing here locks the
+		// operator out of a panel that works.
+		{"bound to loopback, proxy_pass localhost", "localhost:2095",
+			map[string]string{"Origin": "https://" + public},
+			proxied(Options{Listen: "127.0.0.1"}), http.StatusOK},
+		{"bound to ::1, proxy_pass 127.0.0.1", rewritten,
+			map[string]string{"Origin": "https://" + public},
+			proxied(Options{Listen: "::1"}), http.StatusOK},
+		// A vhost that sets X-Forwarded-Host from $proxy_host by mistake: the
+		// header is there but says only what Host already said.
+		{"forwarded host is the upstream address too", rewritten,
+			map[string]string{"Origin": "https://" + public, "X-Forwarded-Host": rewritten},
+			proxied(Options{}), http.StatusOK},
+		// One candidate that is not our socket is enough to make the answer
+		// real again, even when Host is.
+		{"forwarded host names the public name", rewritten,
+			map[string]string{"Origin": "https://evil.example", "X-Forwarded-Host": public},
+			proxied(Options{}), http.StatusForbidden},
 
 		// X-Forwarded-Host is client input unless something in front
 		// overwrote it, which is the same rule getRemoteIp applies to
@@ -254,7 +274,12 @@ func TestHostIsOwnSocket(t *testing.T) {
 		// Bound to one address: that is the address a proxy elsewhere dials,
 		// and loopback may not even be bound.
 		{"the bound address", "10.0.0.5:2095", "10.0.0.5", 2095, true},
-		{"loopback while bound elsewhere", "127.0.0.1:2095", "10.0.0.5", 2095, false},
+		// Loopback counts whatever webListen says: the spellings are not
+		// interchangeable as strings, and a proxy on the same host dials one of
+		// them. Refusing here is what locked the panel out.
+		{"loopback while bound elsewhere", "127.0.0.1:2095", "10.0.0.5", 2095, true},
+		{"localhost while bound to loopback", "localhost:2095", "127.0.0.1", 2095, true},
+		{"loopback while bound to the other family", "127.0.0.1:2095", "::1", 2095, true},
 
 		// A real public name, which is what a forwarded Host looks like.
 		{"a hostname", "panel.example.com:2095", "", 2095, false},
