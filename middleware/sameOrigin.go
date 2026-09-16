@@ -3,6 +3,7 @@ package middleware
 import (
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -197,9 +198,17 @@ func inconclusive(opt Options, candidates []string) bool {
 // statement of where it went and a cross-site Origin against it has to be
 // refused, not waved through.
 //
-// Nothing is loosened by accepting every unroutable spelling: a browser can only
-// send a Host it dialled, and an Origin naming the same address matches outright
-// one step earlier.
+// What this does cost is worth stating plainly, because it is the reason to
+// widen the set no further. An unroutable address is one no browser out on the
+// internet can dial -- but a browser on the panel's own machine, or on the other
+// end of a tunnel to it, can. A page on another site posting to
+// http://127.0.0.1:2095 makes the browser send exactly the Host a rewriting
+// proxy would, with its own Origin beside it, and nothing here can tell the two
+// apart. So on a panel that is both reachable at an unroutable address and
+// configured as proxied with no domain, SameSite on the cookie is the only thing
+// left guarding a cross-site write -- which is the guarantee this middleware
+// exists not to depend on. Setting the panel domain, or forwarding a real Host,
+// is what takes the guess away.
 func hostIsOwnSocket(host string, port int) bool {
 	h, p, err := net.SplitHostPort(host)
 	if err != nil || p != strconv.Itoa(port) {
@@ -208,9 +217,24 @@ func hostIsOwnSocket(host string, port int) bool {
 	if strings.EqualFold(h, "localhost") {
 		return true
 	}
-	ip := net.ParseIP(h)
-	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
+	addr, err := netip.ParseAddr(h)
+	if err != nil {
+		return false
+	}
+	// Unmapped first, the same way clientIP folds a peer: a v4-in-v6 Host would
+	// otherwise answer false to every test below.
+	addr = addr.Unmap()
+	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() ||
+		cgnat.Contains(addr)
 }
+
+// cgnat is RFC 6598 carrier-grade NAT space. Neither net.IP.IsPrivate nor
+// netip.Addr.IsPrivate covers it -- both are RFC 1918 plus fc00::/7 -- yet it is
+// no more dialable from the internet than 10/8, and it is the range Tailscale
+// hands out. Leaving it out refused every write on a panel whose proxy reaches
+// it over Tailscale and does not forward the browser's Host, which is the same
+// lockout the address test was written to end.
+var cgnat = netip.MustParsePrefix("100.64.0.0/10")
 
 // proxyHostWarned keeps the stand-down to one line in the log. It is reached on
 // every write of every session on a panel whose proxy forwards no host, and the

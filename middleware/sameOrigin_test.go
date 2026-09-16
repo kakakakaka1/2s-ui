@@ -225,6 +225,11 @@ func TestSameOriginBehindAProxy(t *testing.T) {
 		{"proxy on another host, private upstream", "10.0.0.5:2095",
 			map[string]string{"Origin": "https://" + public},
 			proxied(Options{}), http.StatusOK},
+		// The panel ships Tailscale support, so a proxy reaching it over the
+		// tailnet is a deployment it has to work in.
+		{"proxy over tailscale", "100.64.1.5:2095",
+			map[string]string{"Origin": "https://" + public},
+			proxied(Options{}), http.StatusOK},
 
 		// But a public upstream address is one the browser dials itself, so
 		// Host really is its statement of where it went and a cross-site Origin
@@ -287,6 +292,14 @@ func TestHostIsOwnSocket(t *testing.T) {
 		{"a private address", "10.0.0.5:2095", 2095, true},
 		{"an IPv6 ULA", "[fd00::1]:2095", 2095, true},
 		{"a link-local address", "169.254.1.5:2095", 2095, true},
+		// RFC 6598, which IsPrivate does not cover and Tailscale hands out.
+		{"a CGNAT address", "100.64.1.5:2095", 2095, true},
+		{"the far end of CGNAT space", "100.127.255.254:2095", 2095, true},
+		// Its neighbours are ordinary public space and must stay out.
+		{"just below CGNAT space", "100.63.255.255:2095", 2095, false},
+		{"just above CGNAT space", "100.128.0.0:2095", 2095, false},
+		// A v4-in-v6 Host answers false to every test unless it is unmapped.
+		{"a v4-mapped private address", "[::ffff:10.0.0.5]:2095", 2095, true},
 
 		// A public address is one the browser dials itself, so Host is its own
 		// statement and a mismatch against it is real. Matching webListen here
