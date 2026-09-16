@@ -184,9 +184,12 @@ func inconclusive(opt Options, candidates []string) bool {
 // Two things have to hold. The port has to be the panel's: a Host carrying some
 // other port is not this socket, and one with no port at all is the shape
 // nginx's `Host $host` produces for a browser on 443. And the address has to be
-// one no browser out on the internet can dial -- loopback, localhost, or a
-// private or link-local address, the same three requestIsHTTPS folds when it
-// decides whether a forwarded scheme is worth believing.
+// one no browser out on the internet can dial -- loopback, localhost, a private
+// or link-local address, or carrier-grade NAT space. The first three are what
+// requestIsHTTPS folds when it decides whether a forwarded scheme is worth
+// believing; the fourth is not, and is deliberately only here (see cgnat), so
+// the two sets are not the same list and syncing them would be a change, not a
+// tidy-up.
 //
 // The address test is the whole point, and it is not webListen. Matching
 // webListen was wrong in both directions. A panel bound to 127.0.0.1 behind

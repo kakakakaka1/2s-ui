@@ -139,6 +139,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	// a panel that will not boot, with no `sui setting` flag to undo it. The
 	// defaults are the strict reading: nothing in front, so the Host header is
 	// taken at face value, and a port nothing can match.
+	//
 	// A failed read leaves the field at its zero value, which is why each one
 	// assigns only on success -- and why neither touches err, which the rest of
 	// this function still owns.
