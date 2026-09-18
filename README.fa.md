@@ -13,6 +13,10 @@
 
 > **سلب مسئولیت:** این پروژه تنها برای یادگیری و تبادل نظر شخصی است؛ لطفاً از آن برای مقاصد غیرقانونی استفاده نکنید و آن را در محیط تولیدی (production) به کار نگیرید.
 
+<a href="https://nowpayments.io/donation/shenaba" target="_blank" rel="noreferrer noopener">
+  <img src="https://nowpayments.io/images/embeds/donation-button-white.svg" alt="Crypto donation button by NOWPayments">
+</a>
+
 ## امکانات
 
 - **چندپروتکلی** — VLESS، VMess، Trojan، Shadowsocks، Hysteria2، TUIC، AnyTLS و

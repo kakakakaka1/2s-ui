@@ -13,6 +13,10 @@
 
 > **Отказ от ответственности:** Этот проект предназначен только для личного обучения и общения. Пожалуйста, не используйте его в незаконных целях и не используйте его в производственной среде.
 
+<a href="https://nowpayments.io/donation/shenaba" target="_blank" rel="noreferrer noopener">
+  <img src="https://nowpayments.io/images/embeds/donation-button-white.svg" alt="Crypto donation button by NOWPayments">
+</a>
+
 ## Возможности
 
 - **Мультипротокольность** — VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC,

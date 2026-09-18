@@ -13,6 +13,10 @@
 
 > **Tuyên bố miễn trừ trách nhiệm:** Dự án này chỉ dành cho mục đích học tập và trao đổi cá nhân, vui lòng không sử dụng cho các mục đích bất hợp pháp, vui lòng không sử dụng trong môi trường production
 
+<a href="https://nowpayments.io/donation/shenaba" target="_blank" rel="noreferrer noopener">
+  <img src="https://nowpayments.io/images/embeds/donation-button-white.svg" alt="Crypto donation button by NOWPayments">
+</a>
+
 ## Tính năng
 
 - **Đa giao thức** — VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, AnyTLS

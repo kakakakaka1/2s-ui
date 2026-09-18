@@ -13,6 +13,10 @@
 
 > **免责声明：** 本项目仅供个人学习与交流使用，请勿用于非法用途，请勿用于生产环境。
 
+<a href="https://nowpayments.io/donation/shenaba" target="_blank" rel="noreferrer noopener">
+  <img src="https://nowpayments.io/images/embeds/donation-button-white.svg" alt="Crypto donation button by NOWPayments">
+</a>
+
 ## 功能
 
 - **多协议** —— VLESS、VMess、Trojan、Shadowsocks、Hysteria2、TUIC、AnyTLS 等入站与

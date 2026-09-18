@@ -13,6 +13,10 @@
 
 > **免責聲明：** 本專案僅供個人學習與交流使用，請勿用於非法用途，請勿用於正式環境。
 
+<a href="https://nowpayments.io/donation/shenaba" target="_blank" rel="noreferrer noopener">
+  <img src="https://nowpayments.io/images/embeds/donation-button-white.svg" alt="Crypto donation button by NOWPayments">
+</a>
+
 ## 功能
 
 - **多協定** —— VLESS、VMess、Trojan、Shadowsocks、Hysteria2、TUIC、AnyTLS 等入站與
