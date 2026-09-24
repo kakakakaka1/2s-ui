@@ -97,44 +97,40 @@
               <div class="input suffix-box">{{ $t('stats.GB') }}</div>
             </div>
           </Field>
-          <Field
-            v-if="!(client.delayStart && !client.autoReset)"
-            :label="$t('ui.expiryDate')"
-            :hint="$t('ui.noExpiryHint')"
-            :mb="0"
-          >
+          <Field :label="$t('ui.expiryDate')" :hint="$t('ui.noExpiryHint')" :mb="0">
             <DateTimeInput v-model="client.expiry" />
           </Field>
         </div>
 
-        <!-- 延迟开始 | 自动重置 两列开关 -->
+        <!-- 延迟开始 | 自动重置 两列开关。延迟启动只推迟重置周期的起点,没开自动重置时不可用 -->
         <div class="grid2" style="margin-bottom: 15px;">
-          <div :style="client.up + client.down > 0 ? { opacity: 0.5, pointerEvents: 'none' } : undefined">
+          <div :style="client.up + client.down > 0 || !client.autoReset ? { opacity: 0.5, pointerEvents: 'none' } : undefined">
             <SwitchLabel v-model="delayStart" :label="$t('client.delayStart')" />
           </div>
           <SwitchLabel v-model="autoReset" :label="$t('client.autoReset')" />
         </div>
 
+        <ResetCycleFields v-if="client.autoReset" :data="client" @period="shiftNextReset" />
+
         <div class="grid2" style="margin-bottom: 15px;">
           <Field :label="$t('ui.ipLimit')" :hint="$t('ui.unlimitedHint')" :mb="0">
             <input class="input mono" type="number" min="0" v-model.number="limitIp" />
           </Field>
-          <Field v-if="client.autoReset || client.delayStart" :label="$t('client.resetDays')" :mb="0">
-            <input class="input mono" type="number" min="1" v-model.number="resetDays" />
+          <Field
+            v-if="!isNew && client.autoReset && !client.delayStart"
+            :label="$t('client.nextReset')"
+            :hint="$t('client.nextResetHint')"
+            :mb="0"
+          >
+            <DateTimeInput v-model="nextReset" :empty-label="$t('client.nextResetAuto')" />
           </Field>
         </div>
 
         <template v-if="!isNew && client.autoReset">
           <hr class="form-divider" />
-          <div class="grid2">
-            <div>
-              <div style="font-size: 11px; color: var(--text-3); font-weight: 600; margin-bottom: 3px;">{{ $t('client.nextReset') }}</div>
-              <div class="mono" dir="ltr" style="font-size: 13px; font-weight: 600;">{{ nextResetFormatted }}</div>
-            </div>
-            <div>
-              <div style="font-size: 11px; color: var(--text-3); font-weight: 600; margin-bottom: 3px;">{{ $t('main.stats.totalUsage') }}</div>
-              <div class="mono" dir="ltr" style="font-size: 13px; font-weight: 600;">↑ {{ totalUp }} / ↓ {{ totalDown }}</div>
-            </div>
+          <div>
+            <div style="font-size: 11px; color: var(--text-3); font-weight: 600; margin-bottom: 3px;">{{ $t('main.stats.totalUsage') }}</div>
+            <div class="mono" dir="ltr" style="font-size: 13px; font-weight: 600;">↑ {{ totalUp }} / ↓ {{ totalDown }}</div>
           </div>
         </template>
       </div>
@@ -263,7 +259,6 @@ import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'
 import { Client, Link, createClient, randomConfigs, shuffleConfigs, updateConfigs } from '@/types/clients'
 import { HumanReadable } from '@/plugins/utils'
-import { intlLocale } from '@/locales'
 import Drawer from '@/components/ui/Drawer.vue'
 import Tabs from '@/components/ui/Tabs.vue'
 import Field from '@/components/ui/Field.vue'
@@ -277,6 +272,7 @@ import SectionLabel from '@/components/ui/SectionLabel.vue'
 import KeyInput from '@/components/ui/KeyInput.vue'
 import DateTimeInput from '@/components/ui/DateTimeInput.vue'
 import BarMini from '@/components/charts/BarMini.vue'
+import ResetCycleFields from './ResetCycleFields.vue'
 import IconBtn from '@/components/ui/IconBtn.vue'
 import { copyToClipboard } from '@/plugins/clipboard'
 
@@ -398,31 +394,47 @@ const limitIp = computed({
     client.value.limitIp = n > 0 ? n : 0
   },
 })
+// 延迟启动只推迟重置周期的起点(首次连接时才开始算),到期日期照常生效。没开自动重置
+// 就没有周期可推迟,所以它跟着自动重置走:关自动重置时一起关,后端保存时也会清
 const delayStart = computed({
   get: () => client.value.delayStart ?? false,
   set: (v: boolean) => {
-    client.value.delayStart = v
-    client.value.resetDays = v ? 1 : 0
-    if (v && !autoReset.value) client.value.expiry = 0
+    client.value.delayStart = v && !!client.value.autoReset
   },
 })
 const autoReset = computed({
   get: () => client.value.autoReset ?? false,
   set: (v: boolean) => {
     client.value.autoReset = v
-    client.value.resetDays = v ? 1 : 0
-    if (!v) client.value.nextReset = 0
+    if (!v) {
+      // 不重置了,周期、下次重置时间和延迟启动都没有意义;后端保存时也会清
+      client.value.resetDays = 0
+      client.value.resetDayOfMonth = 0
+      client.value.nextReset = 0
+      client.value.delayStart = false
+    } else {
+      if (!client.value.resetDays && !client.value.resetDayOfMonth) client.value.resetDays = 30
+      // 重新打开时下次重置已经被上面清空,界面上是空的(fa 显示"按周期计算"),那就真的
+      // 按周期重算:明确发 0。不发的话后端会拿库里的旧边界按天数差平移
+      client.value.nextReset = 0
+      didEditNextReset.value = true
+    }
   },
 })
-const resetDays = computed({
-  get: () => client.value.resetDays ?? 1,
-  set: (v: number | string | null) => {
-    let n = typeof v === 'number' ? v : Number(v)
-    if (!n) n = 1
-    if (client.value.nextReset && client.value.nextReset > 0) {
-      client.value.nextReset += (n - (client.value.resetDays ?? 0)) * 24 * 60 * 60
-    }
-    client.value.resetDays = n
+// 改天数时挪下次重置:这是"挪动当前这一期"的手段,只在按天数时做,月结的边界由后端
+// 按日历重算。只挪显示用的副本,不算运营改过(不置 didEditNextReset):真正的平移由
+// 后端拿库里最新的边界来做。抽屉打开时读到的边界可能已经被定时任务推过一期,拿它加
+// 差值发回去,客户会在差值天数后再被重置一次
+const shiftNextReset = (to: number, from: number) => {
+  if (!client.value.resetDayOfMonth && client.value.nextReset && client.value.nextReset > 0) {
+    client.value.nextReset += (to - from) * 24 * 60 * 60
+  }
+}
+const nextReset = computed({
+  get: () => client.value.nextReset ?? 0,
+  set: (v: number) => {
+    client.value.nextReset = v
+    didEditNextReset.value = true
   },
 })
 
@@ -430,11 +442,6 @@ const up = computed(() => HumanReadable.sizeFormat(client.value.up))
 const down = computed(() => HumanReadable.sizeFormat(client.value.down))
 const totalUp = computed(() => HumanReadable.sizeFormat((client.value.totalUp ?? 0) + client.value.up))
 const totalDown = computed(() => HumanReadable.sizeFormat((client.value.totalDown ?? 0) + client.value.down))
-const nextResetFormatted = computed(() => {
-  const ts = client.value.nextReset ?? 0
-  if (ts == 0) return '-'
-  return new Date(ts * 1000).toLocaleString(intlLocale())
-})
 const percent = computed(() =>
   client.value.volume > 0 ? Math.round(((client.value.up + client.value.down) * 100) / client.value.volume) : 0,
 )
@@ -447,6 +454,12 @@ const percentColor = computed(() => {
 // flag is that intent: without it a drawer left open would save counters read
 // minutes ago and roll back everything the stats job recorded meanwhile.
 const didReset = ref(false)
+// nextReset 同理:定时任务每到一个边界就把它往后推,抽屉开着跨过边界再保存,就会把
+// 打开时读到的旧日期写回去,下一分钟再重置一次。只有运营直接改了这个日期才发;
+// 没发的话后端保留库里的值(改了天数的话,后端在库里的值上平移)
+const didEditNextReset = ref(false)
+// 打开时读到的那一行,保存编辑时拿来比较,只发改过的字段
+const opened = ref<Record<string, unknown> | null>(null)
 const resetUsage = () => {
   client.value.totalUp = (client.value.totalUp ?? 0) + client.value.up
   client.value.totalDown = (client.value.totalDown ?? 0) + client.value.down
@@ -459,10 +472,13 @@ const resetUsage = () => {
 const updateData = async (id: number) => {
   tab.value = 'general'
   didReset.value = false
+  didEditNextReset.value = false
+  opened.value = null
   if (id > 0) {
     loading.value = true
     const newData = await Data().loadClients(id)
     client.value = createClient(newData)
+    opened.value = JSON.parse(JSON.stringify(client.value))
     clientConfig.value = client.value.config
     loading.value = false
   } else {
@@ -485,9 +501,6 @@ const saveChanges = async () => {
   const isDuplicateName = Data().checkClientName(props.id, client.value.name)
   if (isDuplicateName) return
 
-  // check if delayStart is true and autoReset is false, set expiry to 0
-  if (client.value.delayStart && !client.value.autoReset) client.value.expiry = 0
-
   loading.value = true
   client.value.config = updateConfigs(clientConfig.value, client.value.name)
   client.value.links = [
@@ -495,12 +508,22 @@ const saveChanges = async () => {
     ...subLinks.value.filter((l) => l.uri != ''),
   ]
   const payload: any = { ...client.value }
-  if (!didReset.value) {
-    delete payload.up
-    delete payload.down
-    delete payload.totalUp
-    delete payload.totalDown
+  if (opened.value) {
+    // 编辑只发运营改过的字段:后端把请求盖在库里最新的那一行上,没发的字段保持库里的值。
+    // 抽屉开着的时候后台任务会改一些字段——首次连接清掉延迟启动、到点推进下次重置、
+    // 流量一直在涨——整行发回去就会把打开时读到的旧值写回去
+    for (const k of Object.keys(payload)) {
+      if (k !== 'id' && JSON.stringify(payload[k]) === JSON.stringify(opened.value[k])) delete payload[k]
+    }
   }
+  // 流量计数和下次重置按"运营有没有操作过"决定发不发,不看值变没变:值恰好和打开时
+  // 一样(比如本来就是 0)的时候,重置或清空的意图也得送到
+  for (const k of ['up', 'down', 'totalUp', 'totalDown'] as const) {
+    if (didReset.value) payload[k] = client.value[k]
+    else delete payload[k]
+  }
+  if (didEditNextReset.value) payload.nextReset = client.value.nextReset
+  else delete payload.nextReset
   const success = await Data().save('clients', props.id == 0 ? 'new' : 'edit', payload)
   if (success) emit('close')
   loading.value = false

@@ -83,13 +83,29 @@ type Client struct {
 	// sender through it.
 	TgId int64 `json:"tgId" form:"tgId" gorm:"default:0;not null;index"`
 
-	// Delay start and periodic reset
-	DelayStart bool  `json:"delayStart" form:"delayStart" gorm:"default:false;not null"`
-	AutoReset  bool  `json:"autoReset" form:"autoReset" gorm:"default:false;not null"`
-	ResetDays  int   `json:"resetDays" form:"resetDays" gorm:"default:0;not null"`
-	NextReset  int64 `json:"nextReset" form:"nextReset" gorm:"default:0;not null"`
-	TotalUp    int64 `json:"totalUp" form:"totalUp" gorm:"default:0;not null"`
-	TotalDown  int64 `json:"totalDown" form:"totalDown" gorm:"default:0;not null"`
+	// Delay start and periodic reset. Delay start only holds the reset clock
+	// until the client's first bytes, so it means nothing without auto reset,
+	// and every write path clears the two together.
+	DelayStart bool `json:"delayStart" form:"delayStart" gorm:"default:false;not null"`
+	AutoReset  bool `json:"autoReset" form:"autoReset" gorm:"default:false;not null"`
+
+	// Days between periodic resets, or zero when ResetDayOfMonth supplies the
+	// schedule instead.
+	ResetDays int `json:"resetDays" form:"resetDays" gorm:"default:0;not null"`
+
+	// Day of the month the periodic reset lands on, 1-31; 0 keeps the plain
+	// ResetDays period. It is stored rather than derived from NextReset because
+	// a short month has to clamp -- 31 in February means the 28th -- and a
+	// clamped date cannot be the anchor for the next one, or the day would walk
+	// backwards to the 28th and stay there. Every boundary is recomputed from
+	// this number instead. Not a cron spec for the same reason: cron matches the
+	// day exactly, so `0 0 31 * *` skips February, April, June, September and
+	// November outright -- five months with no reset at all.
+	ResetDayOfMonth int `json:"resetDayOfMonth" form:"resetDayOfMonth" gorm:"default:0;not null"`
+
+	NextReset int64 `json:"nextReset" form:"nextReset" gorm:"default:0;not null"`
+	TotalUp   int64 `json:"totalUp" form:"totalUp" gorm:"default:0;not null"`
+	TotalDown int64 `json:"totalDown" form:"totalDown" gorm:"default:0;not null"`
 }
 
 type Stats struct {

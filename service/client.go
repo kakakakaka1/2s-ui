@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"strings"
+	"sync"
 	"time"
+	// The monthly reset day is counted in the panel's timezone setting, which
+	// has to resolve on hosts without a zoneinfo database -- Windows above all.
+	_ "time/tzdata"
 
 	"github.com/shenaba/2s-ui/database"
 	"github.com/shenaba/2s-ui/database/model"
@@ -90,14 +94,47 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 	switch act {
 	case "new", "edit":
 		var client model.Client
-		err = json.Unmarshal(data, &client)
-		if err != nil {
+		// An edit is decoded over the stored row, so it replaces only the fields
+		// the request carries and every other one keeps its stored value. Whole
+		// rows used to replace everything, and each writer that sends less --
+		// a minimal integration, the master's cluster push (which names its
+		// keys), the drawer (which sends only what the operator changed) -- had
+		// a field it omitted zeroed, or needed a restore added for that field.
+		// Fields the background jobs change while a form is open (traffic,
+		// next reset, delay start after the first connection) are exactly the
+		// ones a stale whole row writes back.
+		//
+		// stored is the row as it was, for the decisions that compare old and
+		// new. Scalars only: decoding into a json.RawMessage reuses its backing
+		// array, so sharing one with the decoded client would rewrite it too.
+		var stored *model.Client
+		if act == "edit" {
+			var ref struct {
+				Id uint `json:"id"`
+			}
+			if err = json.Unmarshal(data, &ref); err != nil {
+				return nil, err
+			}
+			if err = tx.Model(model.Client{}).Where("id = ?", ref.Id).First(&client).Error; err != nil {
+				return nil, err
+			}
+			stored = &model.Client{
+				Name: client.Name, CreatedAt: client.CreatedAt, OnlineAt: client.OnlineAt,
+				DelayStart: client.DelayStart, AutoReset: client.AutoReset, ResetDays: client.ResetDays,
+				ResetDayOfMonth: client.ResetDayOfMonth, NextReset: client.NextReset,
+			}
+		}
+		if err = json.Unmarshal(data, &client); err != nil {
 			return nil, err
 		}
 		// Before the rename check below, and not exempted for a cluster push:
 		// a nameless client breaks the inbound's user table wherever it came
 		// from, and the master never pushes one (the name is the map key).
 		if err = normalizeClientName(&client); err != nil {
+			return nil, err
+		}
+		normalizeResetSchedule(&client, payloadFields(data), stored)
+		if err = validateResetSchedule(&client); err != nil {
 			return nil, err
 		}
 		if act == "new" {
@@ -107,12 +144,7 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 			// Only a name actually changing is validated, so a duplicate that
 			// predates this check stays editable on its other fields — same
 			// stance as the node-name bracket rule.
-			var oldName string
-			if err = tx.Model(model.Client{}).Select("name").
-				Where("id = ?", client.Id).Scan(&oldName).Error; err != nil {
-				return nil, err
-			}
-			if oldName != client.Name {
+			if stored.Name != client.Name {
 				if err = s.ensureNameAvailable(tx, client.Name, client.Id); err != nil {
 					return nil, err
 				}
@@ -141,9 +173,11 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 			if err != nil {
 				return nil, err
 			}
-			if err = s.preserveServerManagedFields(tx, &client, payloadFields(data)); err != nil {
-				return nil, err
-			}
+			// The server's own, whatever the request says. The counters and
+			// tgId need nothing here: omitted they keep the stored value, and
+			// sent they are the change -- the drawer's per-client reset works
+			// by sending zeroed counters.
+			client.CreatedAt, client.OnlineAt = stored.CreatedAt, stored.OnlineAt
 		} else {
 			client.CreatedAt = time.Now().Unix()
 			err = json.Unmarshal(client.Inbounds, &inboundIds)
@@ -151,6 +185,7 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 				return nil, err
 			}
 		}
+		alignNextReset(&client, stored, time.Now().Unix(), panelLocation())
 		err = tx.Save(&client).Error
 		if err != nil {
 			return nil, err
@@ -173,6 +208,12 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 			if err = normalizeClientName(client); err != nil {
 				return nil, err
 			}
+			// A create has no stored row, so there is nothing for omitted
+			// fields to fall back on and no key set to pass.
+			normalizeResetSchedule(client, nil, nil)
+			if err = validateResetSchedule(client); err != nil {
+				return nil, err
+			}
 			defaultClientJSONFields(client)
 			if seen[client.Name] {
 				return nil, common.NewErrorf("duplicate client name in this batch: %q", client.Name)
@@ -188,11 +229,13 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 		if len(taken) > 0 {
 			return nil, common.NewErrorf("client name %q already exists", taken[0])
 		}
+		loc := panelLocation()
 		for _, client := range clients {
 			if err = setConfigIdentity(client); err != nil {
 				return nil, err
 			}
 			client.CreatedAt = now
+			alignNextReset(client, nil, now, loc)
 			var ids []uint
 			if err = json.Unmarshal(client.Inbounds, &ids); err != nil {
 				return nil, err
@@ -266,9 +309,7 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 			if err = setConfigIdentity(client); err != nil {
 				return nil, err
 			}
-			// nil: the bulk payload is the list projection, so none of the
-			// counters it carries are authoritative — take them all from the row.
-			if err = s.preserveServerManagedFields(tx, client, nil); err != nil {
+			if err = s.preserveServerManagedFields(tx, client); err != nil {
 				return nil, err
 			}
 			if len(changedInboundIds) > 0 {
@@ -286,6 +327,102 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 			return nil, err
 		}
 		savedIds = clientIds(clients)
+	case "resetpolicy":
+		// The reset schedule for a selection of clients, in one statement.
+		//
+		// Deliberately not folded into editbulk: that path submits the client
+		// list projection, which cannot carry these columns, so
+		// findInboundsChanges restores all of them from the stored row -- the
+		// fields this action exists to change are exactly the ones editbulk
+		// cannot. It also writes one row at a time and regenerates links, which
+		// a schedule change has no reason to touch.
+		var policy struct {
+			Ids             []uint `json:"ids"`
+			AutoReset       bool   `json:"autoReset"`
+			ResetDays       int    `json:"resetDays"`
+			ResetDayOfMonth int    `json:"resetDayOfMonth"`
+		}
+		if err = json.Unmarshal(data, &policy); err != nil {
+			return nil, err
+		}
+		if len(policy.Ids) == 0 {
+			err = common.NewError("no clients selected")
+			return nil, err
+		}
+		if err = validateResetSchedule(&model.Client{
+			ResetDays: policy.ResetDays, ResetDayOfMonth: policy.ResetDayOfMonth,
+		}); err != nil {
+			return nil, err
+		}
+		// Refused rather than stored, unlike a single client save.
+		//
+		// ResetClients deliberately leaves a periodless row alone so a
+		// misconfiguration stays visible instead of being quietly repaired, and
+		// the per-client save keeps writing whatever it is handed for the same
+		// reason. This action has no such history to honour: its only purpose is
+		// to set a schedule, and storing one that ResetClients will skip means
+		// answering a bulk request with a success toast and changing nothing.
+		if policy.AutoReset && policy.ResetDays == 0 && policy.ResetDayOfMonth == 0 {
+			err = common.NewError("auto reset needs a period: set reset days or a day of the month")
+			return nil, err
+		}
+		// Same invariants as a single save: without auto reset there is no
+		// period, and no delayed start (cleared below with the other columns).
+		if !policy.AutoReset {
+			policy.ResetDays, policy.ResetDayOfMonth = 0, 0
+		}
+		// One boundary for the whole selection: same schedule, same instant.
+		now := time.Now().Unix()
+		next := int64(0)
+		if policy.AutoReset && (policy.ResetDays > 0 || policy.ResetDayOfMonth > 0) {
+			next = nextResetAt(&model.Client{
+				ResetDays:       policy.ResetDays,
+				ResetDayOfMonth: policy.ResetDayOfMonth,
+			}, now, panelLocation())
+		}
+		// A delayed start has no boundary until its first bytes arrive, and
+		// ResetClients only scans rows with delay_start = false -- so writing
+		// one there would put a date in the drawer that nothing ever acts on.
+		nextReset := gorm.Expr("CASE WHEN delay_start THEN 0 ELSE ? END", next)
+		if policy.AutoReset {
+			// A row already on exactly this schedule keeps its boundary. The
+			// selection is often "everyone" -- to switch auto reset on for the
+			// clients without it -- and re-anchoring the rest to now would move
+			// a client due in two days a whole period out, disabling it for that
+			// long once its quota runs out. The comparison reads the row as it
+			// was before this UPDATE, which is what SQL evaluates SET against.
+			// Monthly boundaries would come out the same anyway; N-day ones are
+			// the ones this protects.
+			nextReset = gorm.Expr(`CASE
+				WHEN delay_start THEN 0
+				WHEN auto_reset AND reset_days = ? AND reset_day_of_month = ? AND next_reset > ? THEN next_reset
+				ELSE ? END`, policy.ResetDays, policy.ResetDayOfMonth, now, next)
+		}
+		cols := map[string]interface{}{
+			"auto_reset":         policy.AutoReset,
+			"reset_days":         policy.ResetDays,
+			"reset_day_of_month": policy.ResetDayOfMonth,
+			"next_reset":         nextReset,
+		}
+		if !policy.AutoReset {
+			cols["delay_start"] = false
+		}
+		res := tx.Model(model.Client{}).Where("id IN ?", policy.Ids).UpdateColumns(cols)
+		if res.Error != nil {
+			err = res.Error
+			return nil, err
+		}
+		// Zero rows means every id was wrong -- answering "saved" to that is how
+		// an integrator keeps a broken call. Not compared against len(Ids): a
+		// repeated id would match once and make an exact check fail on a request
+		// that did exactly what was asked.
+		if res.RowsAffected == 0 {
+			err = common.NewError("no matching clients")
+			return nil, err
+		}
+		// No InboundIds: a schedule change moves no user in or out of an
+		// inbound's table, so there is nothing for the core to reload.
+		savedIds = policy.Ids
 	case "delbulk":
 		var ids []uint
 		err = json.Unmarshal(data, &ids)
@@ -375,12 +512,9 @@ func normalizeClientName(client *model.Client) error {
 // forms always send both; an API caller creating a client has nothing to put in
 // links and no reason to guess it is mandatory.
 //
-// Create only, deliberately. On an edit these carry state nothing else can
-// recover: an absent inbounds would read as "remove from every inbound", and an
-// absent links would drop the external entries the payload is the only source of
-// (node-owned ones re-attach from the stored row, user-authored ones do not). An
-// explicit empty array is a different thing and still means what it says -- it
-// is two bytes, so it never reaches this.
+// Create only: an edit is decoded over the stored row, so absent fields there
+// keep their stored value. An explicit empty array is a different thing and
+// still means what it says -- it is two bytes, so it never reaches this.
 func defaultClientJSONFields(client *model.Client) {
 	if len(client.Links) == 0 {
 		client.Links = json.RawMessage("[]")
@@ -413,50 +547,31 @@ func (s *ClientService) ensureNameAvailable(tx *gorm.DB, name string, excludeId 
 	return nil
 }
 
-// preserveServerManagedFields restores columns the server owns from the stored
-// row. createdAt/onlineAt always; the traffic counters only when the request did
-// not carry them, which is what separates the two kinds of caller: a master's
-// node push omits them (they would unmarshal as zero and wipe the node's
-// totals), while the SPA sends them — and its per-client "Reset" button works by
-// sending zeroed ones, so overwriting those would silently undo the reset.
-// payloadHas nil means "carried nothing", i.e. preserve every counter.
-func (s *ClientService) preserveServerManagedFields(tx *gorm.DB, client *model.Client, payloadHas map[string]bool) error {
+// preserveServerManagedFields restores the columns the server owns from the
+// stored row, for the bulk edit. That path submits the client list projection:
+// its counters are a copy from whenever the list was loaded, and it has no
+// totals or Telegram binding at all, so none of these may come from the
+// request -- the zeroes would wipe the traffic history and unbind whoever was
+// watching their own usage through the bot.
+func (s *ClientService) preserveServerManagedFields(tx *gorm.DB, client *model.Client) error {
 	var existing model.Client
 	err := tx.Model(model.Client{}).Select("created_at", "online_at", "up", "down", "total_up", "total_down", "tg_id").
 		Where("id = ?", client.Id).First(&existing).Error
 	if err != nil {
 		// ErrRecordNotFound included, deliberately: failing open here would write
-		// the payload's zeroed counters and destroy the node's traffic history,
-		// and an edit whose row vanished has nothing to preserve onto anyway.
-		// Both callers load the row via findInboundsChanges first, so in practice
-		// this only fires on a concurrent delete.
+		// the projection's counters over the stored ones, and an edit whose row
+		// vanished has nothing to preserve onto anyway. findInboundsChanges loads
+		// the row first, so in practice this only fires on a concurrent delete.
 		return err
 	}
-	client.CreatedAt = existing.CreatedAt
-	client.OnlineAt = existing.OnlineAt
-	if !payloadHas["up"] {
-		client.Up = existing.Up
-	}
-	if !payloadHas["down"] {
-		client.Down = existing.Down
-	}
-	if !payloadHas["totalUp"] {
-		client.TotalUp = existing.TotalUp
-	}
-	if !payloadHas["totalDown"] {
-		client.TotalDown = existing.TotalDown
-	}
-	// The panel's client form has no field for the Telegram binding -- it is
-	// set through the bot -- so without this every save from the panel would
-	// silently unbind whoever was watching their own usage.
-	if !payloadHas["tgId"] {
-		client.TgId = existing.TgId
-	}
+	client.CreatedAt, client.OnlineAt = existing.CreatedAt, existing.OnlineAt
+	client.Up, client.Down = existing.Up, existing.Down
+	client.TotalUp, client.TotalDown = existing.TotalUp, existing.TotalDown
+	client.TgId = existing.TgId
 	return nil
 }
 
-// payloadFields reports which keys the request object actually carried, so an
-// omitted server-managed value is preserved rather than written as zero.
+// payloadFields reports which keys the request object actually carried.
 func payloadFields(data json.RawMessage) map[string]bool {
 	var raw map[string]json.RawMessage
 	if json.Unmarshal(data, &raw) != nil {
@@ -793,6 +908,10 @@ func (s *ClientService) DepleteClients() ([]uint, []string, error) {
 	dt := time.Now().Unix()
 	db := database.GetDB()
 
+	// Read before the transaction opens: a monthly reset boundary is a local
+	// midnight, so ResetClients needs the panel's timezone.
+	loc := panelLocation()
+
 	// This job runs every minute whether or not there is anything to deplete or
 	// reset, so notifying unconditionally is not free: the hub answers with a
 	// full config push and the SPA swaps its whole config object for the new
@@ -831,7 +950,7 @@ func (s *ClientService) DepleteClients() ([]uint, []string, error) {
 	}()
 
 	// Reset clients
-	inboundIds, enableChanged, marked, err = s.ResetClients(tx, dt)
+	inboundIds, enableChanged, marked, err = s.ResetClients(tx, dt, loc)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1032,32 +1151,250 @@ func changeObjName(name string) json.RawMessage {
 	return json.RawMessage(encoded)
 }
 
+// daysInMonth returns the length of the given month. Day zero of the next month
+// is the last day of this one, and Date normalises a 13th month into January of
+// the next year, so December needs no special case.
+func daysInMonth(year int, month time.Month) int {
+	return time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
+}
+
+// nextMonthlyReset returns the first local midnight on day-of-month `dom` that
+// falls strictly after `from`, clamped to the last day of months too short to
+// hold it.
+//
+// The clamp is applied fresh each time, against `dom` rather than against the
+// previous result: clamping 31 to February's 28th and then anchoring on that
+// would make every later boundary the 28th. Recomputed this way, a client on the
+// 31st resets on Feb 28 and then again on Mar 31.
+func nextMonthlyReset(from time.Time, dom int) time.Time {
+	year, month := from.Year(), from.Month()
+	// Twelve would do; the extra turn is for a `dom` beyond every month's
+	// length, which cannot happen through the API but would loop forever.
+	for i := 0; i < 13; i++ {
+		day := dom
+		if last := daysInMonth(year, month); day > last {
+			day = last
+		}
+		t := time.Date(year, month, day, 0, 0, 0, 0, from.Location())
+		if t.After(from) {
+			return t
+		}
+		month++
+		if month > time.December {
+			month = time.January
+			year++
+		}
+	}
+	return from
+}
+
+// nextResetAt is when the client's counters are due to be cleared next, in
+// whichever of the two modes it is configured for.
+func nextResetAt(c *model.Client, dt int64, loc *time.Location) int64 {
+	if c.ResetDayOfMonth > 0 {
+		return nextMonthlyReset(time.Unix(dt, 0).In(loc), c.ResetDayOfMonth).Unix()
+	}
+	return dt + (int64(c.ResetDays) * 86400)
+}
+
+// normalizeResetSchedule brings an incoming client into the shape ResetClients
+// expects. Called on every write path that takes a whole client from outside --
+// new, edit, addbulk -- before validation, so validation judges what will
+// actually be stored. stored is the schedule the row had before an edit, nil on
+// a create.
+//
+// Auto reset owns the whole schedule, and a client without it has none: no
+// period and no delayed start. Delay start only holds the reset clock until the
+// first connection. It used to carry a plan length as well -- "expire N days
+// after first use", kept in reset_days on a delay-start client without auto
+// reset -- and that feature is gone, so on such a client both are cleared and
+// the row says what it does. A request in main's plan-length shape is stored as
+// a client with no time limit. main cleared the period whenever auto reset was
+// switched off in the drawer; this is the same rule, applied to every caller.
+//
+// An edit that changes the N-day period without sending nextReset moves the
+// stored boundary by the difference, which is how the panel has always let an
+// operator lengthen or shorten the current period without restarting it. It is
+// done here, from the stored boundary, and not by the caller: the drawer used to
+// shift the copy it read when it opened, so once the job had moved the boundary
+// on while the drawer stayed open, it sent the old boundary plus the difference
+// and the client reset again that much later -- a day, for 30 -> 31. N-day mode
+// on both sides only: a day of the month has no period to shift, and a switch of
+// mode or of auto reset gets a fresh boundary from alignNextReset.
+func normalizeResetSchedule(c *model.Client, has map[string]bool, stored *model.Client) {
+	if stored != nil && !has["nextReset"] &&
+		c.AutoReset && stored.AutoReset &&
+		c.ResetDayOfMonth == 0 && stored.ResetDayOfMonth == 0 &&
+		c.ResetDays > 0 && stored.ResetDays > 0 && stored.NextReset > 0 {
+		c.NextReset = stored.NextReset + int64(c.ResetDays-stored.ResetDays)*86400
+	}
+	if !c.AutoReset {
+		c.DelayStart = false
+		c.ResetDays, c.ResetDayOfMonth = 0, 0
+	}
+}
+
+// maxScheduleDays bounds the reset period. It is not a policy -- a cap below what
+// rows already hold would turn every later edit of such a client into an error
+// -- it protects the arithmetic on either side. In Go, dt + days*86400 is int64
+// and wraps negative somewhere above 1e14 days, landing NextReset in the past --
+// and ResetClients scans for `next_reset < now`, so such a client would be reset
+// every minute and never reach its quota. In the panel, NextReset becomes a
+// JavaScript Date, which ends 1e8 days after the epoch; ten million days from
+// any plausible now stays well inside both.
+const maxScheduleDays = 10_000_000
+
+// validateResetSchedule rejects a schedule the panel cannot represent: a day of
+// the month outside 0-31, or a period outside 0..maxScheduleDays days.
+//
+// A day out of range is not dangerous in itself -- nextMonthlyReset clamps per
+// month, so 200 silently means "month end" and nothing loops -- but the drawer's
+// input carries max=31 and would show the stored number unchanged, so the panel
+// and the row disagree about what was configured. The bulk action checks with
+// this too, so the two write paths agree about a legal day.
+//
+// Deliberately narrower than the bulk action's checks: a period of zero with
+// auto reset on stays writable here, because ResetClients leaves such a row
+// alone on purpose and older rows already carry that combination.
+func validateResetSchedule(c *model.Client) error {
+	if c.ResetDayOfMonth < 0 || c.ResetDayOfMonth > 31 {
+		return common.NewErrorf("reset day of month out of range: %d", c.ResetDayOfMonth)
+	}
+	if c.ResetDays < 0 || c.ResetDays > maxScheduleDays {
+		return common.NewErrorf("reset days out of range: %d", c.ResetDays)
+	}
+	return nil
+}
+
+// panelLoc caches what panelLocation resolved, keyed by the setting it came
+// from. DepleteJob asks every minute, a lookup reads the zoneinfo database each
+// time, and a name that does not resolve would otherwise be reported once a
+// minute rather than once.
+var panelLoc struct {
+	sync.Mutex
+	name string
+	loc  *time.Location
+}
+
+// panelLocation is the timezone the monthly reset day is counted in: the panel's
+// timezone setting, which the hint under the day-of-month field points to.
+//
+// It does not go through GetTimeLocation, which on Windows ignores the setting
+// for the machine's zone -- the hint would send an operator to a setting that
+// changes nothing. The zoneinfo database that made that necessary is embedded
+// (time/tzdata), so the setting resolves on every platform. A name that does not
+// resolve falls back to the panel's default zone, as GetTimeLocation does, and a
+// setting that cannot be read to the machine's zone; neither is a reason to fail
+// the write it is part of.
+//
+// The nil check is not defensive padding: the setting is read through the global
+// handle, which unit tests driving this service with their own gorm.DB never
+// set, and gorm dereferences a nil *DB rather than returning an error -- so
+// without it a save in such a test panics instead of failing.
+func panelLocation() *time.Location {
+	if database.GetDB() == nil {
+		return time.Local
+	}
+	var settingService SettingService
+	name, err := settingService.getString("timeLocation")
+	if err != nil {
+		logger.Warning("cannot read the timezone setting, monthly resets use the machine's zone: ", err)
+		return time.Local
+	}
+	panelLoc.Lock()
+	defer panelLoc.Unlock()
+	if panelLoc.loc != nil && panelLoc.name == name {
+		return panelLoc.loc
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		fallback := defaultValueMap["timeLocation"]
+		logger.Warningf("timezone %q does not exist, monthly resets use %s", name, fallback)
+		if loc, err = time.LoadLocation(fallback); err != nil {
+			loc = time.Local
+		}
+	}
+	panelLoc.name, panelLoc.loc = name, loc
+	return loc
+}
+
+// alignNextReset decides NextReset for a client about to be stored: keep the one
+// submitted, or compute one from the schedule. stored is the schedule the row
+// had before an edit, nil on a create.
+//
+// It computes when there is no usable boundary: a new client, a NextReset of 0,
+// a day of the month that changed (the old boundary belongs to the old day), or
+// auto reset just switched on without a future date to start from. Anything
+// else is kept as it arrives -- a date the operator typed, the stored boundary
+// shifted for a changed ResetDays (normalizeResetSchedule does that, which is
+// why this must not recompute on a changed period), or a date in the past,
+// which is how "reset now" is asked for.
+//
+// Zero has to mean "compute", not "keep": with auto reset on, the periodic
+// branch in ResetClients matches `next_reset < now` on its next tick, so a
+// stored 0 clears the client's usage within a minute. The drawer's date field
+// has a clear button that writes exactly that.
+//
+// Zeroing rather than leaving the old boundary when auto reset is off is not
+// cosmetic either: a stale PAST boundary would clear a client's counters on
+// the first tick after auto reset is switched back on, months later.
+func alignNextReset(client, stored *model.Client, dt int64, loc *time.Location) {
+	if !client.AutoReset || client.DelayStart {
+		// A delayed start has no boundary yet by design: ResetClients sets the
+		// first one when the client's first bytes arrive.
+		client.NextReset = 0
+		return
+	}
+	if client.ResetDays <= 0 && client.ResetDayOfMonth <= 0 {
+		// Misconfigured either way, and ResetClients skips such a row on
+		// purpose. Leave whatever came in rather than inventing a boundary.
+		return
+	}
+	recompute := client.NextReset <= 0
+	if stored == nil {
+		recompute = recompute || client.NextReset <= dt
+	} else {
+		recompute = recompute || stored.ResetDayOfMonth != client.ResetDayOfMonth ||
+			(!stored.AutoReset && client.NextReset <= dt)
+	}
+	if recompute {
+		client.NextReset = nextResetAt(client, dt, loc)
+	}
+}
+
 // ResetClients applies the per-client periodic reset. It returns the affected
 // local inbound ids (to hot-restart) and the names it re-enabled, which the
 // caller has to fan out to nodes for the same reason DepleteJob fans out a
 // disable: the node keeps rejecting a paid-up user until it hears otherwise.
-func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, []string, bool, error) {
+//
+// loc is the panel's configured timezone, which only the monthly mode reads: a
+// day-of-month boundary is a local midnight, while a plain N-day period is
+// arithmetic on an absolute timestamp and has no calendar to align to.
+func (s *ClientService) ResetClients(tx *gorm.DB, dt int64, loc *time.Location) ([]uint, []string, bool, error) {
 	var err error
 	var resetClients, allClients []*model.Client
 	var changes []model.Changes
 	var inboundIds []uint
 	var reenabled []string
-	// reset_days is a period, and zero is not one. Every block below computes a
-	// date as dt + reset_days*86400, so at zero the first sets Expiry to right
-	// now (a client dead the instant it sends a byte), and the third sets
-	// NextReset to dt -- which matches again on the very next tick, resetting
-	// the counters every minute so the volume quota is never reached. A row like
-	// that is misconfigured either way; leaving it untouched keeps it visible
-	// rather than quietly breaking it. The panel forms cannot produce one (the
-	// toggle writes 1 and the input has min=1), but apiv2 and older rows can.
-	// Set delay start without periodic reset
+	// First use. Delay start holds the reset clock until the client's first
+	// bytes; here the first boundary is set and delay_start is cleared. Expiry
+	// is not touched: it applies as set, delayed start or not.
+	//
+	// No precondition beyond traffic, on purpose. On main this was two blocks
+	// keyed on auto_reset, each with its own preconditions, and a delay-start
+	// client that matched neither -- auto reset switched off, which zeroed
+	// reset_days -- stayed delayed forever. Every write path now clears delay
+	// start together with auto reset, but whatever wrote a row, one that stays
+	// delayed forever must not be possible here.
 	err = tx.Model(model.Client{}).
-		Where("enable = true AND delay_start = true AND auto_reset = false AND reset_days > 0 AND (Up + Down) > 0").Find(&resetClients).Error
+		Where("enable = true AND delay_start = true AND (Up + Down) > 0").Find(&resetClients).Error
 	if err != nil {
 		return nil, nil, false, err
 	}
 	for _, client := range resetClients {
-		client.Expiry = dt + (int64(client.ResetDays) * 86400)
+		if client.AutoReset && (client.ResetDays > 0 || client.ResetDayOfMonth > 0) {
+			client.NextReset = nextResetAt(client, dt, loc)
+		}
 		client.DelayStart = false
 		changes = append(changes, model.Changes{
 			DateTime: dt,
@@ -1069,33 +1406,20 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, []string, b
 	}
 	allClients = append(allClients, resetClients...)
 
-	// Set delay start with periodic reset
-	err = tx.Model(model.Client{}).
-		Where("enable = true AND delay_start = true AND auto_reset = true AND reset_days > 0 AND (Up + Down) > 0").Find(&resetClients).Error
-	if err != nil {
-		return nil, nil, false, err
-	}
-	for _, client := range resetClients {
-		client.NextReset = dt + (int64(client.ResetDays) * 86400)
-		client.DelayStart = false
-		changes = append(changes, model.Changes{
-			DateTime: dt,
-			Actor:    "ResetJob",
-			Key:      "clients",
-			Action:   "reset",
-			Obj:      changeObjName(client.Name),
-		})
-	}
-	allClients = append(allClients, resetClients...)
-
+	// The periodic block needs a period above zero, or NextReset collapses to
+	// dt and matches again on the very next tick, clearing the counters every
+	// minute so the volume quota is never reached. A row like that is
+	// misconfigured; leaving it untouched keeps it visible rather than quietly
+	// breaking it. The panel forms cannot produce one, but apiv2 and older rows
+	// can.
 	// Set periodic reset
 	err = tx.Model(model.Client{}).
-		Where("delay_start = false AND auto_reset = true AND reset_days > 0 AND next_reset < ?", dt).Find(&resetClients).Error
+		Where("delay_start = false AND auto_reset = true AND (reset_days > 0 OR reset_day_of_month > 0) AND next_reset < ?", dt).Find(&resetClients).Error
 	if err != nil {
 		return nil, nil, false, err
 	}
 	for _, client := range resetClients {
-		client.NextReset = dt + (int64(client.ResetDays) * 86400)
+		client.NextReset = nextResetAt(client, dt, loc)
 		client.TotalUp += client.Up
 		client.TotalDown += client.Down
 		client.Up = 0
@@ -1216,6 +1540,7 @@ func (s *ClientService) findInboundsChanges(tx *gorm.DB, client *model.Client, f
 		client.Config = oldClient.Config
 		client.AutoReset = oldClient.AutoReset
 		client.ResetDays = oldClient.ResetDays
+		client.ResetDayOfMonth = oldClient.ResetDayOfMonth
 		client.NextReset = oldClient.NextReset
 		client.DelayStart = oldClient.DelayStart
 	}

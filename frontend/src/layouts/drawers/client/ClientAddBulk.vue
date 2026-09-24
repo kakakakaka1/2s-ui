@@ -58,20 +58,17 @@
     </Field>
 
     <div class="grid2" style="margin-bottom: 15px;">
-      <SwitchLabel v-model="bulkData.delayStart" :label="$t('client.delayStart')" />
-      <SwitchLabel v-model="bulkData.autoReset" :label="$t('client.autoReset')" />
+      <div :style="!bulkData.autoReset ? { opacity: 0.5, pointerEvents: 'none' } : undefined">
+        <SwitchLabel v-model="delayStart" :label="$t('client.delayStart')" />
+      </div>
+      <SwitchLabel v-model="autoReset" :label="$t('client.autoReset')" />
     </div>
 
-    <Field
-      v-if="!(bulkData.delayStart && !bulkData.autoReset)"
-      :label="$t('date.expiry')"
-    >
+    <Field :label="$t('date.expiry')">
       <DateTimeInput v-model="bulkData.expiry" />
     </Field>
 
-    <Field v-if="bulkData.autoReset || bulkData.delayStart" :label="$t('client.resetDays')">
-      <input class="input mono" type="number" min="1" v-model.number="bulkData.resetDays" />
-    </Field>
+    <ResetCycleFields v-if="bulkData.autoReset" :data="bulkData" style="--suffix-box-width: 70px;" />
 
     <Field :label="$t('client.inboundTags')">
       <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -112,6 +109,7 @@ import Chip from '@/components/ui/Chip.vue'
 import Check from '@/components/ui/Check.vue'
 import SwitchLabel from '@/components/ui/SwitchLabel.vue'
 import DateTimeInput from '@/components/ui/DateTimeInput.vue'
+import ResetCycleFields from './ResetCycleFields.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -138,8 +136,30 @@ const bulkData = ref({
   delayStart: false,
   autoReset: false,
   resetDays: 0,
+  resetDayOfMonth: 0,
 })
 const textInput = ref({ name: '', desc: '' })
+
+// 自动重置走 computed 而不是裸 v-model:打开时两个周期都是 0 的话,后端会把这一行
+// 当"没有周期"跳过,这批客户静默地永不重置,所以要预填一个周期。延迟启动只推迟
+// 重置周期的起点,跟着自动重置走,见单客户抽屉里同一处的说明
+const autoReset = computed({
+  get: () => bulkData.value.autoReset,
+  set: (v: boolean) => {
+    bulkData.value.autoReset = v
+    if (!v) {
+      bulkData.value.resetDays = 0
+      bulkData.value.resetDayOfMonth = 0
+      bulkData.value.delayStart = false
+    } else if (!bulkData.value.resetDays && !bulkData.value.resetDayOfMonth) {
+      bulkData.value.resetDays = 30
+    }
+  },
+})
+const delayStart = computed({
+  get: () => bulkData.value.delayStart,
+  set: (v: boolean) => { bulkData.value.delayStart = v && bulkData.value.autoReset },
+})
 
 const patterns = computed(() => ({
   random: { title: t('bulk.random'), value: 'random' },
@@ -188,6 +208,7 @@ const resetData = () => {
     delayStart: false,
     autoReset: false,
     resetDays: 0,
+    resetDayOfMonth: 0,
   }
   textInput.value = { name: '', desc: '' }
 }
@@ -232,7 +253,7 @@ const saveChanges = async () => {
       links: [],
       volume: bulkData.value.Volume * (1024 ** 3),
       limitIp: bulkData.value.limitIp > 0 ? Math.floor(bulkData.value.limitIp) : 0,
-      expiry: (bulkData.value.delayStart && !bulkData.value.autoReset) ? 0 : bulkData.value.expiry,
+      expiry: bulkData.value.expiry,
       up: 0,
       down: 0,
       desc: genByPattern(bulkData.value.desc, i),
@@ -240,6 +261,7 @@ const saveChanges = async () => {
       delayStart: bulkData.value.delayStart,
       autoReset: bulkData.value.autoReset,
       resetDays: bulkData.value.resetDays,
+      resetDayOfMonth: bulkData.value.resetDayOfMonth,
     }))
   }
   // Check duplicate names

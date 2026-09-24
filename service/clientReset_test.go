@@ -62,7 +62,7 @@ func TestResetClientsIgnoresAZeroPeriod(t *testing.T) {
 
 	db := database.GetDB()
 	tx := db.Begin()
-	if _, _, _, err := svc.ResetClients(tx, now); err != nil {
+	if _, _, _, err := svc.ResetClients(tx, now, time.UTC); err != nil {
 		tx.Rollback()
 		t.Fatalf("ResetClients: %v", err)
 	}
@@ -87,8 +87,8 @@ func TestResetClientsIgnoresAZeroPeriod(t *testing.T) {
 	}
 }
 
-// A delay-start client with no period had its expiry set to the moment it sent
-// its first byte, killing it outright.
+// A delay-start client with a zero period had its expiry set to the moment it
+// sent its first byte, killing it outright.
 func TestResetClientsDoesNotExpireAZeroPeriodDelayStart(t *testing.T) {
 	svc := newResetDB(t)
 	now := time.Now().Unix()
@@ -101,7 +101,7 @@ func TestResetClientsDoesNotExpireAZeroPeriodDelayStart(t *testing.T) {
 
 	db := database.GetDB()
 	tx := db.Begin()
-	if _, _, _, err := svc.ResetClients(tx, now); err != nil {
+	if _, _, _, err := svc.ResetClients(tx, now, time.UTC); err != nil {
 		tx.Rollback()
 		t.Fatalf("ResetClients: %v", err)
 	}
@@ -114,8 +114,11 @@ func TestResetClientsDoesNotExpireAZeroPeriodDelayStart(t *testing.T) {
 	if c.Expiry != 0 {
 		t.Errorf("expiry = %d, want it left unset rather than set to now", c.Expiry)
 	}
-	if !c.DelayStart {
-		t.Error("delay_start must stay on: the row is misconfigured and should stay visible as such")
+	// The client has started, so the flag clears. This used to assert the
+	// opposite, and a row left delayed forever is exactly what the first-use
+	// step no longer allows to exist.
+	if c.DelayStart {
+		t.Error("delay_start should clear on first use")
 	}
 }
 

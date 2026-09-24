@@ -36,6 +36,14 @@
       </div>
     </template>
 
+    <template v-else-if="actionMode === 'reset_policy'">
+      <div style="margin-bottom: 15px;">
+        <SwitchLabel v-model="editData.autoReset" :label="$t('client.autoReset')" />
+      </div>
+      <ResetCycleFields v-if="editData.autoReset" :data="editData" style="--suffix-box-width: 64px;" />
+      <MHint v-else>{{ $t('bulk.resetPolicyOffHint') }}</MHint>
+    </template>
+
     <Field
       v-else-if="actionMode === 'add_inbounds' || actionMode === 'remove_inbounds'"
       :label="$t('client.inboundTags')"
@@ -95,6 +103,7 @@
 
 <script lang="ts" setup>
 import Select from '@/components/ui/Select.vue'
+import ResetCycleFields from './ResetCycleFields.vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Data from '@/store/modules/data'
@@ -125,6 +134,9 @@ const editData = ref({
   addDays: 0,
   addVolume: 0,
   inboundTags: [] as number[],
+  autoReset: true,
+  resetDays: 0,
+  resetDayOfMonth: 1,
 })
 const selectedClients = ref({
   model: 'none',
@@ -133,6 +145,7 @@ const selectedClients = ref({
 
 const actionModes = computed(() => [
   { title: t('bulk.changeLimits'), value: 'change_limits' },
+  { title: t('bulk.resetPolicy'), value: 'reset_policy' },
   { title: t('bulk.addInbounds'), value: 'add_inbounds' },
   { title: t('bulk.removeInbounds'), value: 'remove_inbounds' },
   { title: t('actions.delbulk'), value: 'delete_bulk' },
@@ -222,6 +235,19 @@ const saveChanges = async () => {
         c.inbounds = c.inbounds.filter((i: number) => !editData.value.inboundTags.includes(i))
       })
       break
+    case 'reset_policy': {
+      // 独立的 act,不走 editbulk:后端那条路会把每个 reset 列从旧行恢复回来,
+      // 正好是这里要改的字段
+      const success = await Data().save('clients', 'resetpolicy', {
+        ids: targetClients.map((c: Client) => c.id),
+        autoReset: editData.value.autoReset,
+        resetDays: editData.value.autoReset ? editData.value.resetDays : 0,
+        resetDayOfMonth: editData.value.autoReset ? editData.value.resetDayOfMonth : 0,
+      })
+      if (success) emit('close')
+      loading.value = false
+      return
+    }
     case 'delete_bulk': {
       const success = await Data().save('clients', 'delbulk', targetClients.map((c: Client) => c.id))
       if (success) emit('close')
@@ -237,7 +263,10 @@ const saveChanges = async () => {
 watch(() => props.visible, (v) => {
   if (v) {
     actionMode.value = 'change_limits'
-    editData.value = { enable: true, addDays: 0, addVolume: 0, inboundTags: [] }
+    editData.value = {
+      enable: true, addDays: 0, addVolume: 0, inboundTags: [],
+      autoReset: true, resetDays: 0, resetDayOfMonth: 1,
+    }
     selectedClients.value = (props.selected && props.selected.length > 0)
       ? { model: 'client', values: [...props.selected] }
       : { model: 'none', values: [] }
